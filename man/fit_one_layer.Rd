@@ -11,7 +11,9 @@ fit_one_layer(
   trace = TRUE,
   g_0 = 0.01,
   theta_0 = 0.5,
-  true_g = NULL
+  true_g = NULL,
+  settings = list(l = 1, u = 2, alpha = list(g = 1.5, theta = 1.5), beta = list(g =
+    3.9, theta = 3.9/1.5))
 )
 }
 \arguments{
@@ -29,6 +31,8 @@ fit_one_layer(
 
 \item{true_g}{if true nugget is known it may be specified here (set to a small
 value to make fit deterministic)}
+
+\item{settings}{hyperparameters for proposals and priors on \code{g} and \code{theta}}
 }
 \value{
 a list of the S3 class "\code{gp}" with elements:
@@ -36,6 +40,7 @@ a list of the S3 class "\code{gp}" with elements:
   \item \code{x}: copy of input matrix
   \item \code{y}: copy of response vector
   \item \code{nmcmc}: number of MCMC iterations
+  \item \code{settings}: copy of proposal/prior settings
   \item \code{g}: vector of MCMC samples for \code{g}
   \item \code{theta}: vector of MCMC samples for \code{theta}
   \item \code{time}: computation time in seconds
@@ -50,14 +55,19 @@ Conducts MCMC sampling of hyperparameters for a one layer
 }
 \details{
 Utilizes Metropolis Hastings sampling of the length scale and
-    nugget parameters with a  uniform proposal function (ranging from half 
-    to twice the previous iteration) and the following priors:
-    \itemize{
-        \item \code{prior(g) <- dgamma(g, shape = 1.5, rate = 3.9)}
-        \item \code{prior(theta) <- dgamma(theta, shape = 1.5, rate = 3.9/4)}
-    }
+    nugget parameters with proposals and priors controlled by \code{settings}.
+    Proposals for \code{g} and \code{theta} follow a uniform sliding window scheme,
+    e.g. 
+    
+    \code{g_star <- runif(1, l * g_t / u, u * g_t / l)}, 
+    
+    with defaults \code{l = 1} and \code{u = 2} provided in \code{settings}.
+    Priors on \code{g} and \code{theta} follow Gamma distributions with shape parameter
+    (\code{alpha}) and rate parameter (\code{beta}) provided in \code{settings}.  
     These priors are designed for "\code{x}" scaled to [0,1] and "\code{y}" 
-    scaled to have mean zero and variance 1.  The output object of class 
+    scaled to have mean zero and variance 1.  
+    
+    The output object of class 
     "\code{gp}" is designed for use with \code{continue}, \code{trim}, and 
     \code{predict}.
 }
@@ -79,7 +89,7 @@ x_new <- seq(0, 1, length = 100)
 # Fit model and calculate EI
 fit <- fit_one_layer(x, y, nmcmc = 500)
 fit <- trim(fit, 400)
-fit <- predict(fit, x_new, lite = FALSE)
+fit <- predict(fit, x_new, lite = TRUE, store_all = TRUE)
 ei <- EI(fit)
 
 \donttest{
@@ -109,7 +119,7 @@ plot(fit) # investigate trace plots
 fit <- trim(fit, 8000, 2)
   
 # Predict and calculate EI
-fit <- predict(fit, xx, lite = FALSE)
+fit <- predict(fit, xx, lite = TRUE, store_all = TRUE)
 ei <- EI(fit)
   
 # Visualize Fit
@@ -122,11 +132,12 @@ x_new <- xx[which.max(ei$value)]
 
 # Evaluate fit
 rmse(yy, fit$mean) # lower is better
-score(yy, fit$mean, fit$Sigma) # higher is better
 }
 
 }
 \references{
+Sauer, A, RB Gramacy, and D Higdon. 2020. "Active Learning for Deep Gaussian 
+    Process Surrogates." arXiv:2012.08015. \cr\cr
 Gramacy, RB. \emph{Surrogates: Gaussian Process Modeling, Design, and Optimization 
     for the Applied Sciences}. Chapman Hall, 2020.
 }

@@ -16,7 +16,10 @@ fit_three_layer(
   theta_y_0 = 0.5,
   theta_w_0 = 1,
   theta_z_0 = 1,
-  true_g = NULL
+  true_g = NULL,
+  settings = list(l = 1, u = 2, alpha = list(g = 1.5, theta_z = 1.5, theta_w = 1.5,
+    theta_y = 1.5), beta = list(g = 3.9, theta_z = 3.9/4, theta_w = 3.9/12, theta_y =
+    3.9/6))
 )
 }
 \arguments{
@@ -48,6 +51,9 @@ may be single value or vector of length \code{D}}
 
 \item{true_g}{if true nugget is known it may be specified here (set to a small value
 to make fit deterministic)}
+
+\item{settings}{hyperparameters for proposals and priors on \code{g}, \code{theta_y},
+\code{theta_w}, and \code{theta_z}}
 }
 \value{
 a list of the S3 class "\code{dgp3}" with elements:
@@ -55,6 +61,7 @@ a list of the S3 class "\code{dgp3}" with elements:
   \item \code{x}: copy of input matrix
   \item \code{y}: copy of response vector
   \item \code{nmcmc}: number of MCMC iterations
+  \item \code{settings}: copy of proposal/prior settings
   \item \code{g}: vector of MCMC samples for \code{g}
   \item \code{theta_y}: vector of MCMC samples for \code{theta_y} (length scale of outer layer)
   \item \code{theta_w}: matrix of MCMC samples for \code{theta_w} (length scale of middle layer)
@@ -77,18 +84,19 @@ Conducts MCMC sampling of hyperparameters, hidden layer
 Maps inputs "\code{x}" through hidden layer "\code{z}" then hidden
     layer "\code{w}" to outputs "\code{y}".  Conducts sampling of the hidden 
     layers using Elliptical Slice sampling.  Utilizes Metropolis Hastings 
-    sampling of the length scale and nugget parameters with a 
-    uniform proposal function (ranging from half to twice the previous 
-    iteration) and the following priors:
-    \itemize{
-        \item \code{prior(g) <- dgamma(g, 1.5, 3.9)}
-        \item \code{prior(theta_z) <- dgamma(theta_z, 1.5, 3.9/4)}
-        \item \code{prior(theta_w) <- dgamma(theta_w, 1.5, 3.9/4)}
-        \item \code{prior(theta_y) <- dgamma(theta_y, 1.5, 3.9/6)}
-    }
-    These priors are designed for "\code{x}" scaled to [0,1] and "\code{y}" 
-    scaled to have mean zero and variance 1.  The output object of class 
-    "\code{dgp3}" is designed for use with \code{continue}, \code{trim}, 
+    sampling of the length scale and nugget parameters with proposals and priors
+    controlled by \code{settings}.  Proposals for \code{g}, \code{theta_y}, 
+    \code{theta_w}, and \code{theta_z} follow a uniform sliding window scheme, e.g.
+    
+    \code{g_star <- runif(1, l * g_t / u, u * g_t / l)},
+    
+    with defaults \code{l = 1} and \code{u = 2} provided in \code{settings}.  Priors
+    on \code{g}, \code{theta_y}, \code{theta_w}, and \code{theta_z} follow Gamma
+    distributions with shape parameter (\code{alpha}) and rate parameter (\code{beta}) 
+    provided in \code{settings}.  These priors are designed for "\code{x}" scaled to 
+    [0,1] and "\code{y}" scaled to have mean zero and variance 1.  
+    
+    The output object of class "\code{dgp3}" is designed for use with \code{continue}, \code{trim}, 
     and \code{predict}. If \code{z_0} and \code{w_0} are of dimension 
     \code{nrow(x) - 1} by \code{D}, the final rows are predicted using 
     kriging.  This is helpful in sequential design when adding a new input 
@@ -114,10 +122,10 @@ x_new <- seq(0, 1, length = 100)
 fit <- fit_three_layer(x, y, nmcmc = 500)
 fit <- trim(fit, 400)
 fit <- predict(fit, x_new)
-imspe <- IMSPE(fit)
+imse <- IMSE(fit)
 
 \donttest{
-# Three Layer and IMSPE -------------------------------------------------------
+# Three Layer and IMSE -------------------------------------------------------
 
 f <- function(x) {
   i <- which(x <= 0.48)
@@ -139,30 +147,29 @@ fit <- fit_three_layer(x, y, D = 1, nmcmc = 10000)
 plot(fit) # investigate trace plots
 fit <- trim(fit, 8000, 2)
 
-# Option 1 - calculate IMSPE from only MCMC iterations
-imspe <- IMSPE(fit, xx)
+# Option 1 - calculate IMSE from only MCMC iterations
+imse <- IMSE(fit, xx)
 
-# Option 2 - calculate IMSPE after predictions
+# Option 2 - calculate IMSE after predictions
 fit <- predict(fit, xx)
-imspe <- IMSPE(fit)
+imse <- IMSE(fit)
 
 # Visualize fit
 plot(fit)
 par(new = TRUE) # overlay IMSPE
-plot(xx, imspe$value, type = 'l', lty = 2, axes = FALSE, xlab = '', ylab = '')
+plot(xx, imse$value, type = 'l', lty = 2, axes = FALSE, xlab = '', ylab = '')
 
 # Select next design point
-x_new <- xx[which.min(imspe$value)]
+x_new <- xx[which.min(imse$value)]
 
 # Evaluate fit
 rmse(yy, fit$mean) # lower is better
-score(yy, fit$mean, fit$Sigma) # higher is better
 }
 
 }
 \references{
-Damianou, A and N Lawrence. (2013). "Deep gaussian processes." 
-    \emph{Artificial Intelligence and Statistics}, 207-215.\cr\cr
+Sauer, A, RB Gramacy, and D Higdon. 2020. "Active Learning for Deep Gaussian 
+    Process Surrogates." arXiv:2012.08015. \cr\cr
 Murray, I, RP Adams, and D MacKay. 2010. "Elliptical slice sampling."
      \emph{Journal of Machine Learning Research 9}, 541-548.
 }

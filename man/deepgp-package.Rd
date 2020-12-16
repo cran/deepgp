@@ -6,16 +6,13 @@
 \title{Package deepgp}
 \description{
 Performs model fitting and sequential design for deep Gaussian
-    processes using MCMC and elliptical slice sampling.  Models extend up to 
-    three layers deep; a one layer model is equivalent to typical Gaussian 
-    process regression.  Sequential design criteria include integrated mean 
-    square prediction error (IMSPE), active learning Cohn (ALC), and expected 
+    processes following Sauer, Gramacy, and Higdon (2020) <arXiv:2012.08015>.  Models 
+    extend up to three layers deep; a one layer model is equivalent to typical Gaussian 
+    process regression.  Sequential design criteria include integrated mean-squared 
+    error (IMSE), active learning Cohn (ALC), and expected 
     improvement (EI).  Covariance structure is based on inverse exponentiated 
     squared euclidean distance.  Applicable to noisy and deterministic functions.  
-    Incorporates SNOW parallelization and utilizes C under the hood.  Manuscript 
-    forthcoming; see Damianou and Lawrence (2013) <arXiv:1211.0358> for deep 
-    Gaussian process models and Murray, Adams, and MacKay (2010) <arXiv:1001.0175> 
-    for elliptical slice sampling.
+    Incorporates SNOW parallelization and utilizes C under the hood.
 }
 \section{Important Functions}{
 
@@ -23,20 +20,20 @@ Performs model fitting and sequential design for deep Gaussian
   \item \code{\link[deepgp]{fit_one_layer}}: conducts MCMC sampling of 
   hyperparameters for a one layer GP
   \item \code{\link[deepgp]{fit_two_layer}}: conducts MCMC sampling of 
-  hyperparameters for a two layer deep GP
+  hyperparameters and hidden layer for a two layer deep GP
   \item \code{\link[deepgp]{fit_three_layer}}: conducts MCMC sampling of 
-  hyperparameters for a three layer deep GP
+  hyperparameters and hidden layers for a three layer deep GP
   \item \code{\link[deepgp]{continue}}: collects additional MCMC samples
   \item \code{\link[deepgp]{trim}}: cuts off burn-in and optionally thins 
   samples
   \item \code{\link[deepgp]{predict}}: calculates posterior mean and 
-  covariance over a set of input locations
+  variance over a set of input locations
   \item \code{\link[deepgp]{plot}}: produces trace plots, hidden layer 
   plots, and posterior plots
   \item \code{\link[deepgp]{ALC}}: calculates active learning Cohn over 
   set of input locations using reference grid
-  \item \code{\link[deepgp]{IMSPE}}: calculates integrated mean square 
-  prediction error over set of input locations
+  \item \code{\link[deepgp]{IMSE}}: calculates integrated mean-squared error
+   over set of input locations
   \item \code{\link[deepgp]{EI}}: calculates expected improvement over set 
   of input locations
 }
@@ -70,7 +67,7 @@ plot(fit) # investigate trace plots
 fit <- trim(fit, 8000, 2)
   
 # Predict and calculate EI
-fit <- predict(fit, xx, lite = FALSE)
+fit <- predict(fit, xx, lite = TRUE, store_all = TRUE)
 ei <- EI(fit)
   
 # Visualize Fit
@@ -83,7 +80,6 @@ x_new <- xx[which.max(ei$value)]
 
 # Evaluate fit
 rmse(yy, fit$mean) # lower is better
-score(yy, fit$mean, fit$Sigma) # higher is better
 
 # 2. Two Layer and ALC --------------------------------------------------------
 
@@ -122,9 +118,8 @@ x_new <- xx[which.max(alc$value)]
 
 # Evaluate fit
 rmse(yy, fit$mean) # lower is better
-score(yy, fit$mean, fit$Sigma) # higher is better
 
-# 3. Three Layer and IMSPE ----------------------------------------------------
+# 3. Three Layer and IMSE ----------------------------------------------------
 
 f <- function(x) {
   i <- which(x <= 0.48)
@@ -146,33 +141,32 @@ fit <- fit_three_layer(x, y, D = 1, nmcmc = 10000)
 plot(fit) # investigate trace plots
 fit <- trim(fit, 8000, 2)
 
-# Option 1 - calculate IMSPE from only MCMC iterations
-imspe <- IMSPE(fit, xx)
+# Option 1 - calculate IMSE from only MCMC iterations
+imse <- IMSE(fit, xx)
 
-# Option 2 - calculate IMSPE after predictions
+# Option 2 - calculate IMSE after predictions
 fit <- predict(fit, xx)
-imspe <- IMSPE(fit)
+imse <- IMSE(fit)
 
 # Visualize fit
 plot(fit)
-par(new = TRUE) # overlay IMSPE
-plot(xx, imspe$value, type = 'l', lty = 2, axes = FALSE, xlab = '', ylab = '')
+par(new = TRUE) # overlay IMSE
+plot(xx, imse$value, type = 'l', lty = 2, axes = FALSE, xlab = '', ylab = '')
 
 # Select next design point
-x_new <- xx[which.min(imspe$value)]
+x_new <- xx[which.min(imse$value)]
 
 # Evaluate fit
 rmse(yy, fit$mean) # lower is better
-score(yy, fit$mean, fit$Sigma) # higher is better
 }
 }
 \references{
+Sauer, A, RB Gramacy, and D Higdon. 2020. "Active Learning for Deep Gaussian 
+    Process Surrogates." arXiv:2012.08015. \cr\cr
 Binois, M, J Huang, RB Gramacy, and M Ludkovski. 2019. “Replication or 
     Exploration? Sequential Design for Stochastic Simulation Experiments.” 
     \emph{Technometrics 61}, 7-23. Taylor & Francis. 
     doi:10.1080/00401706.2018.1469433.\cr\cr
-Damianou, A and N Lawrence. (2013). "Deep gaussian processes." 
-    \emph{Artificial Intelligence and Statistics}, 207-215.\cr\cr
 Gramacy, RB. \emph{Surrogates: Gaussian Process Modeling, Design, and 
     Optimization for the Applied Sciences}. Chapman Hall, 2020.\cr\cr
 Jones, DR, M Schonlau, and WJ Welch. 1998. "Efficient Global Optimization 

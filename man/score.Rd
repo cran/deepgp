@@ -15,12 +15,8 @@ score(y, mu, sigma)
 }
 \description{
 Calculates score (higher scores indicate better fits).  Only 
-    applicable to noisy data.
-}
-\examples{
-# See "deepgp-package", "fit_one_layer", "fit_two_layer", or "fit_three_layer"
-# for an example
-
+    applicable to noisy data.  Requires full covariance matrix (e.g. \code{predict} 
+    with \code{lite = FALSE}).
 }
 \references{
 Gneiting, T, and AE Raftery. 2007. “Strictly Proper Scoring Rules, Prediction, 

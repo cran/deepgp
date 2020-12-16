@@ -48,10 +48,12 @@ rand_mvn <- function(n, mean = rep(0, nrow(sigma)), sigma) {
 }
 
 # Kriging Function ------------------------------------------------------------
-# Calculates posterior mean, sigma, and estimate of tau2 using kriging equations
+# Calculates posterior mean, sigma/s2 and estimate of tau2 using kriging equations
 
-krig <- function(y, dx, d_new = NULL, d_cross = NULL, theta, g, mean = TRUE,
+krig <- function(y, dx, d_new = NULL, d_cross = NULL, theta, g, mean = TRUE, s2 = FALSE,
                  sigma = TRUE, tau2 = TRUE) {
+  
+  if (s2 & sigma) s2 <- FALSE # don't calculate diagonal separately
 
   out <- list()
   C <- calc_K(dx, theta, g)
@@ -67,6 +69,12 @@ krig <- function(y, dx, d_new = NULL, d_cross = NULL, theta, g, mean = TRUE,
   if (mean) {
     C_cross <- calc_K(d_cross, theta) # nugget not included in rectangular matrix
     out$mean <- C_cross %*% C_inv %*% y
+  }
+  
+  if (s2) {
+    if (!mean) C_cross <- calc_K(d_cross, theta) # nugget not included in rectangular matrix
+    C_new <- rep(1 + g, times = nrow(d_new))
+    out$s2 <- scale * (C_new - diag(C_cross %*% C_inv %*% t(C_cross)))
   }
 
   if (sigma) {
@@ -175,7 +183,9 @@ calc_tau2 <- function(y, x, theta, g) {
 # Calculate Score Function ----------------------------------------------------
 #' @title Calculates score
 #' @description Calculates score (higher scores indicate better fits).  Only 
-#'     applicable to noisy data.
+#'     applicable to noisy data.  Requires full covariance matrix (e.g. \code{predict} 
+#'     with \code{lite = FALSE}).
+#'     
 #' @param y response vector
 #' @param mu predicted mean
 #' @param sigma predicted covariance
@@ -185,14 +195,11 @@ calc_tau2 <- function(y, x, theta, g) {
 #'     and Estimation.” \emph{Journal of the American Statistical Association 102} 
 #'     (477), 359-378.
 #' 
-#' @examples
-#' # See "deepgp-package", "fit_one_layer", "fit_two_layer", or "fit_three_layer"
-#' # for an example
-#' 
 #' @export
 
 score <- function(y, mu, sigma) {
   
+  if (is.null(sigma)) stop('sigma is NULL')
   id <- invdet(sigma)
   score <- (- id$ldet - t(y - mu) %*% id$Mi %*% (y - mu)) / length(y)
   

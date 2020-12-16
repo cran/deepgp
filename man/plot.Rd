@@ -14,8 +14,7 @@
 \method{plot}{dgp3}(x, trace = TRUE, hidden = FALSE, predict = TRUE, ...)
 }
 \arguments{
-\item{x}{object from \code{fit_one_layer}, \code{fit_two_layer}, or 
-\code{fit_three_layer}}
+\item{x}{object of class \code{gp}, \code{dgp2}, or \code{dgp3}}
 
 \item{trace}{logical indicating whether to generate trace plots}
 

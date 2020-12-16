@@ -5,7 +5,7 @@
 #   Wij.C: calculates Wij matrix using C
 # External (see documentation below):
 #   ALC (S3 method for gp, dgp2, dgp3 classes)
-#   IMSPE (S3 method for gp, dgp2, dgp3 classes)
+#   IMSE (S3 method for gp, dgp2, dgp3 classes)
 #   EI (S3 method for gp, dgp2, dgp3 classes)
 
 # Imported Functions ----------------------------------------------------------
@@ -52,12 +52,16 @@ alc.C <- function(X, Ki, theta, g, Xcand, Xref, tau2, verb = 0) {
 #'         \item called on an object that has been predicted over, in which 
 #'               case the \code{x_new} from \code{predict} is used
 #'     }
+#'     In \code{dgp2} and \code{dgp3} objects that have been run through \code{predict},
+#'     the stored \code{w_new} mappings are used.  Through \code{predict}, the user may
+#'     specify a mean mapping (\code{mean_map = TRUE}) or a full sample from the MVN distribution
+#'     over \code{w_new} (\code{mean_map = FALSE}).  When the object has not yet been predicted
+#'     over, the mean mapping is used.
+#'     
 #'     SNOW parallelization reduces computation time but requires more memory
-#'     storage.\cr\cr
-#'     C code derived from the "laGP" package (Robert B Gramacy and Furong Sun).
+#'     storage.  C code derived from the "laGP" package (Robert B Gramacy and Furong Sun).
 #' 
-#' @param object object from \code{fit_one_layer}, \code{fit_two_layer}, or 
-#'        \code{fit_three_layer}
+#' @param object object of class \code{gp}, \code{dgp2}, or \code{dgp3}
 #' @param x_new matrix of possible input locations, if object has been run 
 #'        through \code{predict} the previously stored \code{x_new} is used
 #' @param ref optional reference grid for ALC approximation, if \code{ref = NULL} 
@@ -71,6 +75,8 @@ alc.C <- function(X, Ki, theta, g, Xcand, Xref, tau2, verb = 0) {
 #' }
 #' 
 #' @references 
+#' Sauer, A, RB Gramacy, and D Higdon. 2020. "Active Learning for Deep Gaussian 
+#'     Process Surrogates." arXiv:2012.08015. \cr\cr
 #' Seo, S, M Wallat, T Graepel, and K Obermayer. 2000. “Gaussian Process Regression:
 #'     Active Data Selection and Test Point Rejection.” In Mustererkennung 2000, 
 #'     27–34. New York, NY: Springer–Verlag.\cr\cr
@@ -384,12 +390,12 @@ Wij.C <- function(x1, x2, theta, a, b){
   return(matrix(result$W, nrow = nrow(x1), ncol = nrow(x2)))
 }
 
-# Define IMSPE for S3 Objects -------------------------------------------------
-#' @title Integrated Mean Square Prediction Error for Sequential Design
+# Define IMSE for S3 Objects -------------------------------------------------
+#' @title Integrated Mean-Squared (prediction) Error for Sequential Design
 #' @description Acts on a "\code{gp}", "\code{dgp2}", or "\code{dgp3}" object.
-#'     Calculates IMSPE over the input locations \code{x_new}.  Optionally 
+#'     Calculates IMSE over the input locations \code{x_new}.  Optionally 
 #'     utilizes SNOW parallelization.  User should select the point with the 
-#'     lowest IMSPE to add to the design.
+#'     lowest IMSE to add to the design.
 #'     
 #' @details All iterations in the object are used in the calculation, so samples
 #'     should be burned-in.  Thinning the samples using \code{trim} will speed 
@@ -400,21 +406,28 @@ Wij.C <- function(x1, x2, theta, a, b){
 #'         \item called on an object that has been predicted over, in which case
 #'         the \code{x_new} from \code{predict} is used
 #'     }
+#'     In \code{dgp2} and \code{dgp3} objects that have been run through \code{predict},
+#'     the stored \code{w_new} mappings are used.  Through \code{predict}, the user may
+#'     specify a mean mapping (\code{mean_map = TRUE}) or a full sample from the MVN distribution
+#'     over \code{w_new} (\code{mean_map = FALSE}).  When the object has not yet been predicted
+#'     over, the mean mapping is used.
+#'     
 #'     SNOW parallelization reduces computation time but requires more memory storage.
 #' 
-#' @param object object from \code{fit_one_layer}, \code{fit_two_layer}, or 
-#'        \code{fit_three_layer} 
+#' @param object object of class \code{gp}, \code{dgp2}, or \code{dgp3}
 #' @param x_new matrix of possible input locations, if object has been run 
 #'        through \code{predict} the previously stored \code{x_new} is used
 #' @param cores number of cores to utilize in parallel, by default no 
 #'        parallelization is used
 #' @return list with elements:
 #' \itemize{
-#'   \item \code{value}: vector of IMSPE values, indices correspond to \code{x_new}
+#'   \item \code{value}: vector of IMSE values, indices correspond to \code{x_new}
 #'   \item \code{time}: computation time in seconds
 #' }
 #' 
 #' @references 
+#' Sauer, A, RB Gramacy, and D Higdon. 2020. "Active Learning for Deep Gaussian 
+#'     Process Surrogates." arXiv:2012.08015. \cr\cr
 #' Binois, M, J Huang, RB Gramacy, and M Ludkovski. 2019. “Replication or Exploration? 
 #'     Sequential Design for Stochastic Simulation Experiments.” \emph{Technometrics 
 #'     61}, 7-23. Taylor & Francis. doi:10.1080/00401706.2018.1469433.
@@ -422,17 +435,17 @@ Wij.C <- function(x1, x2, theta, a, b){
 #' @examples
 #' # See "deepgp-package" or "fit_three_layer" for an example
 #' 
-#' @rdname IMSPE
+#' @rdname IMSE
 #' @export
 
-IMSPE <- function(object, x_new, cores)
-  UseMethod("IMSPE", object)
+IMSE <- function(object, x_new, cores)
+  UseMethod("IMSE", object)
 
-# IMSPE One Layer Function ----------------------------------------------------
-#' @rdname IMSPE
+# IMSE One Layer Function ----------------------------------------------------
+#' @rdname IMSE
 #' @export
 
-IMSPE.gp <- function(object, x_new = NULL, cores = 1) {
+IMSE.gp <- function(object, x_new = NULL, cores = 1) {
 
   tic <- proc.time()[3]
 
@@ -452,14 +465,14 @@ IMSPE.gp <- function(object, x_new = NULL, cores = 1) {
   dx <- sq_dist(object$x)
   
   # define bounds
-  a <- min(x_new)
-  b <- max(x_new)
+  a <- apply(x_new, 2, min)
+  b <- apply(x_new, 2, max)
 
   Knew_inv <- matrix(nrow = n + 1, ncol = n + 1)
   Wijs <- matrix(nrow = n + 1, ncol = n + 1)
   
   if (cores == 1) {
-    imspe <- rep(0, times = nrow(x_new))
+    imse <- rep(0, times = nrow(x_new))
     
     for (t in 1:object$nmcmc) {
       Kn <- calc_K(dx, theta = object$theta[t], g = object$g[t])
@@ -473,7 +486,7 @@ IMSPE.gp <- function(object, x_new = NULL, cores = 1) {
       } else tau2 <- krig(object$y, dx, theta = object$theta[t], g = object$g[t], 
                           mean = FALSE, sigma = FALSE)$tau2
       
-      imspe_store <- vector(length = m)
+      imse_store <- vector(length = m)
       
       for (i in 1:m) {
         # specify new design point
@@ -491,10 +504,10 @@ IMSPE.gp <- function(object, x_new = NULL, cores = 1) {
         Wijs[1:n, n+1] <- Wijs[n+1, 1:n] <- Wij.C(object$x, x_star, 
                                                   object$theta[t], a, b)
         Wijs[n+1, n+1] <- Wij.C(x_star, x_star, object$theta[t], a, b)
-        imspe_store[i] <- tau2 * (b - a) * (1 - sum(Knew_inv * Wijs))
+        imse_store[i] <- tau2 * prod(b - a) * (1 - sum(Knew_inv * Wijs))
         # Note: sum(Ki * Wijs) == sum(diag(Ki %*% Wijs)) because symmetric
       } # end of i for loop
-      imspe <- imspe + imspe_store
+      imse <- imse + imse_store
     } # end of t for loop
   } else {
     # prepare parallel clusters
@@ -502,7 +515,7 @@ IMSPE.gp <- function(object, x_new = NULL, cores = 1) {
     cl <- makeCluster(cores)
     registerDoParallel(cl)
 
-    imspe <- foreach(t = 1:object$nmcmc, .combine = '+') %dopar% {
+    imse <- foreach(t = 1:object$nmcmc, .combine = '+') %dopar% {
     
       Kn <- calc_K(dx, theta = object$theta[t], g = object$g[t])
       Kn_inv <- invdet(Kn)$Mi
@@ -515,7 +528,7 @@ IMSPE.gp <- function(object, x_new = NULL, cores = 1) {
       } else tau2 <- krig(object$y, dx, theta = object$theta[t], g = object$g[t], 
                           mean = FALSE, sigma = FALSE)$tau2
   
-      imspe_store <- vector(length = m)
+      imse_store <- vector(length = m)
   
       for (i in 1:m) {
         # specify new design point
@@ -533,10 +546,10 @@ IMSPE.gp <- function(object, x_new = NULL, cores = 1) {
         Wijs[1:n, n+1] <- Wijs[n+1, 1:n] <- Wij.C(object$x, x_star, 
                                                   object$theta[t], a, b)
         Wijs[n+1, n+1] <- Wij.C(x_star, x_star, object$theta[t], a, b)
-        imspe_store[i] <- tau2 * (b - a) * (1 - sum(Knew_inv * Wijs))
+        imse_store[i] <- tau2 * prod(b - a) * (1 - sum(Knew_inv * Wijs))
         # Note: sum(Ki * Wijs) == sum(diag(Ki %*% Wijs)) because symmetric
       } # end of i for loop
-      return(imspe_store)
+      return(imse_store)
     } # end of foreach statement
   
     stopCluster(cl)
@@ -544,14 +557,14 @@ IMSPE.gp <- function(object, x_new = NULL, cores = 1) {
   
   toc <- proc.time()[3]
 
-  return(list(value = imspe / object$nmcmc, time = toc - tic))
+  return(list(value = imse / object$nmcmc, time = toc - tic))
 }
 
-# IMSPE Two Layer Function ----------------------------------------------------
-#' @rdname IMSPE
+# IMSE Two Layer Function ----------------------------------------------------
+#' @rdname IMSE
 #' @export
 
-IMSPE.dgp2 <- function(object, x_new = NULL, cores = 1) {
+IMSE.dgp2 <- function(object, x_new = NULL, cores = 1) {
 
   tic <- proc.time()[3]
 
@@ -578,7 +591,7 @@ IMSPE.dgp2 <- function(object, x_new = NULL, cores = 1) {
   Wijs <- matrix(nrow = n + 1, ncol = n + 1)
   
   if (cores == 1) {
-    imspe <- rep(0, times = nrow(x_new))
+    imse <- rep(0, times = nrow(x_new))
     
     for (t in 1:object$nmcmc) {
       w <- object$w[[t]]
@@ -599,13 +612,13 @@ IMSPE.dgp2 <- function(object, x_new = NULL, cores = 1) {
       }
       
       # define bounds
-      a <- min(w_new)
-      b <- max(w_new)
+      a <- apply(w_new, 2, min)
+      b <- apply(w_new, 2, max)
       
       # precalculate all except the last row and last column
       Wijs[1:n, 1:n] <- Wij.C(w, w, object$theta_y[t], a, b)
       
-      imspe_store <- vector(length = m)
+      imse_store <- vector(length = m)
       
       for (i in 1:m) {
         # specify new design point
@@ -623,10 +636,10 @@ IMSPE.dgp2 <- function(object, x_new = NULL, cores = 1) {
         Wijs[1:n, n+1] <- Wijs[n+1, 1:n] <- Wij.C(w, w_star, 
                                                   object$theta_y[t], a, b)
         Wijs[n+1, n+1] <- Wij.C(w_star, w_star, object$theta_y[t], a, b)
-        imspe_store[i] <- tau2 * (b - a) * (1 - sum(Knew_inv * Wijs))
+        imse_store[i] <- tau2 * prod(b - a) * (1 - sum(Knew_inv * Wijs))
         # Note: sum(Ki * Wijs) == sum(diag(Ki %*% Wijs)) because symmetric
       } # end of i for loop
-      imspe <- imspe + imspe_store
+      imse <- imse + imse_store
     } # end of t for loop
   } else {
     # prepare parallel clusters
@@ -634,7 +647,7 @@ IMSPE.dgp2 <- function(object, x_new = NULL, cores = 1) {
     cl <- makeCluster(cores)
     registerDoParallel(cl)
   
-    imspe <- foreach(t = 1:object$nmcmc, .combine = '+') %dopar% {
+    imse <- foreach(t = 1:object$nmcmc, .combine = '+') %dopar% {
       w <- object$w[[t]]
       Kn <- calc_K(sq_dist(w), theta = object$theta_y[t], g = object$g[t])
       Kn_inv <- invdet(Kn)$Mi
@@ -653,13 +666,13 @@ IMSPE.dgp2 <- function(object, x_new = NULL, cores = 1) {
       }
       
       # define bounds
-      a <- min(w_new)
-      b <- max(w_new)
+      a <- apply(w_new, 2, min)
+      b <- apply(w_new, 2, max)
 
       # precalculate all except the last row and last column
       Wijs[1:n, 1:n] <- Wij.C(w, w, object$theta_y[t], a, b)
 
-      imspe_store <- vector(length = m)
+      imse_store <- vector(length = m)
 
       for (i in 1:m) {
         # specify new design point
@@ -676,10 +689,10 @@ IMSPE.dgp2 <- function(object, x_new = NULL, cores = 1) {
 
         Wijs[1:n, n+1] <- Wijs[n+1, 1:n] <- Wij.C(w, w_star, object$theta_y[t], a, b)
         Wijs[n+1, n+1] <- Wij.C(w_star, w_star, object$theta_y[t], a, b)
-        imspe_store[i] <- tau2 * (b - a) * (1 - sum(Knew_inv * Wijs))
+        imse_store[i] <- tau2 * prod(b - a) * (1 - sum(Knew_inv * Wijs))
         # Note: sum(Ki * Wijs) == sum(diag(Ki %*% Wijs)) because symmetric
       } # end of i for loop
-      return(imspe_store)
+      return(imse_store)
     } # end of foreach statement
   
     stopCluster(cl)
@@ -687,14 +700,14 @@ IMSPE.dgp2 <- function(object, x_new = NULL, cores = 1) {
   
   toc <- proc.time()[3]
 
-  return(list(value = imspe / object$nmcmc, time = toc - tic))
+  return(list(value = imse / object$nmcmc, time = toc - tic))
 }
 
-# IMSPE Three Layer Function (same as two layer) ------------------------------
-#' @rdname IMSPE
+# IMSE Three Layer Function ---------------------------------------------------
+#' @rdname IMSE
 #' @export
 
-IMSPE.dgp3 <- function(object, x_new = NULL, cores = 1) {
+IMSE.dgp3 <- function(object, x_new = NULL, cores = 1) {
   
   tic <- proc.time()[3]
   
@@ -721,7 +734,7 @@ IMSPE.dgp3 <- function(object, x_new = NULL, cores = 1) {
   Wijs <- matrix(nrow = n + 1, ncol = n + 1)
   
   if (cores == 1) {
-    imspe <- rep(0, times = nrow(x_new))
+    imse <- rep(0, times = nrow(x_new))
     
     for (t in 1:object$nmcmc) {
       w <- object$w[[t]]
@@ -749,13 +762,13 @@ IMSPE.dgp3 <- function(object, x_new = NULL, cores = 1) {
       }
       
       # define bounds
-      a <- min(w_new)
-      b <- max(w_new)
+      a <- apply(w_new, 2, min)
+      b <- apply(w_new, 2, max)
       
       # precalculate all except the last row and last column
       Wijs[1:n, 1:n] <- Wij.C(w, w, object$theta_y[t], a, b)
       
-      imspe_store <- vector(length = m)
+      imse_store <- vector(length = m)
       
       for (i in 1:m) {
         # specify new design point
@@ -773,10 +786,10 @@ IMSPE.dgp3 <- function(object, x_new = NULL, cores = 1) {
         Wijs[1:n, n+1] <- Wijs[n+1, 1:n] <- Wij.C(w, w_star, 
                                                   object$theta_y[t], a, b)
         Wijs[n+1, n+1] <- Wij.C(w_star, w_star, object$theta_y[t], a, b)
-        imspe_store[i] <- tau2 * (b - a) * (1 - sum(Knew_inv * Wijs))
+        imse_store[i] <- tau2 * prod(b - a) * (1 - sum(Knew_inv * Wijs))
         # Note: sum(Ki * Wijs) == sum(diag(Ki %*% Wijs)) because symmetric
       } # end of i for loop
-      imspe <- imspe + imspe_store
+      imse <- imse + imse_store
     } # end of t for loop
   } else {
     # prepare parallel clusters
@@ -784,7 +797,7 @@ IMSPE.dgp3 <- function(object, x_new = NULL, cores = 1) {
     cl <- makeCluster(cores)
     registerDoParallel(cl)
     
-    imspe <- foreach(t = 1:object$nmcmc, .combine = '+') %dopar% {
+    imse <- foreach(t = 1:object$nmcmc, .combine = '+') %dopar% {
       w <- object$w[[t]]
       Kn <- calc_K(sq_dist(w), theta = object$theta_y[t], g = object$g[t])
       Kn_inv <- invdet(Kn)$Mi
@@ -810,13 +823,13 @@ IMSPE.dgp3 <- function(object, x_new = NULL, cores = 1) {
       }
       
       # define bounds
-      a <- min(w_new)
-      b <- max(w_new)
+      a <- apply(w_new, 2, min)
+      b <- apply(w_new, 2, max)
       
       # precalculate all except the last row and last column
       Wijs[1:n, 1:n] <- Wij.C(w, w, object$theta_y[t], a, b)
       
-      imspe_store <- vector(length = m)
+      imse_store <- vector(length = m)
       
       for (i in 1:m) {
         # specify new design point
@@ -834,10 +847,10 @@ IMSPE.dgp3 <- function(object, x_new = NULL, cores = 1) {
         Wijs[1:n, n+1] <- Wijs[n+1, 1:n] <- Wij.C(w, w_star, 
                                                   object$theta_y[t], a, b)
         Wijs[n+1, n+1] <- Wij.C(w_star, w_star, object$theta_y[t], a, b)
-        imspe_store[i] <- tau2 * (b - a) * (1 - sum(Knew_inv * Wijs))
+        imse_store[i] <- tau2 * prod(b - a) * (1 - sum(Knew_inv * Wijs))
         # Note: sum(Ki * Wijs) == sum(diag(Ki %*% Wijs)) because symmetric
       } # end of i for loop
-      return(imspe_store)
+      return(imse_store)
     } # end of foreach statement
     
     stopCluster(cl)
@@ -845,7 +858,7 @@ IMSPE.dgp3 <- function(object, x_new = NULL, cores = 1) {
   
   toc <- proc.time()[3]
   
-  return(list(value = imspe / object$nmcmc, time = toc - tic))
+  return(list(value = imse / object$nmcmc, time = toc - tic))
 }
 
 
@@ -858,14 +871,13 @@ IMSPE.dgp3 <- function(object, x_new = NULL, cores = 1) {
 #'     add to the design.
 #'     
 #' @details The object must be an output of \code{predict} with 
-#'     \code{lite = FALSE}.  This will store the posterior mean and point-wise
-#'     variance for every iteration.  Once prediction is done, computation is 
+#'     \code{lite = TRUE} and \code{store_all = TRUE}.  This will store the posterior 
+#'     mean and point-wise variance for every iteration.  Once prediction is done, computation is 
 #'     relatively quick, so SNOW parallelization is only recommended when 
 #'     \code{nmcmc} is large.
 #' 
-#' @param object object from \code{fit_one_layer}, \code{fit_two_layer}, or 
-#'        \code{fit_three_layer} that has been predicted over \code{x_new} 
-#'        with \code{lite = FALSE}
+#' @param object object of class \code{gp}, \code{dgp2}, or \code{dgp3} that has been 
+#'        predicted over \code{x_new} with \code{lite = TRUE} and \code{store_all = TRUE}
 #' @param cores number of cores to utilize in parallel, by default no 
 #'        parallelization is used
 #' @return list with elements:
@@ -897,13 +909,13 @@ EI.gp <- function(object, cores = 1) {
 
   tic <- proc.time()[3]
 
-  if (is.null(object$mu_t)) stop('object must be predicted with lite = FALSE')
+  if (is.null(object$mu_t)) stop('object must be predicted with store_all = TRUE')
   
   if (cores == 1) {
     ei <- rep(0, times = nrow(object$x_new))
     for (t in 1:object$nmcmc) {
       mu <- object$mu_t[,t]
-      sig <- sqrt(object$sig2_t[,t])
+      sig <- sqrt(object$s2_t[,t])
       f_min <- min(mu)
       
       ei <- ei + (f_min - mu) * pnorm(f_min, mean = mu, sd = sig) +
@@ -918,7 +930,7 @@ EI.gp <- function(object, cores = 1) {
     ei <- foreach(t = 1:object$nmcmc, .combine = '+') %dopar% {
 
       mu <- object$mu_t[, t]
-      sig <- sqrt(object$sig2_t[, t])
+      sig <- sqrt(object$s2_t[, t])
       f_min <- min(mu) # use min of predicted mean
 
       return((f_min - mu) * pnorm(f_min, mean = mu, sd = sig) +

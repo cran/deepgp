@@ -14,7 +14,9 @@ fit_two_layer(
   g_0 = 0.01,
   theta_y_0 = 0.5,
   theta_w_0 = 1,
-  true_g = NULL
+  true_g = NULL,
+  settings = list(l = 1, u = 2, alpha = list(g = 1.5, theta_w = 1.5, theta_y = 1.5),
+    beta = list(g = 3.9, theta_w = 3.9/4, theta_y = 3.9/6))
 )
 }
 \arguments{
@@ -40,6 +42,8 @@ may be single value or vector of length \code{D}}
 
 \item{true_g}{if true nugget is known it may be specified here (set to a small
 value to make fit deterministic)}
+
+\item{settings}{hyperparameters for proposals and priors on \code{g}, \code{theta_y}, and \code{theta_w}}
 }
 \value{
 a list of the S3 class "\code{dgp2}" with elements:
@@ -47,6 +51,7 @@ a list of the S3 class "\code{dgp2}" with elements:
   \item \code{x}: copy of input matrix
   \item \code{y}: copy of response vector
   \item \code{nmcmc}: number of MCMC iterations
+  \item \code{settings}: copy of proposal/prior settings
   \item \code{g}: vector of MCMC samples for \code{g}
   \item \code{theta_y}: vector of MCMC samples for \code{theta_y} (length
         scale of outer layer)
@@ -68,15 +73,19 @@ Conducts MCMC sampling of hyperparameters and hidden layer
 Maps inputs "\code{x}" through hidden layer "\code{w}" to outputs 
     "\code{y}".  Conducts sampling of the hidden layer using Elliptical Slice 
     sampling.  Utilizes Metropolis Hastings sampling of the length scale and
-    nugget parameters with a  uniform proposal function (ranging from half 
-    to twice the previous iteration) and the following priors:
-    \itemize{
-        \item \code{prior(g) <- dgamma(g, 1.5, 3.9)}
-        \item \code{prior(theta_w) <- dgamma(theta_w, 1.5, 3.9/4)}
-        \item \code{prior(theta_y) <- dgamma(theta_y, 1.5, 3.9/6)}
-    }
+    nugget parameters with proposals and priors controlled by \code{settings}.
+    Proposals for \code{g}, \code{theta_y}, and \code{theta_w} follow a uniform
+    sliding window scheme, e.g.
+    
+    \code{g_star <- runif(1, l * g_t / u, u * g_t / l)}, 
+    
+    with defaults \code{l = 1} and \code{u = 2} provided in \code{settings}.   Priors 
+    on \code{g} and \code{theta} follow Gamma distributions with shape parameter
+    (\code{alpha}) and rate parameter (\code{beta}) provided in \code{settings}.  
     These priors are designed for "\code{x}" scaled to [0,1] and "\code{y}" 
-    scaled to have mean zero and variance 1.  The output object of class 
+    scaled to have mean zero and variance 1.  
+    
+    The output object of class 
     "\code{dgp2}" is designed for use with \code{continue}, \code{trim}, 
     and \code{predict}. If \code{w_0} is of dimension \code{nrow(x) - 1} by 
     \code{D}, the final row is predicted using kriging.  This is helpful in 
@@ -142,13 +151,12 @@ x_new <- xx[which.max(alc$value)]
 
 # Evaluate fit
 rmse(yy, fit$mean) # lower is better
-score(yy, fit$mean, fit$Sigma) # higher is better
 }
 
 }
 \references{
-Damianou, A and N Lawrence. (2013). "Deep gaussian processes." 
-    \emph{Artificial Intelligence and Statistics}, 207-215. \cr\cr
+Sauer, A, RB Gramacy, and D Higdon. 2020. "Active Learning for Deep Gaussian 
+    Process Surrogates." arXiv:2012.08015. \cr\cr
 Murray, I, RP Adams, and D MacKay. 2010. "Elliptical slice sampling." 
     \emph{Journal of Machine Learning Research 9}, 541-548.
 }

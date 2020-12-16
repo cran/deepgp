@@ -1,30 +1,14 @@
 # deepgp Package
 
-Performs model fitting and sequential design for deep Gaussian
-processes using MCMC and elliptical slice sampling.  Models extend up to 
-three layers deep; a one layer model is equivalent to typical Gaussian 
-process regression.  Sequential design criteria include integrated mean 
-square prediction error (IMSPE), active learning Cohn (ALC), and expected 
-improvement (EI).  Covariance structure is based on inverse exponentiated 
-squared euclidean distance.  Applicable to noisy and deterministic functions.  
-Incorporates SNOW parallelization and utilizes C under the hood.  Manuscript 
-forthcoming.
+Maintainer: Annie Sauer <anniees@vt.edu>
+
+Performs model fitting and sequential design for deep Gaussian processes following Sauer, Gramacy, and Higdon (2020).  Models extend up to three layers deep; a one layer model is equivalent to typical Gaussian process regression.  Sequential design criteria include integrated mean-squared error (IMSE), active learning Cohn (ALC), and expected improvement (EI).  Covariance structure is based on inverse exponentiated squared euclidean distance.  Applicable to noisy and deterministic functions.  Incorporates SNOW parallelization and utilizes C under the hood.
 
 View `deepgp-package` help file for more information.
 
-## CRAN submission notes:
+## Reference
 
-This is a re-submission.  The following changes were made:
-* Added references to description field of DESCRIPTION file
-* Added toy examples that run in less than 5 seconds to ?fit_one_layer, ?fit_two_layer, and ?fit_three_layer documentation
-* Implemented `on.exit` to restore par options after plotting
+Sauer, A, RB Gramacy, and D Higdon. 2020. "Active Learning for Deep Gaussian Process Surrogates." arXiv:2012.08015.
 
-### Test environments
-* local OS X, R 3.6.3
-* ubuntu 18.04.4, R 3.6.3
-* win-builder (devel)
-
-### R CMD check results
-There were no ERRORs or WARNINGs or NOTEs.
 
     

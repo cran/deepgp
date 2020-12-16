@@ -1,13 +1,8 @@
 
 # Function Contents -----------------------------------------------------------
 # Internal:
-#   g_logprior: evaluates log of gamma prior for nugget
-#   theta_inner_logprior: evaluates log of gamma prior for theta acting on [0,1]
-#   theta_outer_logprior: evaluates log of gamma prior for theta acting on [-1,1]
 #   logl: evaluates MVN log likelihood with zero mean
-#   g_lpost: evaluates log posterior with respect to nugget
 #   sample_g: conducts Metropolis Hastings sampling for nugget
-#   theta_lpost: evaluates log posterior with respect to specified theta
 #   sample_theta: conducts Metropolis Hastings sampling for theta
 #   sample_w: conducts Elliptical Slice Sampling for w layer
 #   sample_z: conducts Elliptical Slice Sampling for z layer
@@ -22,20 +17,9 @@
 
 # Imported Functions ----------------------------------------------------------
 #' @importFrom grDevices heat.colors
-#' @importFrom graphics image lines matplot par plot points
+#' @importFrom graphics image lines matlines par plot points
 #' @importFrom stats cov dgamma dnorm pnorm qnorm rnorm runif var
 #' @importFrom parallel makeCluster detectCores stopCluster
-
-# Prior Functions -------------------------------------------------------------
-# Used internally to evaluate the log prior of hyperparameters
-
-beta_const <- 3.907364
-
-g_logprior <- function(g) dgamma(g, 1.5, beta_const, log = TRUE)
-
-theta_inner_logprior <- function(theta) dgamma(theta, 1.5, beta_const / 4, log = TRUE)
-
-theta_outer_logprior <- function(theta) dgamma(theta, 1.5, beta_const / 6, log = TRUE)
 
 # Log Likelihood Function -----------------------------------------------------
 # Calculates log likelihood for multivariate normal distribution with zero mean
@@ -54,87 +38,69 @@ logl <- function(out_vec, in_dmat, g, theta, outer = TRUE) {
   return(c(logl))
 }
 
-# Nugget Log Posterior Function -----------------------------------------------
-# Evaluates log posterior of nugget with specified prior
-
-g_lpost <- function(out_vec, in_dmat, g, theta, g_logprior) {
-
-  loglik <- logl(out_vec, in_dmat, g, theta, outer = TRUE)
-  logprior <- g_logprior(g)
-
-  return(loglik + logprior)
-}
-
 # Sample Nugget Function ------------------------------------------------------
 # Completes one iteration of Metropolis Hastings sampling for nugget
 
-sample_g <- function(out_vec, in_dmat, g_t, theta, g_logprior) {
+sample_g <- function(out_vec, in_dmat, g_t, theta, alpha, beta, l, u, 
+                     ll_prev = NULL) {
 
   # Propose value
-  g_star <- runif(1, min = 0.5 * g_t, max = 2 * g_t)
+  g_star <- runif(1, min = l * g_t / u, max = u * g_t / l)
 
   # Compute acceptance threshold
-  u <- runif(1, min = 0, max = 1)
-  lpost_threshold <- g_lpost(out_vec, in_dmat, g_t, theta, g_logprior) +
-                        log(u) - log(g_t) + log(g_star)
+  ru <- runif(1, min = 0, max = 1)
+  if (is.null(ll_prev)) 
+    ll_prev <- logl(out_vec, in_dmat, g_t, theta, outer = TRUE)
+  lpost_threshold <-  ll_prev + dgamma(g_t, alpha, beta, log = TRUE) + 
+                      log(ru) - log(g_t) + log(g_star)
  
+  ll_new <- logl(out_vec, in_dmat, g_star, theta, outer = TRUE)
+  
   # Accept or reject
-  if (g_lpost(out_vec, in_dmat, g_star, theta, g_logprior) > lpost_threshold) {
-    return(g_star)
+  if (ll_new + dgamma(g_star, alpha, beta, log = TRUE) > lpost_threshold) {
+    return(list(g = g_star, ll = ll_new))
   } else{
-    return(g_t)
+    return(list(g = g_t, ll = ll_prev))
   }
-}
-
-# Theta Log Posterior Function ------------------------------------------------
-# Evaluates log posterior of length scale with specified prior
-
-theta_lpost <- function(out_vec, in_dmat, g, theta, theta_logprior, outer) {
-
-  loglik <- logl(out_vec, in_dmat, g, theta, outer)
-  logprior <- theta_logprior(theta)
-
-  return(loglik + logprior)
 }
 
 # Sample Theta Function -------------------------------------------------------
 # Completes one iteration of Metropolis Hastings sampling for length scale
 
-sample_theta <- function(out_vec, in_dmat, g, theta_t, theta_logprior, outer) {
+sample_theta <- function(out_vec, in_dmat, g, theta_t, alpha, beta, l, u, 
+                         outer, ll_prev = NULL) {
 
   # Propose value
-  theta_star <- runif(1, min = 0.5 * theta_t, max = 2 * theta_t)
+  theta_star <- runif(1, min = l * theta_t / u, max = u * theta_t / l)
 
   # Compute acceptance threshold
-  u <- runif(1, min = 0, max = 1)
-  lpost_threshold <- theta_lpost(out_vec, in_dmat, g, theta_t, theta_logprior,
-                                outer) + log(u) - log(theta_t) + log(theta_star)
+  ru <- runif(1, min = 0, max = 1)
+  if (is.null(ll_prev))
+    ll_prev <- logl(out_vec, in_dmat, g, theta_t, outer)
+  lpost_threshold <- ll_prev + dgamma(theta_t, alpha, beta, log = TRUE) + 
+                      log(ru) - log(theta_t) + log(theta_star)
+  
+  ll_new <- logl(out_vec, in_dmat, g, theta_star, outer)
 
   # Accept or reject
-  if (theta_lpost(out_vec, in_dmat, g, theta_star, theta_logprior,
-                  outer) > lpost_threshold) {
-    return(theta_star)
+  if (ll_new + dgamma(theta_star, alpha, beta, log = TRUE) > lpost_threshold) {
+    return(list(theta = theta_star, ll = ll_new))
   } else{
-    return(theta_t)
+    return(list(theta = theta_t, ll = ll_prev))
   }
 }
 
 # Elliptical Slice W Function -------------------------------------------------
 # Completes one iteration of Elliptical Slice Sampling for a hidden layer
 
-sample_w <- function(out_vec, w_t, w_t_dmat, in_dmat, g, theta_y, theta_w) {
+sample_w <- function(out_vec, w_t, w_t_dmat, in_dmat, g, theta_y, theta_w,
+                     ll_prev = NULL) {
 
   D <- ncol(w_t) # dimension of hidden layer
-  n <- length(out_vec) # sample size
 
-  # check that n matches dimension of hidden layer
-  if (n != nrow(w_t)) stop('rows of w must equal length of y')
-
-  # check that length of theta_w matches dimenstion of hidden layer
-  if (length(theta_w) != D) stop('theta_w must be vector of length D')
-
-  new_w <- matrix(nrow = n, ncol = D)
-
+  if (is.null(ll_prev)) 
+    ll_prev <- logl(out_vec, w_t_dmat, g, theta_y, outer = TRUE)
+  
   for (i in 1:D) { # separate sampling for each dimension of hidden layer
 
     # Draw from prior distribution
@@ -145,26 +111,28 @@ sample_w <- function(out_vec, w_t, w_t_dmat, in_dmat, g, theta_y, theta_w) {
     amin <- a - 2 * pi
     amax <- a
 
-    # Compute acceptance threshold - must evaluate all dimensions of w in logl
-    u <- runif(1, min = 0, max = 1)
-    ll_threshold <- logl(out_vec, w_t_dmat, g, theta_y, outer = TRUE) + log(u)
+    # Compute acceptance threshold - based on all dimensions of previous w
+    ru <- runif(1, min = 0, max = 1)
+    ll_threshold <- ll_prev + log(ru)
 
     # Calculate proposed values, accept or reject, repeat if necessary
     accept <- FALSE
     count <- 0
+    w_prev <- w_t[, i] # store for re-proposal
+    
     while (accept == FALSE) {
       count <- count + 1
 
-      # Calculate proposed values
-      w_star <- w_t
-      w_star[,i] <- w_t[,i] * cos(a) + w_prior * sin(a)
-      new_logl <- logl(out_vec, sq_dist(w_star), g, theta_y, outer = TRUE)
+      # Calculate proposed values and new likelihood
+      w_t[, i] <- w_prev * cos(a) + w_prior * sin(a)
+      dw <- sq_dist(w_t)
+      new_logl <- logl(out_vec, dw, g, theta_y, outer = TRUE)
       
       # Accept or reject
-      if (new_logl > ll_threshold) {
-        new_w[,i] <- w_star[,i] # store w sample
+      if (new_logl > ll_threshold) { # accept
+        ll_prev <- new_logl
         accept <- TRUE
-      } else {
+      } else { # reject
         # update the bounds on a and repeat
         if (a < 0) {
           amin <- a
@@ -172,31 +140,28 @@ sample_w <- function(out_vec, w_t, w_t_dmat, in_dmat, g, theta_y, theta_w) {
           amax <- a
         }
         a <- runif(1, amin, amax)
-      }
-      if (count > 100) stop('reached maximum iterations of ESS')
+        if (count > 100) stop('reached maximum iterations of ESS')
+      } # end of else statement
     } # end of while loop
   } # end of i for loop
 
-  return(new_w)
+  return(list(w = w_t, ll = ll_prev, dw = dw))
 }
 
 # Elliptical Slice Z Function -------------------------------------------------
 # Completes one iteration of Elliptical Slice Sampling for a hidden layer
 
-sample_z <- function(out_mat, z_t, z_t_dmat, in_dmat, g, theta_w, theta_z) {
+sample_z <- function(out_mat, z_t, z_t_dmat, in_dmat, g, theta_w, theta_z,
+                     ll_prev = NULL) {
 
   D <- ncol(z_t) # dimension of hidden layer
-  n <- nrow(out_mat) # sample size
 
-  # check that n matches dimension of hidden layer
-  if (n != nrow(z_t)) stop('rows of z must equal length of y')
-
-  # check that length of theta vectors match dimenstions
-  if (length(theta_z) != D) stop('theta_z must be vector of length D')
-  if (length(theta_w) != D) stop('theta_w must be vector of length D')
-
-  new_z <- matrix(nrow = n, ncol = D)
-
+  if (is.null(ll_prev)) {
+    ll_prev <- 0
+    for (j in 1:D)
+      ll_prev <- ll_prev + logl(out_mat[, j], z_t_dmat, g, theta_w[j], outer = FALSE)
+  }
+  
   for (i in 1:D) { # separate sampling for each dimension of hidden layer
 
     # Draw from prior distribution
@@ -207,32 +172,30 @@ sample_z <- function(out_mat, z_t, z_t_dmat, in_dmat, g, theta_w, theta_z) {
     amin <- a - 2 * pi
     amax <- a
 
-    # Compute acceptance threshold - must evaluate all dimensions of z and w
-    u <- runif(1, min = 0, max = 1)
-    ll_threshold <- 0
-    for (j in 1:D) ll_threshold <- ll_threshold + logl(out_mat[, j], z_t_dmat, 
-                                                        g, theta_w[j], 
-                                                        outer = FALSE)
-    ll_threshold <- ll_threshold + log(u)
+    # Compute acceptance threshold - based on all dimensions of previous z
+    ru <- runif(1, min = 0, max = 1)
+    ll_threshold <- ll_prev + log(ru)
 
     # Calculate proposed values, accept or reject, repeat if necessary
     accept <- FALSE
     count <- 0
+    z_prev <- z_t[, i] # store for re-proposal
+
     while (accept == FALSE) {
       count <- count + 1
 
-      # Calculate proposed values, change only single z
-      z_star <- z_t
-      z_star[, i] <- z_t[, i] * cos(a) + z_prior * sin(a)
-
+      # Calculate proposed values and new likelihood
+      z_t[, i] <- z_prev * cos(a) + z_prior * sin(a)
+      dz <- sq_dist(z_t)
       new_logl <- 0
-      for (j in 1:D) new_logl <- new_logl + logl(out_mat[, j], sq_dist(z_star), 
-                                                 g, theta_w[j], outer = FALSE)
+      for (j in 1:D) new_logl <- new_logl + logl(out_mat[, j], dz, g, 
+                                                 theta_w[j], outer = FALSE)
+      
       # Accept or reject
-      if (new_logl > ll_threshold) {
-        new_z[, i] <- z_star[, i] # store z sample
+      if (new_logl > ll_threshold) { # accept
+        ll_prev <- new_logl
         accept <- TRUE
-      } else {
+      } else { # reject
         # update the bounds on a and repeat
         if (a < 0) {
           amin <- a
@@ -240,12 +203,12 @@ sample_z <- function(out_mat, z_t, z_t_dmat, in_dmat, g, theta_w, theta_z) {
           amax <- a
         }
         a <- runif(1, amin, amax)
-      }
-      if (count > 100) stop('reached maximum iterations of ESS')
+        if (count > 100) stop('reached maximum iterations of ESS')
+      } # end of else statement
     } # end of while loop
   } # end of i for loop
 
-  return(new_z)
+  return(list(z = z_t, ll = ll_prev, dz = dz))
 }
 
 # Fit One Layer Function ------------------------------------------------------
@@ -257,14 +220,20 @@ sample_z <- function(out_mat, z_t, z_t_dmat, in_dmat, g, theta_w, theta_z) {
 #'     noise.
 #'
 #' @details Utilizes Metropolis Hastings sampling of the length scale and
-#'     nugget parameters with a  uniform proposal function (ranging from half 
-#'     to twice the previous iteration) and the following priors:
-#'     \itemize{
-#'         \item \code{prior(g) <- dgamma(g, shape = 1.5, rate = 3.9)}
-#'         \item \code{prior(theta) <- dgamma(theta, shape = 1.5, rate = 3.9/4)}
-#'     }
+#'     nugget parameters with proposals and priors controlled by \code{settings}.
+#'     Proposals for \code{g} and \code{theta} follow a uniform sliding window scheme,
+#'     e.g. 
+#'     
+#'     \code{g_star <- runif(1, l * g_t / u, u * g_t / l)}, 
+#'     
+#'     with defaults \code{l = 1} and \code{u = 2} provided in \code{settings}.
+
+#'     Priors on \code{g} and \code{theta} follow Gamma distributions with shape parameter
+#'     (\code{alpha}) and rate parameter (\code{beta}) provided in \code{settings}.  
 #'     These priors are designed for "\code{x}" scaled to [0,1] and "\code{y}" 
-#'     scaled to have mean zero and variance 1.  The output object of class 
+#'     scaled to have mean zero and variance 1.  
+#'     
+#'     The output object of class 
 #'     "\code{gp}" is designed for use with \code{continue}, \code{trim}, and 
 #'     \code{predict}.
 #'
@@ -276,17 +245,21 @@ sample_z <- function(out_mat, z_t, z_t_dmat, in_dmat, g, theta_w, theta_z) {
 #' @param theta_0 initial value for \code{theta}
 #' @param true_g if true nugget is known it may be specified here (set to a small
 #'        value to make fit deterministic)
+#' @param settings hyperparameters for proposals and priors on \code{g} and \code{theta}
 #' @return a list of the S3 class "\code{gp}" with elements:
 #' \itemize{
 #'   \item \code{x}: copy of input matrix
 #'   \item \code{y}: copy of response vector
 #'   \item \code{nmcmc}: number of MCMC iterations
+#'   \item \code{settings}: copy of proposal/prior settings
 #'   \item \code{g}: vector of MCMC samples for \code{g}
 #'   \item \code{theta}: vector of MCMC samples for \code{theta}
 #'   \item \code{time}: computation time in seconds
 #' }
 #' 
 #' @references 
+#' Sauer, A, RB Gramacy, and D Higdon. 2020. "Active Learning for Deep Gaussian 
+#'     Process Surrogates." arXiv:2012.08015. \cr\cr
 #' Gramacy, RB. \emph{Surrogates: Gaussian Process Modeling, Design, and Optimization 
 #'     for the Applied Sciences}. Chapman Hall, 2020.
 #' 
@@ -308,7 +281,7 @@ sample_z <- function(out_mat, z_t, z_t_dmat, in_dmat, g, theta_w, theta_z) {
 #' # Fit model and calculate EI
 #' fit <- fit_one_layer(x, y, nmcmc = 500)
 #' fit <- trim(fit, 400)
-#' fit <- predict(fit, x_new, lite = FALSE)
+#' fit <- predict(fit, x_new, lite = TRUE, store_all = TRUE)
 #' ei <- EI(fit)
 #' 
 #' \donttest{
@@ -338,7 +311,7 @@ sample_z <- function(out_mat, z_t, z_t_dmat, in_dmat, g, theta_w, theta_z) {
 #' fit <- trim(fit, 8000, 2)
 #'   
 #' # Predict and calculate EI
-#' fit <- predict(fit, xx, lite = FALSE)
+#' fit <- predict(fit, xx, lite = TRUE, store_all = TRUE)
 #' ei <- EI(fit)
 #'   
 #' # Visualize Fit
@@ -351,13 +324,13 @@ sample_z <- function(out_mat, z_t, z_t_dmat, in_dmat, g, theta_w, theta_z) {
 #' 
 #' # Evaluate fit
 #' rmse(yy, fit$mean) # lower is better
-#' score(yy, fit$mean, fit$Sigma) # higher is better
 #' }
 #' 
 #' @export
 
-fit_one_layer <- function(x, y, nmcmc = 10000, trace = TRUE, g_0 = 0.01, theta_0 = 0.5,
-                  true_g = NULL) {
+fit_one_layer <- function(x, y, nmcmc = 10000, trace = TRUE, g_0 = 0.01, theta_0 = 0.5, true_g = NULL,
+                          settings = list(l = 1, u = 2, alpha = list(g = 1.5, theta = 1.5), 
+                                          beta = list(g = 3.9, theta = 3.9/1.5))) {
 
   tic <- proc.time()[3]
 
@@ -371,15 +344,23 @@ fit_one_layer <- function(x, y, nmcmc = 10000, trace = TRUE, g_0 = 0.01, theta_0
   if (nrow(x) != length(y)) stop('dimensions of x and y do not match')
   
   # check that x is scaled properly
-  if (min(x) < -0.3 | min(x) > 0.3 | max(x) < 0.7 | max(x) > 1.3) 
+  if (min(x) < -0.5 | min(x) > 0.5 | max(x) < 0.5 | max(x) > 1.5) 
     warning('this function is designed for x over the range [0,1]')
   
   # check that y is scaled properly (only if nugget is not specified)
-  if (is.null(true_g) & (mean(y) < -0.3 | mean(y) > 0.3 | var(y) < 0.7 | var(y) > 1.3))
+  if (is.null(true_g) & (mean(y) < -0.9 | mean(y) > 0.9 | var(y) < 0.1 | var(y) > 1.9))
     warning('this function is designed for y scaled to mean zero and variance 1')
+  
+  # check that all settings have been defined
+  if (is.null(settings$l)) settings$l <- 1
+  if (is.null(settings$u)) settings$u <- 2
+  if (is.null(settings$alpha$g)) settings$alpha$g <- 1.5
+  if (is.null(settings$alpha$theta)) settings$alpha$theta <- 1.5
+  if (is.null(settings$beta$g)) settings$beta$g <- 3.9
+  if (is.null(settings$beta$theta)) settings$beta$theta <- 3.9/1.5
 
   # create output object
-  out <- list(x = x, y = y, nmcmc = nmcmc)
+  out <- list(x = x, y = y, nmcmc = nmcmc, settings = settings)
   class(out) <- 'gp'
 
   n <- length(y) # sample size
@@ -390,6 +371,7 @@ fit_one_layer <- function(x, y, nmcmc = 10000, trace = TRUE, g_0 = 0.01, theta_0
   if (is.null(true_g)) g[1] <- g_0 else g[1] <- true_g
   theta <- vector(length = nmcmc)
   theta[1] <- theta_0
+  ll <- NULL
 
   # Run Gibbs sampling iterations
   for (j in 2:nmcmc) {
@@ -397,12 +379,18 @@ fit_one_layer <- function(x, y, nmcmc = 10000, trace = TRUE, g_0 = 0.01, theta_0
 
     # sample g
     if (is.null(true_g)) {
-      g[j] <- sample_g(y, dx, g[j-1], theta[j-1], g_logprior)
+      samp <- sample_g(y, dx, g[j-1], theta[j-1], alpha = settings$alpha$g, 
+                       beta = settings$beta$g, l = settings$l, u = settings$u, ll_prev = ll)
+      g[j] <- samp$g
+      ll <- samp$ll
     } else g[j] <- true_g
 
     # sample theta
-    theta[j] <- sample_theta(y, dx, g[j], theta[j-1], theta_inner_logprior,
-                              outer = TRUE)
+    samp <- sample_theta(y, dx, g[j], theta[j-1], alpha = settings$alpha$theta,
+                         beta = settings$beta$theta, l = settings$l, u = settings$u,
+                         outer = TRUE, ll_prev = ll)
+    theta[j] <- samp$theta
+    ll <- samp$ll
   } # end of j for loop
 
   out$g <- g
@@ -425,15 +413,19 @@ fit_one_layer <- function(x, y, nmcmc = 10000, trace = TRUE, g_0 = 0.01, theta_0
 #' @details Maps inputs "\code{x}" through hidden layer "\code{w}" to outputs 
 #'     "\code{y}".  Conducts sampling of the hidden layer using Elliptical Slice 
 #'     sampling.  Utilizes Metropolis Hastings sampling of the length scale and
-#'     nugget parameters with a  uniform proposal function (ranging from half 
-#'     to twice the previous iteration) and the following priors:
-#'     \itemize{
-#'         \item \code{prior(g) <- dgamma(g, 1.5, 3.9)}
-#'         \item \code{prior(theta_w) <- dgamma(theta_w, 1.5, 3.9/4)}
-#'         \item \code{prior(theta_y) <- dgamma(theta_y, 1.5, 3.9/6)}
-#'     }
+#'     nugget parameters with proposals and priors controlled by \code{settings}.
+#'     Proposals for \code{g}, \code{theta_y}, and \code{theta_w} follow a uniform
+#'     sliding window scheme, e.g.
+#'     
+#'     \code{g_star <- runif(1, l * g_t / u, u * g_t / l)}, 
+#'     
+#'     with defaults \code{l = 1} and \code{u = 2} provided in \code{settings}.   Priors 
+#'     on \code{g} and \code{theta} follow Gamma distributions with shape parameter
+#'     (\code{alpha}) and rate parameter (\code{beta}) provided in \code{settings}.  
 #'     These priors are designed for "\code{x}" scaled to [0,1] and "\code{y}" 
-#'     scaled to have mean zero and variance 1.  The output object of class 
+#'     scaled to have mean zero and variance 1.  
+#'     
+#'     The output object of class 
 #'     "\code{dgp2}" is designed for use with \code{continue}, \code{trim}, 
 #'     and \code{predict}. If \code{w_0} is of dimension \code{nrow(x) - 1} by 
 #'     \code{D}, the final row is predicted using kriging.  This is helpful in 
@@ -453,11 +445,13 @@ fit_one_layer <- function(x, y, nmcmc = 10000, trace = TRUE, g_0 = 0.01, theta_0
 #'        may be single value or vector of length \code{D}
 #' @param true_g if true nugget is known it may be specified here (set to a small
 #'        value to make fit deterministic)
+#' @param settings hyperparameters for proposals and priors on \code{g}, \code{theta_y}, and \code{theta_w}
 #' @return a list of the S3 class "\code{dgp2}" with elements:
 #' \itemize{
 #'   \item \code{x}: copy of input matrix
 #'   \item \code{y}: copy of response vector
 #'   \item \code{nmcmc}: number of MCMC iterations
+#'   \item \code{settings}: copy of proposal/prior settings
 #'   \item \code{g}: vector of MCMC samples for \code{g}
 #'   \item \code{theta_y}: vector of MCMC samples for \code{theta_y} (length
 #'         scale of outer layer)
@@ -468,8 +462,8 @@ fit_one_layer <- function(x, y, nmcmc = 10000, trace = TRUE, g_0 = 0.01, theta_0
 #' }
 #' 
 #' @references 
-#' Damianou, A and N Lawrence. (2013). "Deep gaussian processes." 
-#'     \emph{Artificial Intelligence and Statistics}, 207-215. \cr\cr
+#' Sauer, A, RB Gramacy, and D Higdon. 2020. "Active Learning for Deep Gaussian 
+#'     Process Surrogates." arXiv:2012.08015. \cr\cr
 #' Murray, I, RP Adams, and D MacKay. 2010. "Elliptical slice sampling." 
 #'     \emph{Journal of Machine Learning Research 9}, 541-548.
 #' 
@@ -532,15 +526,15 @@ fit_one_layer <- function(x, y, nmcmc = 10000, trace = TRUE, g_0 = 0.01, theta_0
 #' 
 #' # Evaluate fit
 #' rmse(yy, fit$mean) # lower is better
-#' score(yy, fit$mean, fit$Sigma) # higher is better
 #' }
 #' 
 #' @export
 
 fit_two_layer <- function(x, y, D = ifelse(is.matrix(x), ncol(x), 1), nmcmc = 10000, trace = TRUE,
                          w_0 = suppressWarnings(matrix(x, nrow = length(y), ncol = D)), 
-                         g_0 = 0.01, theta_y_0 = 0.5, theta_w_0 = 1,
-                         true_g = NULL) {
+                         g_0 = 0.01, theta_y_0 = 0.5, theta_w_0 = 1, true_g = NULL,
+                         settings = list(l = 1, u = 2, alpha = list(g = 1.5, theta_w = 1.5, theta_y = 1.5), 
+                                         beta = list(g = 3.9, theta_w = 3.9/4, theta_y = 3.9/6))) {
   
   tic <- proc.time()[3]
 
@@ -554,12 +548,22 @@ fit_two_layer <- function(x, y, D = ifelse(is.matrix(x), ncol(x), 1), nmcmc = 10
   if (nrow(x) != length(y)) stop('dimensions of x and y do not match')
   
   # check that x is scaled properly
-  if (min(x) < -0.3 | min(x) > 0.3 | max(x) < 0.7 | max(x) > 1.3) 
+  if (min(x) < -0.5 | min(x) > 0.5 | max(x) < 0.5 | max(x) > 1.5) 
     warning('this function is designed for x over the range [0,1]')
   
   # check that y is scaled properly (only if nugget is not specified)
-  if (is.null(true_g) & (mean(y) < -0.2 | mean(y) > 0.2 | var(y) < 0.8 | var(y) > 1.2))
+  if (is.null(true_g) & (mean(y) < -0.9 | mean(y) > 0.9 | var(y) < 0.1 | var(y) > 1.9))
     warning('this function is designed for y scaled to mean zero and variance 1')
+  
+  # check that all settings have been defined
+  if (is.null(settings$l)) settings$l <- 1
+  if (is.null(settings$u)) settings$u <- 2
+  if (is.null(settings$alpha$g)) settings$alpha$g <- 1.5
+  if (is.null(settings$alpha$theta_w)) settings$alpha$theta_w <- 1.5
+  if (is.null(settings$alpha$theta_y)) settings$alpha$theta_y <- 1.5
+  if (is.null(settings$beta$g)) settings$beta$g <- 3.9
+  if (is.null(settings$beta$theta_w)) settings$beta$theta_w <- 3.9/4
+  if (is.null(settings$beta$theta_y)) settings$beta$theta_y <- 3.9/6
 
   # check that w_0 is a matrix
   if (!is.matrix(w_0)) {
@@ -574,7 +578,7 @@ fit_two_layer <- function(x, y, D = ifelse(is.matrix(x), ncol(x), 1), nmcmc = 10
   if (length(theta_w_0) != D & length(theta_w_0) == 1) theta_w_0 <- rep(theta_w_0, D)
 
   # create output object
-  out <- list(x = x, y = y, nmcmc = nmcmc)
+  out <- list(x = x, y = y, nmcmc = nmcmc, settings = settings)
   class(out) <- 'dgp2'
 
   n <- length(y) # sample size
@@ -588,7 +592,7 @@ fit_two_layer <- function(x, y, D = ifelse(is.matrix(x), ncol(x), 1), nmcmc = 10
     new_x <- matrix(x[n, ], nrow = 1)
     for (i in 1:D) {
       new_w[i] <- krig(w_0[, i], dx[1:(n-1), 1:(n-1)], d_cross = sq_dist(new_x, old_x),
-                       theta = theta_w_0[i], g = NULL, mean = TRUE, sigma = FALSE,
+                       theta = theta_w_0[i], g = NULL, mean = TRUE, s2 = FALSE, sigma = FALSE,
                        tau2 = FALSE)$mean
     }
     w_0 <- rbind(w_0, new_w)
@@ -603,28 +607,45 @@ fit_two_layer <- function(x, y, D = ifelse(is.matrix(x), ncol(x), 1), nmcmc = 10
   theta_w[1,] <- theta_w_0
   w_out <- list()
   w_out[[1]] <- w_0
+  dw <- sq_dist(w_out[[1]])
+  ll_outer <- NULL
 
   # Run Gibbs sampling iterations
   for (j in 2:nmcmc) {
+    
     if(trace) if(j %% 500 == 0) cat(j,'\n')
     
     dw <- sq_dist(w_out[[j-1]])
 
     # sample g
     if (is.null(true_g)) {
-      g[j] <- sample_g(y, dw, g[j-1], theta_y[j-1], g_logprior)
+      samp <- sample_g(y, dw, g[j - 1], theta_y[j - 1], alpha = settings$alpha$g, 
+                       beta = settings$beta$g, l = settings$l, u = settings$u, ll_prev = ll_outer)
+      g[j] <- samp$g
+      ll_outer <- samp$ll
     } else g[j] <- true_g
 
-    # sample theta
-    theta_y[j] <- sample_theta(y, dw, g[j], theta_y[j-1], theta_outer_logprior,
-                                outer = TRUE)
+    # sample theta_y
+    samp <- sample_theta(y, dw, g[j], theta_y[j - 1], alpha = settings$alpha$theta_y,
+                         beta = settings$beta$theta_y, l = settings$l, u = settings$u,
+                                outer = TRUE, ll_prev = ll_outer)
+    theta_y[j] <- samp$theta
+    ll_outer <- samp$ll
+    
+    # sample theta_w
     for (i in 1:D) {
-      theta_w[j, i] <- sample_theta(w_out[[j-1]][, i], dx, g[j], theta_w[j-1, i],
-                                   theta_inner_logprior, outer = FALSE)    
+      samp <- sample_theta(w_out[[j - 1]][, i], dx, NULL, theta_w[j-1, i],
+                           alpha = settings$alpha$theta_w, beta = settings$beta$theta_w,
+                           l = settings$l, u = settings$u, outer = FALSE)
+      theta_w[j, i] <- samp$theta
     }
 
     # sample w
-    w_out[[j]] <- sample_w(y, w_out[[j-1]], dw, dx, g[j], theta_y[j], theta_w[j, ])
+    samp <- sample_w(y, w_out[[j-1]], dw, dx, g[j], theta_y[j], theta_w[j, ], 
+                           ll_prev = ll_outer)
+    w_out[[j]] <- samp$w
+    ll_outer <- samp$ll
+    dw <- samp$dw
   } # end of j for loop
 
   out$g <- g
@@ -650,18 +671,19 @@ fit_two_layer <- function(x, y, D = ifelse(is.matrix(x), ncol(x), 1), nmcmc = 10
 #' @details Maps inputs "\code{x}" through hidden layer "\code{z}" then hidden
 #'     layer "\code{w}" to outputs "\code{y}".  Conducts sampling of the hidden 
 #'     layers using Elliptical Slice sampling.  Utilizes Metropolis Hastings 
-#'     sampling of the length scale and nugget parameters with a 
-#'     uniform proposal function (ranging from half to twice the previous 
-#'     iteration) and the following priors:
-#'     \itemize{
-#'         \item \code{prior(g) <- dgamma(g, 1.5, 3.9)}
-#'         \item \code{prior(theta_z) <- dgamma(theta_z, 1.5, 3.9/4)}
-#'         \item \code{prior(theta_w) <- dgamma(theta_w, 1.5, 3.9/4)}
-#'         \item \code{prior(theta_y) <- dgamma(theta_y, 1.5, 3.9/6)}
-#'     }
-#'     These priors are designed for "\code{x}" scaled to [0,1] and "\code{y}" 
-#'     scaled to have mean zero and variance 1.  The output object of class 
-#'     "\code{dgp3}" is designed for use with \code{continue}, \code{trim}, 
+#'     sampling of the length scale and nugget parameters with proposals and priors
+#'     controlled by \code{settings}.  Proposals for \code{g}, \code{theta_y}, 
+#'     \code{theta_w}, and \code{theta_z} follow a uniform sliding window scheme, e.g.
+#'     
+#'     \code{g_star <- runif(1, l * g_t / u, u * g_t / l)},
+#'     
+#'     with defaults \code{l = 1} and \code{u = 2} provided in \code{settings}.  Priors
+#'     on \code{g}, \code{theta_y}, \code{theta_w}, and \code{theta_z} follow Gamma
+#'     distributions with shape parameter (\code{alpha}) and rate parameter (\code{beta}) 
+#'     provided in \code{settings}.  These priors are designed for "\code{x}" scaled to 
+#'     [0,1] and "\code{y}" scaled to have mean zero and variance 1.  
+#'     
+#'     The output object of class "\code{dgp3}" is designed for use with \code{continue}, \code{trim}, 
 #'     and \code{predict}. If \code{z_0} and \code{w_0} are of dimension 
 #'     \code{nrow(x) - 1} by \code{D}, the final rows are predicted using 
 #'     kriging.  This is helpful in sequential design when adding a new input 
@@ -685,11 +707,14 @@ fit_two_layer <- function(x, y, D = ifelse(is.matrix(x), ncol(x), 1), nmcmc = 10
 #'        may be single value or vector of length \code{D}
 #' @param true_g if true nugget is known it may be specified here (set to a small value
 #'        to make fit deterministic)
+#' @param settings hyperparameters for proposals and priors on \code{g}, \code{theta_y},
+#'        \code{theta_w}, and \code{theta_z}
 #' @return a list of the S3 class "\code{dgp3}" with elements:
 #' \itemize{
 #'   \item \code{x}: copy of input matrix
 #'   \item \code{y}: copy of response vector
 #'   \item \code{nmcmc}: number of MCMC iterations
+#'   \item \code{settings}: copy of proposal/prior settings
 #'   \item \code{g}: vector of MCMC samples for \code{g}
 #'   \item \code{theta_y}: vector of MCMC samples for \code{theta_y} (length scale of outer layer)
 #'   \item \code{theta_w}: matrix of MCMC samples for \code{theta_w} (length scale of middle layer)
@@ -700,8 +725,8 @@ fit_two_layer <- function(x, y, D = ifelse(is.matrix(x), ncol(x), 1), nmcmc = 10
 #' }
 #' 
 #' @references 
-#' Damianou, A and N Lawrence. (2013). "Deep gaussian processes." 
-#'     \emph{Artificial Intelligence and Statistics}, 207-215.\cr\cr
+#' Sauer, A, RB Gramacy, and D Higdon. 2020. "Active Learning for Deep Gaussian 
+#'     Process Surrogates." arXiv:2012.08015. \cr\cr
 #' Murray, I, RP Adams, and D MacKay. 2010. "Elliptical slice sampling."
 #'      \emph{Journal of Machine Learning Research 9}, 541-548.
 #' 
@@ -724,10 +749,10 @@ fit_two_layer <- function(x, y, D = ifelse(is.matrix(x), ncol(x), 1), nmcmc = 10
 #' fit <- fit_three_layer(x, y, nmcmc = 500)
 #' fit <- trim(fit, 400)
 #' fit <- predict(fit, x_new)
-#' imspe <- IMSPE(fit)
+#' imse <- IMSE(fit)
 #' 
 #' \donttest{
-#' # Three Layer and IMSPE -------------------------------------------------------
+#' # Three Layer and IMSE -------------------------------------------------------
 #' 
 #' f <- function(x) {
 #'   i <- which(x <= 0.48)
@@ -749,24 +774,23 @@ fit_two_layer <- function(x, y, D = ifelse(is.matrix(x), ncol(x), 1), nmcmc = 10
 #' plot(fit) # investigate trace plots
 #' fit <- trim(fit, 8000, 2)
 #' 
-#' # Option 1 - calculate IMSPE from only MCMC iterations
-#' imspe <- IMSPE(fit, xx)
+#' # Option 1 - calculate IMSE from only MCMC iterations
+#' imse <- IMSE(fit, xx)
 #' 
-#' # Option 2 - calculate IMSPE after predictions
+#' # Option 2 - calculate IMSE after predictions
 #' fit <- predict(fit, xx)
-#' imspe <- IMSPE(fit)
+#' imse <- IMSE(fit)
 #' 
 #' # Visualize fit
 #' plot(fit)
 #' par(new = TRUE) # overlay IMSPE
-#' plot(xx, imspe$value, type = 'l', lty = 2, axes = FALSE, xlab = '', ylab = '')
+#' plot(xx, imse$value, type = 'l', lty = 2, axes = FALSE, xlab = '', ylab = '')
 #' 
 #' # Select next design point
-#' x_new <- xx[which.min(imspe$value)]
+#' x_new <- xx[which.min(imse$value)]
 #' 
 #' # Evaluate fit
 #' rmse(yy, fit$mean) # lower is better
-#' score(yy, fit$mean, fit$Sigma) # higher is better
 #' }
 #' 
 #' @export
@@ -774,8 +798,9 @@ fit_two_layer <- function(x, y, D = ifelse(is.matrix(x), ncol(x), 1), nmcmc = 10
 fit_three_layer <- function(x, y, D = ifelse(is.matrix(x), ncol(x), 1), nmcmc = 10000, trace = TRUE,
                            w_0 = suppressWarnings(matrix(x, nrow = length(y), ncol = D)),
                            z_0 = suppressWarnings(matrix(x, nrow = length(y), ncol = D)), 
-                           g_0 = 0.01, theta_y_0 = 0.5, theta_w_0 = 1, theta_z_0 = 1,
-                           true_g = NULL) {
+                           g_0 = 0.01, theta_y_0 = 0.5, theta_w_0 = 1, theta_z_0 = 1, true_g = NULL,
+                           settings = list(l = 1, u = 2, alpha = list(g = 1.5, theta_z = 1.5, theta_w = 1.5, theta_y = 1.5), 
+                                           beta = list(g = 3.9, theta_z = 3.9/4, theta_w = 3.9/12, theta_y = 3.9/6))) {
 
   tic <- proc.time()[3]
 
@@ -789,12 +814,24 @@ fit_three_layer <- function(x, y, D = ifelse(is.matrix(x), ncol(x), 1), nmcmc = 
   if (nrow(x) != length(y)) stop('dimensions of x and y do not match')
   
   # check that x is scaled properly
-  if (min(x) < -0.3 | min(x) > 0.3 | max(x) < 0.7 | max(x) > 1.3) 
+  if (min(x) < -0.5 | min(x) > 0.5 | max(x) < 0.5 | max(x) > 1.5) 
     warning('this function is designed for x over the range [0,1]')
   
-  # check that y is scaled properly (only if nugget is not specifed)
-  if (is.null(true_g) & (mean(y) < -0.3 | mean(y) > 0.3 | var(y) < 0.7 | var(y) > 1.3))
+  # check that y is scaled properly (only if nugget is not specified)
+  if (is.null(true_g) & (mean(y) < -0.9 | mean(y) > 0.9 | var(y) < 0.1 | var(y) > 1.9))
     warning('this function is designed for y scaled to mean zero and variance 1')
+  
+  # check that all settings have been defined
+  if (is.null(settings$l)) settings$l <- 1
+  if (is.null(settings$u)) settings$u <- 2
+  if (is.null(settings$alpha$g)) settings$alpha$g <- 1.5
+  if (is.null(settings$alpha$theta_z)) settings$alpha$theta_z <- 1.5
+  if (is.null(settings$alpha$theta_w)) settings$alpha$theta_w <- 1.5
+  if (is.null(settings$alpha$theta_y)) settings$alpha$theta_y <- 1.5
+  if (is.null(settings$beta$g)) settings$beta$g <- 3.9
+  if (is.null(settings$beta$theta_z)) settings$beta$theta_z <- 3.9/4
+  if (is.null(settings$beta$theta_w)) settings$beta$theta_w <- 3.9/12
+  if (is.null(settings$beta$theta_y)) settings$beta$theta_y <- 3.9/6
 
   # check that w_0 is a matrix
   if(!is.matrix(w_0)) {
@@ -819,7 +856,7 @@ fit_three_layer <- function(x, y, D = ifelse(is.matrix(x), ncol(x), 1), nmcmc = 
   if (length(theta_z_0) != D & length(theta_z_0) == 1) theta_z_0 <- rep(theta_z_0, D)
 
   # create output object
-  out <- list(x = x, y = y, nmcmc = nmcmc)
+  out <- list(x = x, y = y, nmcmc = nmcmc, settings = settings)
   class(out) <- 'dgp3'
 
   n <- length(y) # sample size
@@ -833,7 +870,7 @@ fit_three_layer <- function(x, y, D = ifelse(is.matrix(x), ncol(x), 1), nmcmc = 
     new_x = matrix(x[n,], nrow = 1)
     for (i in 1:D) {
       new_z[i] <- krig(z_0[, i], dx[1:(n-1), 1:(n-1)], d_cross = sq_dist(new_x, old_x),
-                       theta = theta_z_0[i],g = NULL, mean = TRUE, sigma = FALSE,
+                       theta = theta_z_0[i],g = NULL, mean = TRUE, s2 = FALSE, sigma = FALSE,
                        tau2 = FALSE)$mean
     }
     z_0 <- rbind(z_0, new_z)
@@ -847,7 +884,7 @@ fit_three_layer <- function(x, y, D = ifelse(is.matrix(x), ncol(x), 1), nmcmc = 
     new_z = matrix(z_0[n, ], nrow = 1)
     for (i in 1:D) {
       new_w[i] <- krig(w_0[, i], sq_dist(old_z), d_cross = sq_dist(new_z, old_z),
-                       theta = theta_w_0[i], g = NULL, mean = TRUE, sigma = FALSE,
+                       theta = theta_w_0[i], g = NULL, mean = TRUE, s2 = FALSE, sigma = FALSE,
                        tau2 = FALSE)$mean
     }
     w_0 <- rbind(w_0, new_w)
@@ -868,34 +905,56 @@ fit_three_layer <- function(x, y, D = ifelse(is.matrix(x), ncol(x), 1), nmcmc = 
   w_out <- list()
   w_out[[1]] <- w_0
   dw <- sq_dist(w_out[[1]])
-
+  ll_outer <- NULL
+  
   # Run Gibbs sampling iterations
   for (j in 2:nmcmc) {
     if(trace) if(j %% 500 == 0) cat(j,'\n')
 
     # sample g
     if (is.null(true_g)) {
-      g[j] <- sample_g(y, dw, g[j-1], theta_y[j-1], g_logprior)
+      samp <- sample_g(y, dw, g[j-1], theta_y[j-1], alpha = settings$alpha$g, beta = settings$beta$g,
+                       l = settings$l, u = settings$u, ll_prev = ll_outer)
+      g[j] <- samp$g
+      ll_outer <- samp$ll
     } else g[j] <- true_g
 
-    # sample thetas
-    theta_y[j] <- sample_theta(y, dw, g[j], theta_y[j-1], theta_outer_logprior, outer = TRUE)
+    # sample theta_y
+    samp <- sample_theta(y, dw, g[j], theta_y[j-1], alpha = settings$alpha$theta_y,
+                         beta = settings$beta$theta_y, l = settings$l, u = settings$u, outer = TRUE,
+                         ll_prev = ll_outer)
+    theta_y[j] <- samp$theta
+    ll_outer <- samp$ll
+    
+    # sample theta_w
+    ll_mid <- 0 # re-calculated each time since we have a new z
     for (i in 1:D) {
-      theta_w[j, i] <- sample_theta(w_out[[j-1]][, i], dz, g = NULL, theta_w[j-1, i],
-                                   theta_outer_logprior, outer = FALSE)
+      samp <- sample_theta(w_out[[j-1]][, i], dz, g = NULL, theta_w[j-1, i],
+                            alpha = settings$alpha$theta_w, beta = settings$beta$theta_w,
+                           l = settings$l, u = settings$u, outer = FALSE)
+      theta_w[j, i] <- samp$theta
+      ll_mid <- ll_mid + samp$ll
     }
+
+    # sample theta_z
     for (i in 1:D) {
-      theta_z[j, i] <- sample_theta(z_out[[j-1]][, i], dx, g = NULL, theta_z[j-1, i],
-                                    theta_inner_logprior, outer = FALSE)
+      samp <- sample_theta(z_out[[j-1]][, i], dx, g = NULL, theta_z[j-1, i], 
+                           alpha = settings$alpha$theta_z, beta = settings$beta$theta_z,
+                           l = settings$l, u = settings$u, outer = FALSE)
+      theta_z[j, i] <- samp$theta
     }
 
     # sample z
-    z_out[[j]] <- sample_z(w_out[[j-1]], z_out[[j-1]], dz, dx, g = NULL, theta_w[j, ], theta_z[j, ])
-    dz <- sq_dist(z_out[[j]])
+    samp <- sample_z(w_out[[j-1]], z_out[[j-1]], dz, dx, g = NULL, theta_w[j, ], theta_z[j, ],
+                     ll_prev = ll_mid)
+    z_out[[j]] <- samp$z
+    dz <- samp$dz
 
     # sample w
-    w_out[[j]] <- sample_w(y, w_out[[j-1]], dw, dz, g = g[j], theta_y[j], theta_w[j, ])
-    dw <- sq_dist(w_out[[j]])
+    samp <- sample_w(y, w_out[[j-1]], dw, dz, g = g[j], theta_y[j], theta_w[j, ], ll_prev = ll_outer)
+    w_out[[j]] <- samp$w
+    ll_outer <- samp$ll
+    dw <- samp$dw
   } # end of j for loop
 
   out$g <- g
@@ -906,7 +965,7 @@ fit_three_layer <- function(x, y, D = ifelse(is.matrix(x), ncol(x), 1), nmcmc = 
   out$z <- z_out
   toc <- proc.time()[3]
   out$time <- toc - tic
-
+  
   return(out)
 }
 
@@ -955,7 +1014,7 @@ continue.gp <- function(object, new_mcmc = 1000, trace = TRUE) {
   # Run continuing MCMC iterations
   new_fit <- fit_one_layer(object$x, object$y, nmcmc = new_mcmc, trace = trace,
                     g_0 = object$g[object$nmcmc], theta_0 = object$theta[object$nmcmc],
-                    true_g = true_g)
+                    true_g = true_g, settings = object$settings)
 
   # Append new information to original fit
   object$nmcmc <- object$nmcmc + new_mcmc
@@ -985,7 +1044,8 @@ continue.dgp2 <- function(object, new_mcmc = 1000, trace = TRUE) {
                            nmcmc = new_mcmc, trace = trace,
                            w_0 = object$w[[object$nmcmc]], g_0 = object$g[object$nmcmc],
                            theta_y_0 = object$theta_y[object$nmcmc],
-                           theta_w_0 = object$theta_w[object$nmcmc, ], true_g = true_g)
+                           theta_w_0 = object$theta_w[object$nmcmc, ], true_g = true_g,
+                           settings = object$settings)
 
   # Append new information to original fit
   object$nmcmc <- object$nmcmc + new_mcmc
@@ -1018,7 +1078,8 @@ continue.dgp3 <- function(object, new_mcmc = 1000, trace = TRUE) {
                              w_0 = object$w[[object$nmcmc]], z_0 = object$z[[object$nmcmc]],
                              g_0 = object$g[object$nmcmc], theta_y_0 = object$theta_y[object$nmcmc],
                              theta_w_0 = object$theta_w[object$nmcmc, ],
-                             theta_z_0 = object$theta_z[object$nmcmc, ], true_g = true_g)
+                             theta_z_0 = object$theta_z[object$nmcmc, ], true_g = true_g,
+                             settings = object$settings)
 
   # Append new information to original fit
   object$nmcmc <- object$nmcmc + new_mcmc
@@ -1147,30 +1208,32 @@ trim.dgp3 <- function(object, burn, thin = 1) {
 
 # Define Predict for S3 Objects --------------------------------------------------
 #' @name predict
-#' @title Predict posterior mean and covariance
+#' @title Predict posterior mean and variance/covariance
 #' @description Acts on a "\code{gp}", "\code{dgp2}", or "\code{dgp3}" object.
-#'     Calculates posterior mean and covariance over specified input 
+#'     Calculates posterior mean and variance/covariance over specified input 
 #'     locations.  Optionally utilizes SNOW parallelization.
 #' 
 #' @details All iterations in the object are used for prediction, so samples 
 #'     should be burned-in.  Thinning the samples using \code{trim} will speed up 
-#'     computation.  The posterior mean and covariance are calculated for each 
-#'     iteration, then averaged.  The covariance of the means is appropriately
-#'     added to the average of the covariances.\cr\cr
+#'     computation.  Posterior moments are calculated using conditional expectation
+#'     and variance.  As a default, only point-wise variance is calculated.  Full covariance
+#'     may be calculated using \code{lite = FALSE}.  The storage of means and point-wise
+#'     variances for each individual iteration (specified using \code{store_all = TRUE})
+#'     is required in order to use \code{EI}.
+#'     
 #'     SNOW parallelization reduces computation time but requires significantly more 
 #'     memory storage.  Use \code{cores = 1} if memory is limited.
 #' 
 #' @param object object from \code{fit_one_layer}, \code{fit_two_layer}, or 
 #'        \code{fit_three_layer} with burn-in already removed
 #' @param x_new matrix of predictive input locations
-#' @param lite logical indicating whether to store the mean and diagonal of the 
-#'        covariance for every iteration (must use \code{lite = FALSE} in order 
-#'        to use \code{EI})
-#' @param cores number of cores to utilize in parallel, by default no parellization
+#' @param lite logical indicating whether to calculate only point-wise variances (\code{lite = TRUE}),
+#'        or full covariance (\code{lite = FALSE})
+#' @param store_all logical indicating whether to store mean and variance for each iteration
+#' @param mean_map denotes whether to map hidden layers using conditional mean or a random sample
+#'        from the full MVN distribution ("\code{dgp2}" or "\code{dgp3}" only) 
+#' @param cores number of cores to utilize in parallel, by default no parallelization
 #'        is used
-#' @param uncertainty denotes whether to incorporate conditional or full predictive 
-#'        uncertainty in mapping through hidden layers ("\code{dgp2}" or "\code{dgp3}" 
-#'        only) 
 #' @param ... N/A
 #' @return object of the same class with the following additional elements:
 #' \itemize{
@@ -1179,25 +1242,30 @@ trim.dgp3 <- function(object, burn, thin = 1) {
 #'         the covariance)
 #'   \item \code{mean}: predicted posterior mean, indices correspond to 
 #'         \code{x_new} location
+#'   \item \code{s2}: predicted point-wise variances, indices correspond to \code{x_new} location
+#'         (only returned when \code{lite = TRUE})
+#'   \item \code{s2_smooth}: predicted point-wise variances with \code{g} removed, indices 
+#'         correspond to \code{x_new} location (only returned when \code{lite = TRUE})
 #'   \item \code{Sigma}: predicted posterior covariance, indices correspond to 
-#'         \code{x_new} location
+#'         \code{x_new} location (only returned when \code{lite = FALSE})
 #'   \item \code{Sigma_smooth}: predicted posterior covariance with \code{g} removed 
-#'         from the diagonal
-#'   \item \code{mu_t}: (only when \code{lite = FALSE}) matrix of posterior mean for 
-#'         each iteration, column index corresponds to iteration and row index 
-#'         corresponds to \code{x_new} location 
-#'   \item \code{sig2_t}: (only when \code{lite = FALSE}) matrix of posterior 
-#'         point-wise variance (diagonal of Sigma) for each iteration, column index
-#'         corresponds to iteration and row index corresponds to \code{x_new} location
-#'   \item \code{w_new}: ("\code{dgp2}" and "\code{dgp3}" only) list of hidden layer 
-#'         predictions, list index corresponds to iteration and row index corresponds to 
-#'         \code{x_new} location
-#'   \item \code{z_new}: ("\code{dgp3}" only) list of hidden layer predictions, list 
-#'         index corresponds to iteration and row index corresponds to \code{x_new} location
+#'         from the diagonal (only returned when \code{lite = FALSE})
+#'   \item \code{mu_t}: matrix of posterior mean for each iteration, column index corresponds 
+#'         to iteration and row index corresponds to \code{x_new} location (only returned when 
+#'         \code{store_all = TRUE})
+#'   \item \code{s2_t}: matrix of posterior point-wise variance for each iteration, column index
+#'         corresponds to iteration and row index corresponds to \code{x_new} location (only
+#'         returned when \code{store_all = TRUE})
+#'   \item \code{w_new}: list of hidden layer mappings, list index corresponds to iteration and 
+#'         row index corresponds to \code{x_new} location ("\code{dgp2}" and "\code{dgp3}" only)
+#'   \item \code{z_new}: list of hidden layer mappings, list index corresponds to iteration and 
+#'         row index corresponds to \code{x_new} location ("\code{dgp3}" only) 
 #' }
 #' Computation time is added to the computation time of the existing object.
 #' 
 #' @references 
+#' Sauer, A, RB Gramacy, and D Higdon. 2020. "Active Learning for Deep Gaussian 
+#'     Process Surrogates." arXiv:2012.08015. \cr\cr
 #' Gramacy, RB. \emph{Surrogates: Gaussian Process Modeling, Design, and Optimization 
 #'     for the Applied Sciences}. Chapman Hall, 2020.
 #' 
@@ -1212,7 +1280,7 @@ NULL
 #' @rdname predict
 #' @export
 
-predict.gp <- function(object, x_new, lite = TRUE, cores = 1, ...) {
+predict.gp <- function(object, x_new, lite = TRUE, store_all = FALSE, cores = 1, ...) {
   
   tic <- proc.time()[3]
   
@@ -1230,20 +1298,19 @@ predict.gp <- function(object, x_new, lite = TRUE, cores = 1, ...) {
     
     tau2 <- vector(length = object$nmcmc)
     mu_t <- matrix(nrow = m, ncol = object$nmcmc)
-    sigma_t_sum <- matrix(0, nrow = m, ncol = m)
-    if (!lite) sig2_t <- matrix(nrow = m, ncol = object$nmcmc)
+    if (lite) {
+        s2_t <- matrix(nrow = m, ncol = object$nmcmc)
+    } else sigma_t_sum <- matrix(0, nrow = m, ncol = m) # full covariance
     
     for(t in 1:object$nmcmc) {
       # map x_new to mu_t and sigma_t
-      k <- krig(object$y, dx, d_new, d_cross, object$theta[t], object$g[t])
+      k <- krig(object$y, dx, d_new, d_cross, object$theta[t], object$g[t], s2 = lite, sigma = !lite)
       tau2[t] <- k$tau2
       mu_t[, t] <- k$mean
-      sigma_t_sum <- sigma_t_sum + k$sigma
-      if (!lite) sig2_t[, t] <- diag(k$sigma) - object$g[t] * k$tau2
+      if (lite) {
+          s2_t[, t] <- k$s2
+      } else sigma_t_sum <- sigma_t_sum + k$sigma
     }
-    
-    object$tau2 <- tau2
-    if (!lite) object$sig2_t <- sig2_t
     
   } else { # use foreach to run in parallel
     
@@ -1253,8 +1320,7 @@ predict.gp <- function(object, x_new, lite = TRUE, cores = 1, ...) {
     registerDoParallel(cl)
   
     result <- foreach(t = 1:object$nmcmc) %dopar% {
-      k <- krig(object$y, dx, d_new, d_cross, object$theta[t], object$g[t])
-      if (!lite) k$sig2_t <- diag(k$sigma) - object$g[t] * k$tau2
+      k <- krig(object$y, dx, d_new, d_cross, object$theta[t], object$g[t], s2 = lite, sigma = !lite)
       return(k)
     }
   
@@ -1262,21 +1328,34 @@ predict.gp <- function(object, x_new, lite = TRUE, cores = 1, ...) {
   
     # group elements out of the list
     mu_t <- sapply(result, with, eval(parse(text = "mean")))
-    sigma_t_sum <- Reduce("+", lapply(result, with, eval(parse(text = "sigma"))))
-    
-    object$tau2 <- sapply(result, with, eval(parse(text = "tau2")))
-    if (!lite) object$sig2_t <- sapply(result, with, eval(parse(text = "sig2_t")))
+    tau2 <- sapply(result, with, eval(parse(text = "tau2")))
+    if (lite) {
+        s2_t <- sapply(result, with, eval(parse(text = "s2")))
+    } else sigma_t_sum <- Reduce("+", lapply(result, with, eval(parse(text = "sigma"))))
   } # end of else statement
   
-  # calculate mu_y and sigma_y from conditional expectation
+  # calculate expected value and covariance of means
   mu_y <- rowMeans(mu_t)
-  sigma_y <- sigma_t_sum / object$nmcmc + cov(t(mu_t))
+  mu_cov <- cov(t(mu_t))
+
+  # store mean and s2 across iterations if requested
+  if (store_all) {
+    object$mu_t <- mu_t
+    if (lite) object$s2_t <- s2_t
+    # no option available to store all sigma matrices at this time
+  }
   
+  # add variables to the output list
+  object$tau2 <- tau2
   object$mean <- mu_y
-  object$Sigma <- sigma_y
-  object$Sigma_smooth <- sigma_y - diag(mean(object$g * object$tau2), m)
-  if (!lite) object$mu_t <- mu_t
-  
+  if (lite) { 
+    object$s2 <- rowSums(s2_t) / object$nmcmc + diag(mu_cov)
+    object$s2_smooth <- object$s2 - mean(object$g * object$tau2)
+  } else {
+    object$Sigma <- sigma_t_sum / object$nmcmc + mu_cov
+    object$Sigma_smooth <- object$Sigma - diag(mean(object$g * object$tau2), m)
+  }
+
   toc <- proc.time()[3]
   object$time <- object$time + (toc - tic)
   
@@ -1287,12 +1366,10 @@ predict.gp <- function(object, x_new, lite = TRUE, cores = 1, ...) {
 #' @rdname predict
 #' @export
 
-predict.dgp2 <- function(object, x_new, lite = TRUE, cores = 1, 
-                         uncertainty = c("CONDITIONAL", "FULL"), ...) {
+predict.dgp2 <- function(object, x_new, lite = TRUE, store_all = FALSE,
+                         mean_map = TRUE, cores = 1, ...) {
   
   tic <- proc.time()[3]
-  
-  uncertainty <- match.arg(uncertainty)
   
   # check that x_new is a matrix
   if (is.numeric(x_new)) x_new <- as.matrix(x_new)
@@ -1309,38 +1386,37 @@ predict.dgp2 <- function(object, x_new, lite = TRUE, cores = 1,
     w_new <- list()
     tau2 <- vector(length = object$nmcmc)
     mu_t <- matrix(nrow = m, ncol = object$nmcmc)
-    sigma_t_sum <- matrix(0, nrow = m, ncol = m)
-    if (!lite) sig2_t <- matrix(nrow = m, ncol = object$nmcmc)
-    
+    if (lite) {
+      s2_t <- matrix(nrow = m, ncol = object$nmcmc)
+    } else sigma_t_sum <- matrix(0, nrow = m, ncol = m)
+
     for(t in 1:object$nmcmc) {
 
       w_t <- object$w[[t]]
       
-      # sample w_new from kriging equations for w_t (separately for each dimension)
+      # map x_new to w_new (separately for each dimension)
       w_new[[t]] <- matrix(nrow = m, ncol = D)
       for (i in 1:D){
-        if (uncertainty == "FULL") {
-          k <- krig(w_t[, i], dx, d_new, d_cross, object$theta_w[t, i], g = NULL, tau2 = FALSE)
-          w_new[[t]][, i] <- rand_mvn(1, k$mean, k$sigma)
-        } else if (uncertainty == "CONDITIONAL") {
-          k <- krig(w_t[, i], dx, d_new, d_cross, object$theta_w[t, i], g = NULL, sigma = FALSE,
+        if (mean_map) {
+          k <- krig(w_t[, i], dx, d_new, d_cross, object$theta_w[t, i], g = NULL, s2 = FALSE, sigma = FALSE,
                     tau2 = FALSE)
           w_new[[t]][, i] <- k$mean
-        }
+        } else {
+          k <- krig(w_t[, i], dx, d_new, d_cross, object$theta_w[t, i], g = NULL, tau2 = FALSE)
+          w_new[[t]][, i] <- rand_mvn(1, k$mean, k$sigma)
+        } 
       } # end of i for loop
       
       # map w_new to mu_t and sigma_t
       k <- krig(object$y, sq_dist(w_t), sq_dist(w_new[[t]]), sq_dist(w_new[[t]], w_t),
-                object$theta_y[t], object$g[t])
+                object$theta_y[t], object$g[t], s2 = lite, sigma = !lite)
       tau2[t] <- k$tau2
       mu_t[, t] <- k$mean
-      sigma_t_sum <- sigma_t_sum + k$sigma
-      if (!lite) sig2_t[, t] <- diag(k$sigma) - object$g[t] * k$tau2
+      if (lite) {
+        s2_t[, t] <- k$s2
+      } else sigma_t_sum <- sigma_t_sum + k$sigma
     } # end of t for loop
-    
-    object$w_new <- w_new
-    object$tau2 <- tau2
-    if (!lite) object$sig2_t <- sig2_t
+
   } else { # use foreach to run in parallel
   
     # prepare parallel clusters
@@ -1352,24 +1428,23 @@ predict.dgp2 <- function(object, x_new, lite = TRUE, cores = 1,
     
       w_t <- object$w[[t]]
     
-      # sample w_new from kriging equations for w_t (separately for each dimension)
+      # map x_new to w_new (separately for each dimension)
       w_new <- matrix(nrow = m, ncol = D)
       for (i in 1:D) {
-        if (uncertainty == "FULL") {
+        if (mean_map) {
+          k <- krig(w_t[, i], dx, d_new, d_cross, object$theta_w[t, i], g = NULL, sigma = FALSE,
+                    tau2 = FALSE)
+          w_new[, i] <- k$mean
+        } else {
           k <- krig(w_t[, i], dx, d_new, d_cross, object$theta_w[t, i], g = NULL, tau2 = FALSE)
           w_new[, i] <- rand_mvn(1, k$mean, k$sigma)
-        } else if (uncertainty == "CONDITIONAL") {
-          k <- krig(w_t[, i], dx, d_new, d_cross, object$theta_w[t, i], g = NULL, sigma = FALSE,
-                          tau2 = FALSE)
-          w_new[, i] <- k$mean
-        }
+        } 
       } # end of i for loop
     
       # map w_new to mu_t and sigma_t
       k <- krig(object$y, sq_dist(w_t), sq_dist(w_new), sq_dist(w_new, w_t),
-                      object$theta_y[t], object$g[t])
+                      object$theta_y[t], object$g[t], s2 = lite, sigma = !lite)
       k$w_new <- w_new
-      if (!lite) k$sig2_t <- diag(k$sigma) - object$g[t] * k$tau2
       return(k)
     } # end of foreach statement
   
@@ -1377,21 +1452,35 @@ predict.dgp2 <- function(object, x_new, lite = TRUE, cores = 1,
   
     # group elements out of the list
     mu_t <- sapply(result, with, eval(parse(text = "mean")))
-    sigma_t_sum <- Reduce("+", lapply(result, with, eval(parse(text = "sigma"))))
-    
-    object$w_new <- lapply(result, with, eval(parse(text = "w_new")))
-    object$tau2 <- sapply(result, with, eval(parse(text = "tau2")))
-    if (!lite) object$sig2_t <- sapply(result, with, eval(parse(text = "sig2_t")))
+    tau2 <- sapply(result, with, eval(parse(text = "tau2")))
+    if (lite) {
+      s2_t <- sapply(result, with, eval(parse(text = "s2")))
+    } else sigma_t_sum <- Reduce("+", lapply(result, with, eval(parse(text = "sigma"))))
+    w_new <- lapply(result, with, eval(parse(text = "w_new")))
   } # end of else statement
   
-  # calculate mu_y and sigma_y from conditional expectation
+  # calculate expected value and covariance of means
   mu_y <- rowMeans(mu_t)
-  sigma_y <- sigma_t_sum / object$nmcmc + cov(t(mu_t))
+  mu_cov <- cov(t(mu_t))
   
+  # store mean and s2 across iterations if requested
+  if (store_all) {
+    object$mu_t <- mu_t
+    if (lite) object$s2_t <- s2_t
+    # no option available to store all sigma matrices at this time
+  }
+  
+  # add variables to the output list
+  object$w_new <- w_new
+  object$tau2 <- tau2
   object$mean <- mu_y
-  object$Sigma <- sigma_y
-  object$Sigma_smooth <- sigma_y - diag(mean(object$g * object$tau2), m)
-  if (!lite) object$mu_t <- mu_t
+  if (lite) {
+    object$s2 <- rowSums(s2_t) / object$nmcmc + diag(mu_cov)
+    object$s2_smooth <- object$s2 - mean(object$g * object$tau2)
+  } else {
+    object$Sigma <- sigma_t_sum
+    object$Sigma_smooth <- object$Sigma - diag(mean(object$g * object$tau2), m)
+  }
   
   toc <- proc.time()[3]
   object$time <- object$time + (toc - tic)
@@ -1403,12 +1492,10 @@ predict.dgp2 <- function(object, x_new, lite = TRUE, cores = 1,
 #' @rdname predict
 #' @export
 
-predict.dgp3 <- function(object, x_new, lite = TRUE, cores = 1, 
-                         uncertainty = c("CONDITIONAL", "FULL"), ...) {
+predict.dgp3 <- function(object, x_new, lite = TRUE, store_all = FALSE, 
+                         mean_map = TRUE, cores = 1, ...) {
   
   tic <- proc.time()[3]
-  
-  uncertainty <- match.arg(uncertainty)
   
   # check that x_new is a matrix
   if (is.numeric(x_new)) x_new <- as.matrix(x_new)
@@ -1426,54 +1513,52 @@ predict.dgp3 <- function(object, x_new, lite = TRUE, cores = 1,
     w_new <- list()
     tau2 <- vector(length = object$nmcmc)
     mu_t <- matrix(nrow = m, ncol = object$nmcmc)
-    sigma_t_sum <- matrix(0, nrow = m, ncol = m)
-    if (!lite) sig2_t <- matrix(nrow = m, ncol = object$nmcmc)
-    
+    if (lite) {
+      s2_t <- matrix(nrow = m, ncol = object$nmcmc)
+    } else sigma_t_sum <- matrix(0, nrow = m, ncol = m)
+
     for(t in 1:object$nmcmc) {
 
       z_t <- object$z[[t]]
       w_t <- object$w[[t]]
       
-      # sample z_new from kriging equations for z_t (separately for each dimension)
+      # map x_new to z_new (separately for each dimension)
       z_new[[t]] <- matrix(nrow = m, ncol = D)
       for (i in 1:D) {
-        if (uncertainty == "FULL") {
-          k <- krig(z_t[, i], dx, d_new, d_cross, object$theta_z[t, i], g = NULL, tau2 = FALSE)
-          z_new[[t]][, i] <- rand_mvn(1, k$mean, k$sigma)
-        } else if (uncertainty == "CONDITIONAL") {
+        if (mean_map) {
           k <- krig(z_t[, i], dx, d_new, d_cross, object$theta_z[t, i], g = NULL, sigma = FALSE,
                     tau2 = FALSE)
           z_new[[t]][, i] <- k$mean
-        }
+        } else {
+          k <- krig(z_t[, i], dx, d_new, d_cross, object$theta_z[t, i], g = NULL, tau2 = FALSE)
+          z_new[[t]][, i] <- rand_mvn(1, k$mean, k$sigma)
+        } 
       } # end of i for loop
       
-      # sample w_new from kriging equations for w_t (separately for each dimension)
+      # map z_new to w_new (separately for each dimension)
       w_new[[t]] <- matrix(nrow = m, ncol = D)
       for (i in 1:D) {
-        if (uncertainty == "FULL") {
-          k <- krig(w_t[, i], sq_dist(z_t), sq_dist(z_new[[t]]), sq_dist(z_new[[t]], z_t),
-                    object$theta_w[t, i], g = NULL, tau2 = FALSE)
-          w_new[[t]][, i] <- rand_mvn(1, k$mean, k$sigma)
-        } else if (uncertainty == "CONDITIONAL") {
+        if (mean_map) { 
           k <- krig(w_t[, i], sq_dist(z_t), sq_dist(z_new[[t]]), sq_dist(z_new[[t]], z_t),
                     object$theta_w[t, i], g = NULL, sigma = FALSE, tau2 = FALSE)
           w_new[[t]][, i] <- k$mean
-        }
+        } else {
+          k <- krig(w_t[, i], sq_dist(z_t), sq_dist(z_new[[t]]), sq_dist(z_new[[t]], z_t),
+                    object$theta_w[t, i], g = NULL, tau2 = FALSE)
+          w_new[[t]][, i] <- rand_mvn(1, k$mean, k$sigma)
+        } 
       } # end of i for loop
       
       # map w_new to mu_t and sigma_t
       k <- krig(object$y, sq_dist(w_t), sq_dist(w_new[[t]]), sq_dist(w_new[[t]], w_t),
-                object$theta_y[t], object$g[t])
+                object$theta_y[t], object$g[t], s2 = lite, sigma = !lite)
       tau2[t] <- k$tau2
       mu_t[, t] <- k$mean
-      sigma_t_sum <- sigma_t_sum + k$sigma
-      if (!lite) sig2_t[, t] <- diag(k$sigma) - object$g[t] * k$tau2
+      if (lite) {
+        s2_t[, t] <- k$s2
+      } else sigma_t_sum <- sigma_t_sum + k$sigma
     } # end of t for loop
-    
-    object$z_new <- z_new
-    object$w_new <- w_new
-    object$tau2 <- tau2
-    if (!lite) object$sig2_t <- sig2_t
+
   } else { # use foreach to run in parallel
   
     # prepare parallel clusters
@@ -1486,64 +1571,78 @@ predict.dgp3 <- function(object, x_new, lite = TRUE, cores = 1,
       z_t <- object$z[[t]]
       w_t <- object$w[[t]]
     
-      # sample z_new from kriging equations for z_t (separately for each dimension)
+      # map x_new to z_new (separately for each dimension)
       z_new <- matrix(nrow = m, ncol = D)
       for (i in 1:D) {
-        if (uncertainty == "FULL") {
-          k <- krig(z_t[, i], dx, d_new, d_cross, object$theta_z[t, i], g = NULL, tau2 = FALSE)
-          z_new[, i] <- rand_mvn(1, k$mean, k$sigma)
-        } else if (uncertainty == "CONDITIONAL") {
+        if (mean_map) {
           k <- krig(z_t[, i], dx, d_new, d_cross, object$theta_z[t, i], g = NULL, sigma = FALSE,
                     tau2 = FALSE)
           z_new[, i] <- k$mean
-        }
+        } else {
+          k <- krig(z_t[, i], dx, d_new, d_cross, object$theta_z[t, i], g = NULL, tau2 = FALSE)
+          z_new[, i] <- rand_mvn(1, k$mean, k$sigma)
+        } 
       } # end of i for loop
     
-      # sample w_new from kriging equations for w_t (separately for each dimension)
+      # map z_new to w_new (separately for each dimension)
       w_new <- matrix(nrow = m, ncol = D)
       for (i in 1:D) {
-        if (uncertainty == "FULL") {
-          k <- krig(w_t[, i], sq_dist(z_t), sq_dist(z_new), sq_dist(z_new, z_t),
-                    object$theta_w[t, i], g = NULL, tau2 = FALSE)
-          w_new[, i] <- rand_mvn(1, k$mean, k$sigma)
-        } else if (uncertainty == "CONDITIONAL") {
+        if (mean_map) {
           k <- krig(w_t[, i], sq_dist(z_t), sq_dist(z_new), sq_dist(z_new, z_t),
                     object$theta_w[t, i], g = NULL, sigma = FALSE, tau2 = FALSE)
           w_new[, i] <- k$mean
-        }
+        } else {
+          k <- krig(w_t[, i], sq_dist(z_t), sq_dist(z_new), sq_dist(z_new, z_t),
+                    object$theta_w[t, i], g = NULL, tau2 = FALSE)
+          w_new[, i] <- rand_mvn(1, k$mean, k$sigma)
+        } 
       } # end of i for loop
     
       # map w_new to mu_t and sigma_t
       k <- krig(object$y, sq_dist(w_t), sq_dist(w_new), sq_dist(w_new, w_t),
-                object$theta_y[t], object$g[t])
+                object$theta_y[t], object$g[t], s2 = lite, sigma = !lite)
       k$z_new <- z_new
       k$w_new <- w_new
-      if (!lite) k$sig2_t <- diag(k$sigma) - object$g[t] * k$tau2
       return(k)
-    } # end of t for loop
+    } # end of foreach statement
   
     stopCluster(cl)
   
     # group elements out of the list
     mu_t <- sapply(result, with, eval(parse(text = "mean")))
-    sigma_t_sum <- Reduce("+", lapply(result, with, eval(parse(text = "sigma"))))
-    
-    object$z_new <- lapply(result, with, eval(parse(text = "z_new")))
-    object$w_new <- lapply(result, with, eval(parse(text = "w_new")))
-    object$tau2 <- sapply(result, with, eval(parse(text = "tau2")))
-    if (!lite) object$sig2_t <- sapply(result, with, eval(parse(text = "sig2_t")))
+    tau2 <- sapply(result, with, eval(parse(text = "tau2")))
+    if (lite) {
+      s2_t <- sapply(result, with, eval(parse(text = "s2")))
+    } else sigma_t_sum <- Reduce("+", lapply(result, with, eval(parse(text = "sigma"))))
+    z_new <- lapply(result, with, eval(parse(text = "z_new")))
+    w_new <- lapply(result, with, eval(parse(text = "w_new")))
+
   } # end of else statement
   
-  # calculate mu_y and sigma_y from conditional expectation
+  # calculate expected value and covariance of means
   mu_y <- rowMeans(mu_t)
-  sigma_y <- sigma_t_sum / object$nmcmc + cov(t(mu_t))
+  mu_cov <- cov(t(mu_t))
   
+  # store mean and s2 across iterations if requested
+  if (store_all) {
+    object$mu_t <- mu_t
+    if (lite) object$s2_t <- s2_t
+    # no option available to store all sigma matrices at this time
+  }
+  
+  # add variables to the output list
+  object$z_new <- z_new
+  object$w_new <- w_new
+  object$tau2 <- tau2
   object$mean <- mu_y
-  object$Sigma <- sigma_y
-  object$Sigma_smooth <- sigma_y - diag(mean(object$g * object$tau2), m)
-  
-  if (!lite) object$mu_t <- mu_t
-  
+  if (lite) {
+    object$s2 <- rowSums(s2_t) / object$nmcmc + diag(mu_cov)
+    object$s2_smooth <- object$s2 - mean(object$g * object$tau2)
+  } else {
+    object$Sigma <- sigma_t_sum / object$nmcmc + mu_cov
+    object$Sigma_smooth <- object$Sigma - diag(mean(object$g * object$tau2), m)
+  }
+
   toc <- proc.time()[3]
   object$time <- object$time + (toc - tic)
   return(object)
@@ -1566,8 +1665,7 @@ predict.dgp3 <- function(object, x_new, lite = TRUE, cores = 1,
 #'     hidden layers.  These plots are meant to help in model fitting and 
 #'     visualization.
 #' 
-#' @param x object from \code{fit_one_layer}, \code{fit_two_layer}, or 
-#'        \code{fit_three_layer}
+#' @param x object of class \code{gp}, \code{dgp2}, or \code{dgp3}
 #' @param trace logical indicating whether to generate trace plots
 #' @param hidden logical indicating whether to generate plots of hidden layers
 #'        ("\code{dgp2}" or "\code{dgp3}" only)
@@ -1594,7 +1692,7 @@ plot.gp <- function(x, trace = TRUE, predict = TRUE, ...) {
   # extract dimensions of x
   Dx <- ncol(x$x)
 
-  # if mcmc only, change predict and hidden to FALSE
+  # if mcmc only, change predict to FALSE
   if (is.null(x$mean)) predict <- FALSE
 
   if(trace) {
@@ -1608,18 +1706,24 @@ plot.gp <- function(x, trace = TRUE, predict = TRUE, ...) {
   if(predict) {
     if (Dx == 1) {
       par(mfrow = c(1, 1))
-      y_samples <- rand_mvn(50, x$mean, x$Sigma_smooth)
-      q1 <- x$mean + qnorm(0.05, 0, sqrt(diag(x$Sigma)))
-      q3 <- x$mean + qnorm(0.95, 0, sqrt(diag(x$Sigma)))
+      if (is.null(x$Sigma)) {
+        q1 <- x$mean + qnorm(0.05, 0, sqrt(x$s2))
+        q3 <- x$mean + qnorm(0.95, 0, sqrt(x$s2))
+      } else {
+        y_samples <- rand_mvn(50, x$mean, x$Sigma_smooth)
+        q1 <- x$mean + qnorm(0.05, 0, sqrt(diag(x$Sigma)))
+        q3 <- x$mean + qnorm(0.95, 0, sqrt(diag(x$Sigma)))
+      }
       o <- order(x$x_new)
-      matplot(x$x_new[o], y_samples[o,], xlab = 'X', ylab = 'Y', 
-              ylim = c(min(q1), max(q3)),
-              type = 'l', col = 'grey', lty = 1, 
-              main = 'Posterior Mean and 95% PI')
+      plot(x$x_new[o], x$mean[o], type = 'l', xlab = 'X', ylab = 'Y', ylim = c(min(q1), max(q3)),
+           col = 'blue', main = 'Posterior Mean and 95% PI')
+      if (!is.null(x$Sigma)) {
+        matlines(x$x_new[o], y_samples[o,], col = 'grey', lty = 1)
+        lines(x$x_new[o], x$mean[o], col = 'blue')
+      }
+      lines(x$x_new[o], q1[o], col = 'blue', lty = 2)
+      lines(x$x_new[o], q3[o], col = 'blue', lty = 2)
       points(x$x, x$y, pch = 20)
-      lines(x$x_new[o], x$mean[o], col = 'black')
-      lines(x$x_new[o], q1[o], col = 'blue')
-      lines(x$x_new[o], q3[o], col = 'blue')
     } else if (Dx == 2) {
       if (!requireNamespace("akima", quietly = TRUE)) {
         stop("Package \"akima\" needed for this plot. Please install it.",
@@ -1627,7 +1731,9 @@ plot.gp <- function(x, trace = TRUE, predict = TRUE, ...) {
       }
       cols <- heat.colors(128)
       i1 <- akima::interp(x$x_new[, 1], x$x_new[, 2], x$mean)
-      i2 <- akima::interp(x$x_new[, 1], x$x_new[, 2], sqrt(diag(x$Sigma)))
+      if (is.null(x$Sigma)) {
+        i2 <- akima::interp(x$x_new[, 1], x$x_new[, 2], sqrt(x$s2))
+      } else i2 <- akima::interp(x$x_new[, 1], x$x_new[, 2], sqrt(diag(x$Sigma)))
       par(mfrow = c(1, 2), mar = c(4, 4, 3, 2))
       image(i1, col = cols, main = 'Posterior Mean', xlab = 'X1', ylab = 'X2')
       points(x$x[, 1], x$x[, 2], pch = 20, cex = 0.5)
@@ -1698,18 +1804,25 @@ plot.dgp2 <- function(x, trace = TRUE, hidden = FALSE, predict = TRUE, ...) {
   if(predict) {
     if (Dx == 1){
       par(mfrow = c(1, 1), mar = c(5, 4, 2, 2))
+      if (is.null(x$Sigma)) {
+        q1 <- x$mean + qnorm(0.05, 0, sqrt(x$s2))
+        q3 <- x$mean + qnorm(0.95, 0, sqrt(x$s2))
+      } else {
+        y_samples <- rand_mvn(50, x$mean, x$Sigma_smooth)
+        q1 <- x$mean + qnorm(0.05, 0, sqrt(diag(x$Sigma)))
+        q3 <- x$mean + qnorm(0.95, 0, sqrt(diag(x$Sigma)))
+      }
       o <- order(x$x_new)
-      y_samples <- rand_mvn(50, x$mean, x$Sigma_smooth)
-      q1 <- x$mean + qnorm(0.05, 0, sqrt(diag(x$Sigma)))
-      q3 <- x$mean + qnorm(0.95, 0, sqrt(diag(x$Sigma)))
-
-      matplot(x$x_new[o], y_samples[o, ], xlab = 'X', ylab = 'Y', 
-              ylim = c(min(q1), max(q3)), type = 'l', col = 'grey', 
-              lty = 1, main = 'Posterior Mean and 95% PI')
+      plot(x$x_new[o], x$mean[o], type = 'l', xlab = 'X', ylab = 'Y', ylim = c(min(q1), max(q3)),
+           col = 'blue', main = 'Posterior Mean and 95% PI')
+      if (!is.null(x$Sigma)) {
+        matlines(x$x_new[o], y_samples[o,], col = 'grey', lty = 1)
+        lines(x$x_new[o], x$mean[o], col = 'blue')
+      }
+      lines(x$x_new[o], q1[o], col = 'blue', lty = 2)
+      lines(x$x_new[o], q3[o], col = 'blue', lty = 2)
       points(x$x, x$y, pch = 20)
-      lines(x$x_new[o], x$mean[o], col = 'black')
-      lines(x$x_new[o], q1[o], col = 'blue')
-      lines(x$x_new[o], q3[o], col = 'blue')
+
     } else if (Dx == 2) {
       if (!requireNamespace("akima", quietly = TRUE)) {
         stop("Package \"akima\" needed for this plot. Please install it.",
@@ -1717,7 +1830,9 @@ plot.dgp2 <- function(x, trace = TRUE, hidden = FALSE, predict = TRUE, ...) {
       }
       cols <- heat.colors(128)
       i1 <- akima::interp(x$x_new[, 1], x$x_new[, 2], x$mean)
-      i2 <- akima::interp(x$x_new[, 1], x$x_new[, 2], sqrt(diag(x$Sigma)))
+      if (is.null(x$Sigma)) {
+        i2 <- akima::interp(x$x_new[, 1], x$x_new[, 2], sqrt(x$s2))
+      } else i2 <- akima::interp(x$x_new[, 1], x$x_new[, 2], sqrt(diag(x$Sigma)))
       par(mfrow = c(1, 2), mar = c(4, 4, 3, 2))
       image(i1, col = cols, main = 'Posterior Mean', xlab = 'X1', ylab = 'X2')
       points(x$x[, 1], x$x[, 2], pch = 20, cex = 0.5)
@@ -1804,18 +1919,24 @@ plot.dgp3 <- function(x, trace = TRUE, hidden = FALSE, predict = TRUE, ...) {
   if(predict) {
     if (Dx == 1) {
       par(mfrow = c(1, 1), mar = c(5, 4, 2, 2))
+      if (is.null(x$Sigma)) {
+        q1 <- x$mean + qnorm(0.05, 0, sqrt(x$s2))
+        q3 <- x$mean + qnorm(0.95, 0, sqrt(x$s2))
+      } else {
+        y_samples <- rand_mvn(50, x$mean, x$Sigma_smooth)
+        q1 <- x$mean + qnorm(0.05, 0, sqrt(diag(x$Sigma)))
+        q3 <- x$mean + qnorm(0.95, 0, sqrt(diag(x$Sigma)))
+      }
       o <- order(x$x_new)
-      y_samples <- rand_mvn(50, x$mean, x$Sigma_smooth)
-      q1 <- x$mean + qnorm(0.05, 0, sqrt(diag(x$Sigma)))
-      q3 <- x$mean + qnorm(0.95, 0, sqrt(diag(x$Sigma)))
-
-      matplot(x$x_new[o], y_samples[o,], xlab = 'X', ylab = 'Y', 
-              ylim = c(min(q1), max(q3)), type = 'l', col = 'grey', 
-              lty = 1, main = 'Posterior Mean and 95% PI')
+      plot(x$x_new[o], x$mean[o], type = 'l', xlab = 'X', ylab = 'Y', ylim = c(min(q1), max(q3)),
+           col = 'blue', main = 'Posterior Mean and 95% PI')
+      if (!is.null(x$Sigma)) {
+        matlines(x$x_new[o], y_samples[o,], col = 'grey', lty = 1)
+        lines(x$x_new[o], x$mean[o], col = 'blue')
+      }
+      lines(x$x_new[o], q1[o], col = 'blue', lty = 2)
+      lines(x$x_new[o], q3[o], col = 'blue', lty = 2)
       points(x$x, x$y, pch = 20)
-      lines(x$x_new[o], x$mean[o], col = 'black')
-      lines(x$x_new[o], q1[o], col = 'blue')
-      lines(x$x_new[o], q3[o], col = 'blue')
     } else if (Dx == 2) {
       if (!requireNamespace("akima", quietly = TRUE)) {
         stop("Package \"akima\" needed for this function to work. Please install it.",
@@ -1823,7 +1944,9 @@ plot.dgp3 <- function(x, trace = TRUE, hidden = FALSE, predict = TRUE, ...) {
       }
       cols <- heat.colors(128)
       i1 <- akima::interp(x$x_new[, 1], x$x_new[, 2], x$mean)
-      i2 <- akima::interp(x$x_new[, 1], x$x_new[, 2], sqrt(diag(x$Sigma)))
+      if (is.null(x$Sigma)) {
+        i2 <- akima::interp(x$x_new[, 1], x$x_new[, 2], sqrt(x$s2))
+      } else i2 <- akima::interp(x$x_new[, 1], x$x_new[, 2], sqrt(diag(x$Sigma)))
       par(mfrow = c(1, 2), mar = c(4, 4, 3, 2))
       image(i1, col = cols, main = 'Posterior Mean', xlab = 'X1', ylab = 'X2')
       points(x$x[, 1], x$x[, 2], pch = 20, cex = 0.5)

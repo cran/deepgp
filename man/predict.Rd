@@ -5,16 +5,17 @@
 \alias{predict.gp}
 \alias{predict.dgp2}
 \alias{predict.dgp3}
-\title{Predict posterior mean and covariance}
+\title{Predict posterior mean and variance/covariance}
 \usage{
-\method{predict}{gp}(object, x_new, lite = TRUE, cores = 1, ...)
+\method{predict}{gp}(object, x_new, lite = TRUE, store_all = FALSE, cores = 1, ...)
 
 \method{predict}{dgp2}(
   object,
   x_new,
   lite = TRUE,
+  store_all = FALSE,
+  mean_map = TRUE,
   cores = 1,
-  uncertainty = c("CONDITIONAL", "FULL"),
   ...
 )
 
@@ -22,8 +23,9 @@
   object,
   x_new,
   lite = TRUE,
+  store_all = FALSE,
+  mean_map = TRUE,
   cores = 1,
-  uncertainty = c("CONDITIONAL", "FULL"),
   ...
 )
 }
@@ -33,18 +35,18 @@
 
 \item{x_new}{matrix of predictive input locations}
 
-\item{lite}{logical indicating whether to store the mean and diagonal of the 
-covariance for every iteration (must use \code{lite = FALSE} in order 
-to use \code{EI})}
+\item{lite}{logical indicating whether to calculate only point-wise variances (\code{lite = TRUE}),
+or full covariance (\code{lite = FALSE})}
 
-\item{cores}{number of cores to utilize in parallel, by default no parellization
+\item{store_all}{logical indicating whether to store mean and variance for each iteration}
+
+\item{cores}{number of cores to utilize in parallel, by default no parallelization
 is used}
 
 \item{...}{N/A}
 
-\item{uncertainty}{denotes whether to incorporate conditional or full predictive 
-uncertainty in mapping through hidden layers ("\code{dgp2}" or "\code{dgp3}" 
-only)}
+\item{mean_map}{denotes whether to map hidden layers using conditional mean or a random sample
+from the full MVN distribution ("\code{dgp2}" or "\code{dgp3}" only)}
 }
 \value{
 object of the same class with the following additional elements:
@@ -54,35 +56,41 @@ object of the same class with the following additional elements:
         the covariance)
   \item \code{mean}: predicted posterior mean, indices correspond to 
         \code{x_new} location
+  \item \code{s2}: predicted point-wise variances, indices correspond to \code{x_new} location
+        (only returned when \code{lite = TRUE})
+  \item \code{s2_smooth}: predicted point-wise variances with \code{g} removed, indices 
+        correspond to \code{x_new} location (only returned when \code{lite = TRUE})
   \item \code{Sigma}: predicted posterior covariance, indices correspond to 
-        \code{x_new} location
+        \code{x_new} location (only returned when \code{lite = FALSE})
   \item \code{Sigma_smooth}: predicted posterior covariance with \code{g} removed 
-        from the diagonal
-  \item \code{mu_t}: (only when \code{lite = FALSE}) matrix of posterior mean for 
-        each iteration, column index corresponds to iteration and row index 
-        corresponds to \code{x_new} location 
-  \item \code{sig2_t}: (only when \code{lite = FALSE}) matrix of posterior 
-        point-wise variance (diagonal of Sigma) for each iteration, column index
-        corresponds to iteration and row index corresponds to \code{x_new} location
-  \item \code{w_new}: ("\code{dgp2}" and "\code{dgp3}" only) list of hidden layer 
-        predictions, list index corresponds to iteration and row index corresponds to 
-        \code{x_new} location
-  \item \code{z_new}: ("\code{dgp3}" only) list of hidden layer predictions, list 
-        index corresponds to iteration and row index corresponds to \code{x_new} location
+        from the diagonal (only returned when \code{lite = FALSE})
+  \item \code{mu_t}: matrix of posterior mean for each iteration, column index corresponds 
+        to iteration and row index corresponds to \code{x_new} location (only returned when 
+        \code{store_all = TRUE})
+  \item \code{s2_t}: matrix of posterior point-wise variance for each iteration, column index
+        corresponds to iteration and row index corresponds to \code{x_new} location (only
+        returned when \code{store_all = TRUE})
+  \item \code{w_new}: list of hidden layer mappings, list index corresponds to iteration and 
+        row index corresponds to \code{x_new} location ("\code{dgp2}" and "\code{dgp3}" only)
+  \item \code{z_new}: list of hidden layer mappings, list index corresponds to iteration and 
+        row index corresponds to \code{x_new} location ("\code{dgp3}" only) 
 }
 Computation time is added to the computation time of the existing object.
 }
 \description{
 Acts on a "\code{gp}", "\code{dgp2}", or "\code{dgp3}" object.
-    Calculates posterior mean and covariance over specified input 
+    Calculates posterior mean and variance/covariance over specified input 
     locations.  Optionally utilizes SNOW parallelization.
 }
 \details{
 All iterations in the object are used for prediction, so samples 
     should be burned-in.  Thinning the samples using \code{trim} will speed up 
-    computation.  The posterior mean and covariance are calculated for each 
-    iteration, then averaged.  The covariance of the means is appropriately
-    added to the average of the covariances.\cr\cr
+    computation.  Posterior moments are calculated using conditional expectation
+    and variance.  As a default, only point-wise variance is calculated.  Full covariance
+    may be calculated using \code{lite = FALSE}.  The storage of means and point-wise
+    variances for each individual iteration (specified using \code{store_all = TRUE})
+    is required in order to use \code{EI}.
+    
     SNOW parallelization reduces computation time but requires significantly more 
     memory storage.  Use \code{cores = 1} if memory is limited.
 }
@@ -92,6 +100,8 @@ All iterations in the object are used for prediction, so samples
 
 }
 \references{
+Sauer, A, RB Gramacy, and D Higdon. 2020. "Active Learning for Deep Gaussian 
+    Process Surrogates." arXiv:2012.08015. \cr\cr
 Gramacy, RB. \emph{Surrogates: Gaussian Process Modeling, Design, and Optimization 
     for the Applied Sciences}. Chapman Hall, 2020.
 }

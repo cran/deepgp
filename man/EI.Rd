@@ -16,9 +16,8 @@ EI(object, cores)
 \method{EI}{dgp3}(object, cores = 1)
 }
 \arguments{
-\item{object}{object from \code{fit_one_layer}, \code{fit_two_layer}, or 
-\code{fit_three_layer} that has been predicted over \code{x_new} 
-with \code{lite = FALSE}}
+\item{object}{object of class \code{gp}, \code{dgp2}, or \code{dgp3} that has been 
+predicted over \code{x_new} with \code{lite = TRUE} and \code{store_all = TRUE}}
 
 \item{cores}{number of cores to utilize in parallel, by default no 
 parallelization is used}
@@ -39,8 +38,8 @@ Acts on a "\code{gp}", "\code{dgp2}", or "\code{dgp3}" object.
 }
 \details{
 The object must be an output of \code{predict} with 
-    \code{lite = FALSE}.  This will store the posterior mean and point-wise
-    variance for every iteration.  Once prediction is done, computation is 
+    \code{lite = TRUE} and \code{store_all = TRUE}.  This will store the posterior 
+    mean and point-wise variance for every iteration.  Once prediction is done, computation is 
     relatively quick, so SNOW parallelization is only recommended when 
     \code{nmcmc} is large.
 }
