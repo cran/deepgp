@@ -7,13 +7,14 @@
 #' @name deepgp-package
 #'
 #' @description Performs model fitting and sequential design for deep Gaussian
-#'     processes following Sauer, Gramacy, and Higdon (2020) <arXiv:2012.08015>.  Models 
-#'     extend up to three layers deep; a one layer model is equivalent to typical Gaussian 
-#'     process regression.  Sequential design criteria include integrated mean-squared 
-#'     error (IMSE), active learning Cohn (ALC), and expected 
-#'     improvement (EI).  Covariance structure is based on inverse exponentiated 
-#'     squared euclidean distance.  Applicable to noisy and deterministic functions.  
-#'     Incorporates SNOW parallelization and utilizes C under the hood.
+#'     processes following Sauer, Gramacy, and Higdon (2020) <arXiv:2012.08015>.  
+#'     Models extend up to three layers deep; a one layer model is equivalent 
+#'     to typical Gaussian process regression.  Sequential design criteria 
+#'     include integrated mean-squared error (IMSE), active learning Cohn (ALC), 
+#'     and expected improvement (EI).  Covariance structure is based on inverse 
+#'     exponentiated squared euclidean distance.  Applicable to noisy and 
+#'     deterministic functions.  Incorporates SNOW parallelization and 
+#'     utilizes C under the hood.
 #' 
 #' @section Important Functions:
 #' \itemize{
@@ -41,8 +42,8 @@
 #' @references 
 #' Sauer, A, RB Gramacy, and D Higdon. 2020. "Active Learning for Deep Gaussian 
 #'     Process Surrogates." arXiv:2012.08015. \cr\cr
-#' Binois, M, J Huang, RB Gramacy, and M Ludkovski. 2019. “Replication or 
-#'     Exploration? Sequential Design for Stochastic Simulation Experiments.” 
+#' Binois, M, J Huang, RB Gramacy, and M Ludkovski. 2019. Replication or 
+#'     Exploration? Sequential Design for Stochastic Simulation Experiments. 
 #'     \emph{Technometrics 61}, 7-23. Taylor & Francis. 
 #'     doi:10.1080/00401706.2018.1469433.\cr\cr
 #' Gramacy, RB. \emph{Surrogates: Gaussian Process Modeling, Design, and 
@@ -52,12 +53,12 @@
 #'     13}, 455-492. doi:10.1023/A:1008306431147.\cr\cr
 #' Murray, I, RP Adams, and D MacKay. 2010. "Elliptical slice sampling." 
 #'     \emph{Journal of Machine Learning Research 9}, 541-548.\cr\cr
-#' Seo, S, M Wallat, T Graepel, and K Obermayer. 2000. “Gaussian Process 
-#'     Regression: Active Data Selection and Test Point Rejection.” In 
-#'     Mustererkennung 2000, 27–34. New York, NY: Springer–Verlag.
+#' Seo, S, M Wallat, T Graepel, and K Obermayer. 2000. Gaussian Process 
+#'     Regression: Active Data Selection and Test Point Rejection. In 
+#'     Mustererkennung 2000, 27-34. New York, NY: Springer Verlag.
 #' 
 #' @examples \donttest{
-#' # 1. One Layer and EI ---------------------------------------------------------
+#' # 1. One Layer and EI ------------------------------------------------------
 #' 
 #' f <- function(x) {
 #'   sin(5 * pi * x) / (2 * x) + (x - 1) ^ 4
@@ -97,7 +98,7 @@
 #' # Evaluate fit
 #' rmse(yy, fit$mean) # lower is better
 #' 
-#' # 2. Two Layer and ALC --------------------------------------------------------
+#' # 2. Two Layer and ALC -----------------------------------------------------
 #' 
 #' f <- function(x) {
 #'   exp(-10 * x) * (cos(10 * pi * x - 1) + sin(10 * pi * x - 1)) * 5 - 0.2
@@ -135,7 +136,7 @@
 #' # Evaluate fit
 #' rmse(yy, fit$mean) # lower is better
 #' 
-#' # 3. Three Layer and IMSE ----------------------------------------------------
+#' # 3. Three Layer and IMSE --------------------------------------------------
 #' 
 #' f <- function(x) {
 #'   i <- which(x <= 0.48)

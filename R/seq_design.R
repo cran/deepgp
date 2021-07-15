@@ -39,8 +39,8 @@ alc.C <- function(X, Ki, theta, g, Xcand, Xref, tau2, verb = 0) {
 #' @title Active Learning Cohn for Sequential Design
 #' @description Acts on a "\code{gp}", "\code{dgp2}", or "\code{dgp3}" object. 
 #'    Calculates ALC over the input locations \code{x_new} using specified
-#'    reference grid.  If no reference grid is specified, \code{x_new} is used as
-#'    the reference.  Optionally utilizes SNOW parallelization.  User should 
+#'    reference grid.  If no reference grid is specified, \code{x_new} is used 
+#'    as the reference.  Optionally utilizes SNOW parallelization.  User should 
 #'    select the point with the highest ALC to add to the design.   
 #'    
 #' @details All iterations in the object are used in the calculation, so samples 
@@ -52,37 +52,40 @@ alc.C <- function(X, Ki, theta, g, Xcand, Xref, tau2, verb = 0) {
 #'         \item called on an object that has been predicted over, in which 
 #'               case the \code{x_new} from \code{predict} is used
 #'     }
-#'     In \code{dgp2} and \code{dgp3} objects that have been run through \code{predict},
-#'     the stored \code{w_new} mappings are used.  Through \code{predict}, the user may
-#'     specify a mean mapping (\code{mean_map = TRUE}) or a full sample from the MVN distribution
-#'     over \code{w_new} (\code{mean_map = FALSE}).  When the object has not yet been predicted
-#'     over, the mean mapping is used.
+#'     In \code{dgp2} and \code{dgp3} objects that have been run through 
+#'     \code{predict}, the stored \code{w_new} mappings are used.  Through 
+#'     \code{predict}, the user may specify a mean mapping 
+#'     (\code{mean_map = TRUE}) or a full sample from the MVN distribution over 
+#'     \code{w_new} (\code{mean_map = FALSE}).  When the object has not yet 
+#'     been predicted over, the mean mapping is used.
 #'     
 #'     SNOW parallelization reduces computation time but requires more memory
-#'     storage.  C code derived from the "laGP" package (Robert B Gramacy and Furong Sun).
+#'     storage.  C code derived from the "laGP" package (Robert B Gramacy and 
+#'     Furong Sun).
 #' 
 #' @param object object of class \code{gp}, \code{dgp2}, or \code{dgp3}
 #' @param x_new matrix of possible input locations, if object has been run 
 #'        through \code{predict} the previously stored \code{x_new} is used
-#' @param ref optional reference grid for ALC approximation, if \code{ref = NULL} 
-#'        then \code{x_new} is used
-#' @param cores number of cores to utilize in parallel, by default no parallelization
-#'        is used
+#' @param ref optional reference grid for ALC approximation, if 
+#'        \code{ref = NULL} then \code{x_new} is used
+#' @param cores number of cores to utilize in parallel, by default no 
+#'        parallelization is used
 #' @return list with elements:
 #' \itemize{
-#'   \item \code{value}: vector of ALC values, indices correspond to \code{x_new}
+#'   \item \code{value}: vector of ALC values, indices correspond to 
+#'         \code{x_new}
 #'   \item \code{time}: computation time in seconds
 #' }
 #' 
 #' @references 
 #' Sauer, A, RB Gramacy, and D Higdon. 2020. "Active Learning for Deep Gaussian 
 #'     Process Surrogates." arXiv:2012.08015. \cr\cr
-#' Seo, S, M Wallat, T Graepel, and K Obermayer. 2000. “Gaussian Process Regression:
-#'     Active Data Selection and Test Point Rejection.” In Mustererkennung 2000, 
-#'     27–34. New York, NY: Springer–Verlag.\cr\cr
+#' Seo, S, M Wallat, T Graepel, and K Obermayer. 2000. Gaussian Process 
+#'     Regression: Active Data Selection and Test Point Rejection. In 
+#'     Mustererkennung 2000, 27-34. New York, NY: Springer Verlag.\cr\cr
 #' Gramacy, RB and F Sun. (2016). laGP: Large-Scale Spatial Modeling via Local 
-#'     Approximate Gaussian Processes in R. \emph{Journal of Statistical Software 
-#'     72} (1), 1-46. doi:10.18637/jss.v072.i01
+#'     Approximate Gaussian Processes in R. \emph{Journal of Statistical 
+#'     Software 72} (1), 1-46. doi:10.18637/jss.v072.i01
 #' 
 #' @examples
 #' # See "deepgp-package" or "fit_two_layer" for an example
@@ -126,10 +129,11 @@ ALC.gp <- function(object, x_new = NULL, ref = NULL, cores = 1) {
       K <- calc_K(dx, theta = object$theta[t], g = object$g[t])
       Ki <- invdet(K)$Mi
       if (predicted) { tau2 <- object$tau2[t] 
-      } else tau2 <- krig(object$y, dx, theta = object$theta[t], g = object$g[t], 
-                          mean = FALSE, sigma = FALSE)$tau2
+      } else tau2 <- krig(object$y, dx, theta = object$theta[t], 
+                          g = object$g[t], mean = FALSE, sigma = FALSE)$tau2
       
-      alc <- alc + alc.C(object$x, Ki, object$theta[t], object$g[t], x_new, ref, tau2)
+      alc <- alc + alc.C(object$x, Ki, object$theta[t], object$g[t], x_new, 
+                         ref, tau2)
     } # end of t for loop
   } else {
     # prepare parallel clusters
@@ -142,8 +146,8 @@ ALC.gp <- function(object, x_new = NULL, ref = NULL, cores = 1) {
       K <- calc_K(dx, theta = object$theta[t], g = object$g[t])
       Ki <- invdet(K)$Mi
       if (predicted) { tau2 <- object$tau2[t] 
-      } else tau2 <- krig(object$y, dx, theta = object$theta[t], g = object$g[t], 
-                        mean = FALSE, sigma = FALSE)$tau2
+      } else tau2 <- krig(object$y, dx, theta = object$theta[t], 
+                          g = object$g[t], mean = FALSE, sigma = FALSE)$tau2
     
       return(alc.C(object$x, Ki, object$theta[t], object$g[t], x_new,
                   ref, tau2))
@@ -212,7 +216,8 @@ ALC.dgp2 <- function(object, x_new = NULL, ref = NULL, cores = 1) {
       K <- calc_K(sq_dist(w), theta = object$theta_y[t], g = object$g[t])
       Ki <- invdet(K)$Mi
       
-      alc <- alc + alc.C(w, Ki, object$theta_y[t], object$g[t], w_new, ref, tau2)
+      alc <- alc + alc.C(w, Ki, object$theta_y[t], object$g[t], w_new, 
+                         ref, tau2)
     } # end of t for loop
   } else {
     # prepare parallel clusters
@@ -319,7 +324,8 @@ ALC.dgp3 <- function(object, x_new = NULL, ref = NULL, cores = 1) {
       K <- calc_K(sq_dist(w), theta = object$theta_y[t], g = object$g[t])
       Ki <- invdet(K)$Mi
       
-      alc <- alc + alc.C(w, Ki, object$theta_y[t], object$g[t], w_new, ref, tau2)
+      alc <- alc + alc.C(w, Ki, object$theta_y[t], object$g[t], w_new, 
+                         ref, tau2)
     } # end of t for loop
   } else {
     # prepare parallel clusters
@@ -406,13 +412,15 @@ Wij.C <- function(x1, x2, theta, a, b){
 #'         \item called on an object that has been predicted over, in which case
 #'         the \code{x_new} from \code{predict} is used
 #'     }
-#'     In \code{dgp2} and \code{dgp3} objects that have been run through \code{predict},
-#'     the stored \code{w_new} mappings are used.  Through \code{predict}, the user may
-#'     specify a mean mapping (\code{mean_map = TRUE}) or a full sample from the MVN distribution
-#'     over \code{w_new} (\code{mean_map = FALSE}).  When the object has not yet been predicted
-#'     over, the mean mapping is used.
+#'     In \code{dgp2} and \code{dgp3} objects that have been run through 
+#'     \code{predict}, the stored \code{w_new} mappings are used.  Through 
+#'     \code{predict}, the user may specify a mean mapping 
+#'     (\code{mean_map = TRUE}) or a full sample from the MVN distribution over 
+#'     \code{w_new} (\code{mean_map = FALSE}).  When the object has not yet 
+#'     been predicted over, the mean mapping is used.
 #'     
-#'     SNOW parallelization reduces computation time but requires more memory storage.
+#'     SNOW parallelization reduces computation time but requires more memory 
+#'     storage.
 #' 
 #' @param object object of class \code{gp}, \code{dgp2}, or \code{dgp3}
 #' @param x_new matrix of possible input locations, if object has been run 
@@ -421,16 +429,18 @@ Wij.C <- function(x1, x2, theta, a, b){
 #'        parallelization is used
 #' @return list with elements:
 #' \itemize{
-#'   \item \code{value}: vector of IMSE values, indices correspond to \code{x_new}
+#'   \item \code{value}: vector of IMSE values, indices correspond to 
+#'         \code{x_new}
 #'   \item \code{time}: computation time in seconds
 #' }
 #' 
 #' @references 
 #' Sauer, A, RB Gramacy, and D Higdon. 2020. "Active Learning for Deep Gaussian 
 #'     Process Surrogates." arXiv:2012.08015. \cr\cr
-#' Binois, M, J Huang, RB Gramacy, and M Ludkovski. 2019. “Replication or Exploration? 
-#'     Sequential Design for Stochastic Simulation Experiments.” \emph{Technometrics 
-#'     61}, 7-23. Taylor & Francis. doi:10.1080/00401706.2018.1469433.
+#' Binois, M, J Huang, RB Gramacy, and M Ludkovski. 2019. Replication or 
+#'     Exploration? Sequential Design for Stochastic Simulation Experiments.
+#'     \emph{Technometrics 61}, 7-23. Taylor & Francis. 
+#'     doi:10.1080/00401706.2018.1469433.
 #' 
 #' @examples
 #' # See "deepgp-package" or "fit_three_layer" for an example
@@ -483,8 +493,8 @@ IMSE.gp <- function(object, x_new = NULL, cores = 1) {
       Wijs[1:n, 1:n] <- Wij.C(object$x, object$x, object$theta[t], a, b)
       
       if (predicted) { tau2 <- object$tau2[t] 
-      } else tau2 <- krig(object$y, dx, theta = object$theta[t], g = object$g[t], 
-                          mean = FALSE, sigma = FALSE)$tau2
+      } else tau2 <- krig(object$y, dx, theta = object$theta[t], 
+                          g = object$g[t], mean = FALSE, sigma = FALSE)$tau2
       
       imse_store <- vector(length = m)
       
@@ -525,8 +535,8 @@ IMSE.gp <- function(object, x_new = NULL, cores = 1) {
       Wijs[1:n, 1:n] <- Wij.C(object$x, object$x, object$theta[t], a, b)
       
       if (predicted) { tau2 <- object$tau2[t] 
-      } else tau2 <- krig(object$y, dx, theta = object$theta[t], g = object$g[t], 
-                          mean = FALSE, sigma = FALSE)$tau2
+      } else tau2 <- krig(object$y, dx, theta = object$theta[t], 
+                          g = object$g[t], mean = FALSE, sigma = FALSE)$tau2
   
       imse_store <- vector(length = m)
   
@@ -687,7 +697,8 @@ IMSE.dgp2 <- function(object, x_new = NULL, cores = 1) {
         Knew_inv[n+1, 1:n] <- g
         Knew_inv[n+1, n+1] <- 1 / v
 
-        Wijs[1:n, n+1] <- Wijs[n+1, 1:n] <- Wij.C(w, w_star, object$theta_y[t], a, b)
+        Wijs[1:n, n+1] <- Wijs[n+1, 1:n] <- Wij.C(w, w_star, 
+                                                  object$theta_y[t], a, b)
         Wijs[n+1, n+1] <- Wij.C(w_star, w_star, object$theta_y[t], a, b)
         imse_store[i] <- tau2 * prod(b - a) * (1 - sum(Knew_inv * Wijs))
         # Note: sum(Ki * Wijs) == sum(diag(Ki %*% Wijs)) because symmetric
@@ -871,18 +882,20 @@ IMSE.dgp3 <- function(object, x_new = NULL, cores = 1) {
 #'     add to the design.
 #'     
 #' @details The object must be an output of \code{predict} with 
-#'     \code{lite = TRUE} and \code{store_all = TRUE}.  This will store the posterior 
-#'     mean and point-wise variance for every iteration.  Once prediction is done, computation is 
-#'     relatively quick, so SNOW parallelization is only recommended when 
-#'     \code{nmcmc} is large.
+#'     \code{lite = TRUE} and \code{store_all = TRUE}.  This will store the 
+#'     posterior mean and point-wise variance for every iteration.  Once 
+#'     prediction is done, computation is relatively quick, so SNOW 
+#'     parallelization is only recommended when \code{nmcmc} is large.
 #' 
-#' @param object object of class \code{gp}, \code{dgp2}, or \code{dgp3} that has been 
-#'        predicted over \code{x_new} with \code{lite = TRUE} and \code{store_all = TRUE}
+#' @param object object of class \code{gp}, \code{dgp2}, or \code{dgp3} that 
+#'        has been predicted over \code{x_new} with \code{lite = TRUE} and 
+#'        \code{store_all = TRUE}
 #' @param cores number of cores to utilize in parallel, by default no 
 #'        parallelization is used
 #' @return list with elements:
 #' \itemize{
-#'   \item \code{value}: vector of EI values, indices correspond to \code{x_new}
+#'   \item \code{value}: vector of EI values, indices correspond to 
+#'         \code{x_new}
 #'   \item \code{time}: computation time in seconds
 #' }
 #' 
@@ -909,7 +922,8 @@ EI.gp <- function(object, cores = 1) {
 
   tic <- proc.time()[3]
 
-  if (is.null(object$mu_t)) stop('object must be predicted with store_all = TRUE')
+  if (is.null(object$mu_t)) 
+    stop('object must be predicted with store_all = TRUE')
   
   if (cores == 1) {
     ei <- rep(0, times = nrow(object$x_new))
@@ -923,7 +937,8 @@ EI.gp <- function(object, cores = 1) {
     }
   } else {
     # prepare parallel clusters
-    if (cores > detectCores()) warning('cores is greater than available nodes')
+    if (cores > detectCores()) 
+      warning('cores is greater than available nodes')
     cl <- makeCluster(cores)
     registerDoParallel(cl)
   
@@ -956,5 +971,3 @@ EI.dgp2 <- EI.gp
 #' @export
 
 EI.dgp3 <- EI.gp
-
-

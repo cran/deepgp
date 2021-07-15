@@ -27,7 +27,8 @@ parallelization is used}
 \value{
 list with elements:
 \itemize{
-  \item \code{value}: vector of IMSE values, indices correspond to \code{x_new}
+  \item \code{value}: vector of IMSE values, indices correspond to 
+        \code{x_new}
   \item \code{time}: computation time in seconds
 }
 }
@@ -47,13 +48,15 @@ All iterations in the object are used in the calculation, so samples
         \item called on an object that has been predicted over, in which case
         the \code{x_new} from \code{predict} is used
     }
-    In \code{dgp2} and \code{dgp3} objects that have been run through \code{predict},
-    the stored \code{w_new} mappings are used.  Through \code{predict}, the user may
-    specify a mean mapping (\code{mean_map = TRUE}) or a full sample from the MVN distribution
-    over \code{w_new} (\code{mean_map = FALSE}).  When the object has not yet been predicted
-    over, the mean mapping is used.
+    In \code{dgp2} and \code{dgp3} objects that have been run through 
+    \code{predict}, the stored \code{w_new} mappings are used.  Through 
+    \code{predict}, the user may specify a mean mapping 
+    (\code{mean_map = TRUE}) or a full sample from the MVN distribution over 
+    \code{w_new} (\code{mean_map = FALSE}).  When the object has not yet 
+    been predicted over, the mean mapping is used.
     
-    SNOW parallelization reduces computation time but requires more memory storage.
+    SNOW parallelization reduces computation time but requires more memory 
+    storage.
 }
 \examples{
 # See "deepgp-package" or "fit_three_layer" for an example
@@ -62,7 +65,8 @@ All iterations in the object are used in the calculation, so samples
 \references{
 Sauer, A, RB Gramacy, and D Higdon. 2020. "Active Learning for Deep Gaussian 
     Process Surrogates." arXiv:2012.08015. \cr\cr
-Binois, M, J Huang, RB Gramacy, and M Ludkovski. 2019. “Replication or Exploration? 
-    Sequential Design for Stochastic Simulation Experiments.” \emph{Technometrics 
-    61}, 7-23. Taylor & Francis. doi:10.1080/00401706.2018.1469433.
+Binois, M, J Huang, RB Gramacy, and M Ludkovski. 2019. Replication or 
+    Exploration? Sequential Design for Stochastic Simulation Experiments.
+    \emph{Technometrics 61}, 7-23. Taylor & Francis. 
+    doi:10.1080/00401706.2018.1469433.
 }

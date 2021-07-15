@@ -9,8 +9,8 @@ sq_dist(X1, X2 = NULL)
 \arguments{
 \item{X1}{matrix of input locations}
 
-\item{X2}{matrix of second input locations (if \code{NULL}, distance is calculated
-between \code{X1} and itself)}
+\item{X2}{matrix of second input locations (if \code{NULL}, distance is 
+calculated between \code{X1} and itself)}
 }
 \value{
 symmetric matrix of squared euclidean distances
@@ -19,7 +19,8 @@ symmetric matrix of squared euclidean distances
 Calculates squared pairwise euclidean distances using C.
 }
 \details{
-C code derived from the "laGP" package (Robert B Gramacy and Furong Sun).
+C code derived from the "laGP" package (Robert B Gramacy and 
+         Furong Sun).
 }
 \examples{
 x <- seq(0, 1, length = 10)
@@ -28,6 +29,6 @@ d2 <- sq_dist(x)
 }
 \references{
 Gramacy, RB and F Sun. (2016). laGP: Large-Scale Spatial Modeling via Local 
-    Approximate Gaussian Processes in R. \emph{Journal of Statistical Software 
-    72} (1), 1-46. doi:10.18637/jss.v072.i01
+    Approximate Gaussian Processes in R. \emph{Journal of Statistical 
+    Software 72} (1), 1-46. doi:10.18637/jss.v072.i01
 }
