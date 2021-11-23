@@ -1,89 +1,73 @@
 
 # Function Contents -----------------------------------------------------------
 # Internal:
-#   rand_mvn: generates random draw from MVN distribution
-#   krig: calculates posterior mean, sigma, and tau2
+#   krig: calculates posterior mean, sigma, and tau2 (optionally f_min)
 #   invdet: calculates inverse and log determinant of a matrix using C
-#   calc_tau2: calculates MLE for tau2
+#   fill_final_row: uses kriging to fill final row of w_0/z_0
 # External (see documentation below):
-#   calc_K
 #   sq_dist
 #   score
 #   rmse
 
-# Covariance Function ---------------------------------------------------------
-#' @title Calculates covariance matrix
-#' @description Calculates covariance matrix based on inverse exponentiated
-#'     squared euclidean distance with specified hyperparameters.
-#' @param d2 matrix of squared distances among input locations
-#' @param theta length scale parameter determining strength of correlation
-#' @param g nugget parameter determining noise level (only used if \code{d2} 
-#'        is square)
-#' @return symmetric covariance matrix
-#' 
-#' @examples 
-#' x <- seq(0, 1, length = 10)
-#' K <- calc_K(sq_dist(x), theta = 0.1, g = 0.01)
-#' 
-#' @export
-
-calc_K <- function(d2, theta, g = NULL) {
-
-  if (is.null(g)) g <- sqrt(.Machine$double.eps)
-  if (nrow(d2) == ncol(d2)) return(exp(- d2 / theta) + diag(g, ncol(d2)))
-  return(exp(- d2 / theta))
-}
-
-# Random MVN Sample Function --------------------------------------------------
-# Draws a random sample from multivariate normal distribution
-# Credit given to the "mvtnorm" package (Alan Genz et al)
-
-rand_mvn <- function(n, mean = rep(0, nrow(sigma)), sigma) {
-  
-  suppressWarnings({ L <- chol(sigma, pivot = TRUE) })
-  L <- L[, order(attr(L, "pivot"))]
-  sample <- matrix(rnorm(n * nrow(sigma), 0, 1), nrow = n) %*% L
-  sample <- sweep(sample, 2, mean, "+")
-  return(t(sample)) # output is an nrow(sigma) by n matrix
-}
+eps <- sqrt(.Machine$double.eps)
 
 # Kriging Function ------------------------------------------------------------
-# Calculates posterior mean, sigma/s2 and estimate of tau2 using kriging 
-# equations
+# Calculates posterior mean, sigma/s2 and estimate of tau2 using kriging equations
+# Optionally calculates f_min (min predicted mean at observed data locations)
 
 krig <- function(y, dx, d_new = NULL, d_cross = NULL, theta, g, mean = TRUE, 
-                 s2 = FALSE, sigma = TRUE, tau2 = TRUE) {
+                 s2 = FALSE, sigma = FALSE, tau2 = FALSE, f_min = FALSE, 
+                 cov = "matern", v = 2.5) {
   
   if (s2 & sigma) s2 <- FALSE # don't calculate diagonal separately
-
+  
   out <- list()
-  C <- calc_K(dx, theta, g)
+  if (cov == "matern") {
+    C <- MaternFun(dx, c(1, theta, g, v)) 
+  } else C <- ExpFun(dx, c(1, theta, g))
   C_inv <- invdet(C)$Mi
-
-  if (tau2) {
-    scale <- c(t(y) %*% C_inv %*% y)/length(y)
-    out$tau2 <- scale
-  } else {
-    scale <- 1
-  }
-
+  
   if (mean) {
-    C_cross <- calc_K(d_cross, theta) # g not included in rectangular matrix
+    if (cov == "matern") {
+      C_cross <- MaternFun(d_cross, c(1, theta, 0, v))
+    } else C_cross <- ExpFun(d_cross, c(1, theta, 0)) # no g in rectangular matrix
     out$mean <- C_cross %*% C_inv %*% y
   }
   
+  if (f_min) { # predict at observed locations, return min expected value
+    if (cov == "matern") {
+      C_cross_observed_only <- MaternFun(dx, c(1, theta, 0, v))
+    } else C_cross_observed_only <- ExpFun(dx, c(1, theta, 0))
+    out$f_min <- min(C_cross_observed_only %*% C_inv %*% y)
+  }
+  
+  if (tau2) {
+    scale <- c(t(y) %*% C_inv %*% y)/length(y)
+    out$tau2 <- scale
+  } else scale <- 1
+  
   if (s2) {
-    if (!mean) C_cross <- calc_K(d_cross, theta) # g not included
+    if (!mean) {
+      if (cov == "matern") {
+        C_cross <- MaternFun(d_cross, c(1, theta, 0, v))
+      } else C_cross <- ExpFun(d_cross, c(1, theta, 0))
+    }
     C_new <- rep(1 + g, times = nrow(d_new))
     out$s2 <- scale * (C_new - diag(C_cross %*% C_inv %*% t(C_cross)))
   }
-
+  
   if (sigma) {
-    if (!mean) C_cross <- calc_K(d_cross, theta) # g not included
-    C_new <- calc_K(d_new, theta, g)
+    if (!mean) {
+      if (cov == "matern") {
+        C_cross <- MaternFun(d_cross, c(1, theta, 0, v))
+      } else C_cross <- ExpFun(d_cross, c(1, theta, 0))
+    }
+    if (cov == "matern") {
+      C_new <- MaternFun(d_new, c(1, theta, g, v)) 
+    } else C_new <- ExpFun(d_new, c(1, theta, g))
     out$sigma <- scale * (C_new - (C_cross %*% C_inv %*% t(C_cross)))
   }
-
+  
   return(out)
 }
 
@@ -92,15 +76,14 @@ krig <- function(y, dx, d_new = NULL, d_cross = NULL, theta, g, mean = TRUE,
 # Credit given to the "laGP" package (Robert B Gramacy & Furong Sun)
 
 invdet <- function(M) {
-
+  
   n <- nrow(M)
   out <- .C("inv_det_R",
             n = as.integer(n),
             M = as.double(M),
             Mi = as.double(diag(n)),
-            ldet = double(1),
-            PACKAGE = "deepgp")
-
+            ldet = double(1))
+  
   return(list(Mi = matrix(out$Mi, ncol=n), ldet = out$ldet))
 }
 
@@ -109,7 +92,7 @@ invdet <- function(M) {
 #' @description Calculates squared pairwise euclidean distances using C.
 #' 
 #' @details C code derived from the "laGP" package (Robert B Gramacy and 
-#'          Furong Sun).
+#'     Furong Sun).
 #' @param X1 matrix of input locations
 #' @param X2 matrix of second input locations (if \code{NULL}, distance is 
 #'        calculated between \code{X1} and itself)
@@ -117,8 +100,8 @@ invdet <- function(M) {
 #' 
 #' @references 
 #' Gramacy, RB and F Sun. (2016). laGP: Large-Scale Spatial Modeling via Local 
-#'     Approximate Gaussian Processes in R. \emph{Journal of Statistical 
-#'     Software 72} (1), 1-46. doi:10.18637/jss.v072.i01
+#'     Approximate Gaussian Processes in R. \emph{Journal of Statistical Software 
+#'     72} (1), 1-46. doi:10.18637/jss.v072.i01
 #' 
 #' @examples 
 #' x <- seq(0, 1, length = 10)
@@ -127,66 +110,39 @@ invdet <- function(M) {
 #' @export
 
 sq_dist <- function(X1, X2 = NULL) {
-
-  # coerse arguments and extract dimensions
+  
   X1 <- as.matrix(X1)
   n1 <- nrow(X1)
   m <- ncol(X1)
-
+  
   if(is.null(X2)) {
-    # calculate D
     outD <- .C("distance_symm_R",
                X = as.double(t(X1)),
                n = as.integer(n1),
                m = as.integer(m),
-               D = double(n1 * n1),
-               PACKAGE = "deepgp")
-
-    # return the distance matrix
+               D = double(n1 * n1))
     return(matrix(outD$D, ncol = n1, byrow = TRUE))
-
   } else {
-    # coerse arguments and extract dimensions
     X2 <- as.matrix(X2)
     n2 <- nrow(X2)
-
-    # check inputs
     if(ncol(X1) != ncol(X2)) stop("dimension of X1 & X2 do not match")
-
-    # calculate D
     outD <- .C("distance_R",
                X1 = as.double(t(X1)),
                n1 = as.integer(n1),
                X2 = as.double(t(X2)),
                n2 = as.integer(n2),
                m = as.integer(m),
-               D = double(n1 * n2),
-               PACKAGE = "deepgp")
-
-    # return the distance matrix
+               D = double(n1 * n2))
     return(matrix(outD$D, ncol = n2, byrow = TRUE))
   }
 }
 
-# Calculate Tau Hat Function --------------------------------------------------
-# Calculates MLE estimate for tau2
-
-calc_tau2 <- function(y, x, theta, g) {
-  
-  n <- length(y) # sample size
-  
-  K <- calc_K(sq_dist(x), theta, g)
-  id <- invdet(K)
-  tau2 <- (t(y) %*% id$Mi %*% y)/n
-  
-  return(c(tau2))
-}
-
 # Calculate Score Function ----------------------------------------------------
 #' @title Calculates score
-#' @description Calculates score (higher scores indicate better fits).  Only 
-#'     applicable to noisy data.  Requires full covariance matrix (e.g. 
-#'     \code{predict} with \code{lite = FALSE}).
+#' @description Calculates score, proportional to the multivariate normal log
+#'     likelihood.  Higher scores indicate better fits.  Only 
+#'     applicable to noisy data.  Requires full covariance matrix 
+#'     (e.g. \code{predict} with \code{lite = FALSE}).
 #'     
 #' @param y response vector
 #' @param mu predicted mean
@@ -194,35 +150,48 @@ calc_tau2 <- function(y, x, theta, g) {
 #' 
 #' @references 
 #' Gneiting, T, and AE Raftery. 2007. Strictly Proper Scoring Rules, Prediction, 
-#'     and Estimation. \emph{Journal of the American Statistical Association 
-#'     102} (477), 359-378.
+#'     and Estimation. \emph{Journal of the American Statistical Association 102} 
+#'     (477), 359-378.
 #' 
 #' @export
 
 score <- function(y, mu, sigma) {
   
-  if (is.null(sigma)) stop('sigma is NULL')
   id <- invdet(sigma)
   score <- (- id$ldet - t(y - mu) %*% id$Mi %*% (y - mu)) / length(y)
-  
   return(c(score))
 }
 
 # Calculate RMSE Function -----------------------------------------------------
 #' @title Calculates RMSE
-#' @description Calculates root mean square error (lower RMSE indicate better 
-#'     fits).
+#' @description Calculates root mean square error (lower RMSE indicate better fits).
 #' @param y response vector
 #' @param mu predicted mean
 #' 
 #' @examples
-#' # See "deepgp-package", "fit_one_layer", "fit_two_layer", or 
-#' # "fit_three_layer" for an example
+#' # See "deepgp-package", "fit_one_layer", "fit_two_layer", or "fit_three_layer"
+#' # for an example
 #' 
 #' @export
 
 rmse <- function(y, mu) {
-  
   return(sqrt(mean((y - mu) ^ 2)))
 }
 
+# Fill final row function -----------------------------------------------------
+# Uses kriging prediction to fill the final row of w_0 or z_0
+# Used in sequential design
+
+fill_final_row <- function(x, w_0, D, theta_w_0, cov, v) {
+  n <- nrow(x)
+  dx <- sq_dist(x)
+  new_w <- vector(length = D)
+  old_x <- x[1:(n - 1), ]
+  new_x <- matrix(x[n, ], nrow = 1)
+  for (i in 1:D) {
+    new_w[i] <- krig(w_0[, i], dx[1:(n - 1), 1:(n - 1)], 
+                     d_cross = sq_dist(new_x, old_x), theta = theta_w_0[i], 
+                     g = eps, cov = cov, v = v)$mean
+  }
+  return(rbind(w_0, new_w))
+}

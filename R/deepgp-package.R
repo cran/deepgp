@@ -1,4 +1,14 @@
 
+# Imported Functions ----------------------------------------------------------
+#' @importFrom grDevices heat.colors
+#' @importFrom graphics image lines matlines par plot points contour
+#' @importFrom stats cov dgamma dnorm pnorm qnorm rnorm runif var
+#' @importFrom parallel makeCluster detectCores stopCluster
+#' @importFrom doParallel registerDoParallel
+#' @importFrom foreach %dopar% foreach
+#' @importFrom Rcpp sourceCpp
+#' @importFrom mvtnorm rmvnorm
+
 # Package Documentation -------------------------------------------------------
 #' @useDynLib deepgp, .registration = TRUE
 #' @title Package deepgp
@@ -9,12 +19,12 @@
 #' @description Performs model fitting and sequential design for deep Gaussian
 #'     processes following Sauer, Gramacy, and Higdon (2020) <arXiv:2012.08015>.  
 #'     Models extend up to three layers deep; a one layer model is equivalent 
-#'     to typical Gaussian process regression.  Sequential design criteria 
+#'     to typical Gaussian process regression.  Both Matern and squared exponential
+#'     kernels are implemented.  Sequential design criteria 
 #'     include integrated mean-squared error (IMSE), active learning Cohn (ALC), 
-#'     and expected improvement (EI).  Covariance structure is based on inverse 
-#'     exponentiated squared euclidean distance.  Applicable to noisy and 
+#'     and expected improvement (EI).  Applicable to both noisy and 
 #'     deterministic functions.  Incorporates SNOW parallelization and 
-#'     utilizes C under the hood.
+#'     utilizes C and C++ under the hood.
 #' 
 #' @section Important Functions:
 #' \itemize{
@@ -28,20 +38,18 @@
 #'   \item \code{\link[deepgp]{trim}}: cuts off burn-in and optionally thins 
 #'   samples
 #'   \item \code{\link[deepgp]{predict}}: calculates posterior mean and 
-#'   variance over a set of input locations
+#'   variance over a set of input locations (optionally calculates EI)
 #'   \item \code{\link[deepgp]{plot}}: produces trace plots, hidden layer 
 #'   plots, and posterior plots
 #'   \item \code{\link[deepgp]{ALC}}: calculates active learning Cohn over 
 #'   set of input locations using reference grid
 #'   \item \code{\link[deepgp]{IMSE}}: calculates integrated mean-squared error
 #'    over set of input locations
-#'   \item \code{\link[deepgp]{EI}}: calculates expected improvement over set 
-#'   of input locations
 #' }
 #' 
 #' @references 
 #' Sauer, A, RB Gramacy, and D Higdon. 2020. "Active Learning for Deep Gaussian 
-#'     Process Surrogates." arXiv:2012.08015. \cr\cr
+#'     Process Surrogates." \emph{Technometrics, to appear;} arXiv:2012.08015. \cr\cr
 #' Binois, M, J Huang, RB Gramacy, and M Ludkovski. 2019. Replication or 
 #'     Exploration? Sequential Design for Stochastic Simulation Experiments. 
 #'     \emph{Technometrics 61}, 7-23. Taylor & Francis. 
@@ -58,47 +66,46 @@
 #'     Mustererkennung 2000, 27-34. New York, NY: Springer Verlag.
 #' 
 #' @examples \donttest{
-#' # 1. One Layer and EI ------------------------------------------------------
+#' # 1. One Layer and EI ---------------------------------------------------------
 #' 
 #' f <- function(x) {
 #'   sin(5 * pi * x) / (2 * x) + (x - 1) ^ 4
 #' }
-#'   
+#' 
 #' # Training data
 #' x <- seq(0.5, 2, length = 30)
 #' y <- f(x) + rnorm(30, 0, 0.01)
-#'   
+#' 
 #' # Testing data
 #' xx <- seq(0.5, 2, length = 100)
 #' yy <- f(xx)
-#'   
+#' 
 #' # Standardize inputs and outputs
 #' xx <- (xx - min(x)) / (max(x) - min(x))
 #' x <- (x - min(x)) / (max(x) - min(x))
 #' yy <- (yy - mean(y)) / sd(y)
 #' y <- (y - mean(y)) / sd(y)
-#'   
+#' 
 #' # Conduct MCMC
 #' fit <- fit_one_layer(x, y, nmcmc = 10000)
 #' plot(fit) # investigate trace plots
 #' fit <- trim(fit, 8000, 2)
-#'   
+#' 
 #' # Predict and calculate EI
-#' fit <- predict(fit, xx, lite = TRUE, store_all = TRUE)
-#' ei <- EI(fit)
-#'   
+#' fit <- predict(fit, xx, EI = TRUE)
+#' 
 #' # Visualize Fit
 #' plot(fit)
 #' par(new = TRUE) # overlay EI
-#' plot(xx, ei$value, type = 'l', lty = 2, axes = FALSE, xlab = '', ylab = '')
+#' plot(xx, fit$EI, type = 'l', lty = 2, axes = FALSE, xlab = '', ylab = '')
 #' 
 #' # Select next design point
-#' x_new <- xx[which.max(ei$value)]
+#' x_new <- xx[which.max(fit$EI)]
 #' 
 #' # Evaluate fit
 #' rmse(yy, fit$mean) # lower is better
 #' 
-#' # 2. Two Layer and ALC -----------------------------------------------------
+#' # 2. Two Layer and ALC ------------------------------------------------------
 #' 
 #' f <- function(x) {
 #'   exp(-10 * x) * (cos(10 * pi * x - 1) + sin(10 * pi * x - 1)) * 5 - 0.2
@@ -113,7 +120,7 @@
 #' yy <- f(xx)
 #' 
 #' # Conduct MCMC
-#' fit <- fit_two_layer(x, y, D = 1, nmcmc = 9000)
+#' fit <- fit_two_layer(x, y, D = 1, nmcmc = 9000, cov = "exp2")
 #' fit <- continue(fit, 1000)
 #' plot(fit) # investigate trace plots
 #' fit <- trim(fit, 8000, 2)
@@ -122,7 +129,7 @@
 #' alc <- ALC(fit, xx)
 #' 
 #' # Option 2 - calculate ALC after predictions
-#' fit <- predict(fit, xx)
+#' fit <- predict(fit, xx, store_latent = TRUE)
 #' alc <- ALC(fit)
 #' 
 #' # Visualize fit
@@ -136,7 +143,7 @@
 #' # Evaluate fit
 #' rmse(yy, fit$mean) # lower is better
 #' 
-#' # 3. Three Layer and IMSE --------------------------------------------------
+#' # 3. Three Layer and IMSE ------------------------------------------------------
 #' 
 #' f <- function(x) {
 #'   i <- which(x <= 0.48)
@@ -154,7 +161,7 @@
 #' yy <- f(xx)
 #' 
 #' # Conduct MCMC
-#' fit <- fit_three_layer(x, y, D = 1, nmcmc = 10000)
+#' fit <- fit_three_layer(x, y, D = 1, nmcmc = 10000, cov = "exp2")
 #' plot(fit) # investigate trace plots
 #' fit <- trim(fit, 8000, 2)
 #' 
@@ -162,13 +169,13 @@
 #' imse <- IMSE(fit, xx)
 #' 
 #' # Option 2 - calculate IMSE after predictions
-#' fit <- predict(fit, xx)
+#' fit <- predict(fit, xx, store_latent = TRUE)
 #' imse <- IMSE(fit)
 #' 
 #' # Visualize fit
 #' plot(fit)
 #' par(new = TRUE) # overlay IMSE
-#' plot(xx, imse$value, type = 'l', lty = 2, axes = FALSE, xlab = '', ylab = '')
+#' plot(xx, imse$value, col = 2, type = 'l', lty = 2, axes = FALSE, xlab = '', ylab = '')
 #' 
 #' # Select next design point
 #' x_new <- xx[which.min(imse$value)]

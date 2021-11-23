@@ -9,7 +9,7 @@ fit_three_layer(
   y,
   D = ifelse(is.matrix(x), ncol(x), 1),
   nmcmc = 10000,
-  trace = TRUE,
+  verb = TRUE,
   w_0 = suppressWarnings(matrix(x, nrow = length(y), ncol = D)),
   z_0 = suppressWarnings(matrix(x, nrow = length(y), ncol = D)),
   g_0 = 0.01,
@@ -19,7 +19,9 @@ fit_three_layer(
   true_g = NULL,
   settings = list(l = 1, u = 2, alpha = list(g = 1.5, theta_z = 1.5, theta_w = 1.5,
     theta_y = 1.5), beta = list(g = 3.9, theta_z = 3.9/4, theta_w = 3.9/12, theta_y =
-    3.9/6))
+    3.9/6)),
+  cov = c("matern", "exp2"),
+  v = 2.5
 )
 }
 \arguments{
@@ -32,15 +34,15 @@ dimension of \code{x}}
 
 \item{nmcmc}{number of MCMC iterations}
 
-\item{trace}{logical indicating whether to print iteration progress}
+\item{verb}{logical indicating whether to print iteration progress}
 
-\item{w_0}{initial value for hidden layer \code{w}, defaults to identity 
-mapping (must be matrix of dimension \code{nrow(x)} by \code{D} or 
-dimension \code{nrow(x) - 1} by \code{D})}
+\item{w_0}{initial value for hidden layer \code{w} (must be matrix 
+of dimension \code{nrow(x)} by \code{D} or  dimension 
+\code{nrow(x) - 1} by \code{D}).  Defaults to the identity mapping.}
 
-\item{z_0}{initial value for hidden layer \code{z}, defaults to identity 
-mapping (must be matrix of dimension \code{nrow(x)} by \code{D} or 
-dimension \code{nrow(x) - 1} by \code{D})}
+\item{z_0}{initial value for hidden layer \code{z} (must be matrix 
+of dimension \code{nrow(x)} by \code{D} or  dimension 
+\code{nrow(x) - 1} by \code{D}).  Defaults to the identity mapping.}
 
 \item{g_0}{initial value for \code{g}}
 
@@ -59,14 +61,20 @@ small may cause numerical issues in matrix inversions.}
 
 \item{settings}{hyperparameters for proposals and priors on \code{g}, 
 \code{theta_y}, \code{theta_w}, and \code{theta_z}}
+
+\item{cov}{covariance kernel, either Matern or squared exponential (\code{exp2})}
+
+\item{v}{Matern smoothness parameter (only used if \code{cov = "matern"})}
 }
 \value{
-a list of the S3 class "\code{dgp3}" with elements:
+a list of the S3 class \code{dgp3} with elements:
 \itemize{
   \item \code{x}: copy of input matrix
   \item \code{y}: copy of response vector
   \item \code{nmcmc}: number of MCMC iterations
   \item \code{settings}: copy of proposal/prior settings
+  \item \code{cov}: copy of covariance kernel setting
+  \item \code{v}: copy of Matern smoothness parameter (if \code{cov = "matern"}) 
   \item \code{g}: vector of MCMC samples for \code{g}
   \item \code{theta_y}: vector of MCMC samples for \code{theta_y} (length 
         scale of outer layer)
@@ -81,16 +89,16 @@ a list of the S3 class "\code{dgp3}" with elements:
 }
 \description{
 Conducts MCMC sampling of hyperparameters, hidden layer 
-    "\code{z}", and hidden layer "\code{w}" for a three layer deep GP.  
-    Covariance structure is based on inverse exponentiated squared euclidean 
-    distance.  Separate length scale parameters "\code{theta_z}", 
-    "\code{theta_w}", and "\code{theta_y}" govern the correlation 
+    \code{z}, and hidden layer \code{w} for a three layer deep GP.  
+    Separate length scale parameters \code{theta_z}, 
+    \code{theta_w}, and \code{theta_y} govern the correlation 
     strength of the inner layer, middle layer, and outer layer respectively.  
-    Nugget parameter "\code{g}" governs noise on the outer layer.
+    Nugget parameter \code{g} governs noise on the outer layer.  In Matern 
+    covariance, \code{v} governs smoothness.
 }
 \details{
-Maps inputs "\code{x}" through hidden layer "\code{z}" then hidden
-    layer "\code{w}" to outputs "\code{y}".  Conducts sampling of the hidden 
+Maps inputs \code{x} through hidden layer \code{z} then hidden
+    layer \code{w} to outputs \code{y}.  Conducts sampling of the hidden 
     layers using Elliptical Slice sampling.  Utilizes Metropolis Hastings 
     sampling of the length scale and nugget parameters with proposals and 
     priors controlled by \code{settings}.  Proposals for \code{g}, 
@@ -103,10 +111,10 @@ Maps inputs "\code{x}" through hidden layer "\code{z}" then hidden
     Priors on \code{g}, \code{theta_y}, \code{theta_w}, and \code{theta_z} 
     follow Gamma distributions with shape parameter (\code{alpha}) and rate 
     parameter (\code{beta}) provided in \code{settings}.  These priors are 
-    designed for "\code{x}" scaled to [0,1] and "\code{y}" scaled to have 
+    designed for \code{x} scaled to [0, 1] and \code{y} scaled to have 
     mean 0 and variance 1.  
     
-    The output object of class "\code{dgp3}" is designed for use with 
+    The output object of class \code{dgp3} is designed for use with 
     \code{continue}, \code{trim}, and \code{predict}. If \code{z_0} and 
     \code{w_0} are of dimension \code{nrow(x) - 1} by \code{D}, the final 
     rows are predicted using kriging.  This is helpful in sequential design 
@@ -122,16 +130,16 @@ Maps inputs "\code{x}" through hidden layer "\code{z}" then hidden
 f <- function(x) {
   if (x <= 0.4) return(-1)
   if (x >= 0.6) return(1)
-  if (x > 0.4 & x < 0.6) return(10*(x-0.5))
+  if (x > 0.4 & x < 0.6) return(10 * (x - 0.5))
 }
 x <- seq(0.05, 0.95, length = 7)
 y <- sapply(x, f)
 x_new <- seq(0, 1, length = 100)
 
 # Fit model and calculate IMSPE
-fit <- fit_three_layer(x, y, nmcmc = 500)
+fit <- fit_three_layer(x, y, nmcmc = 500, cov = "exp2")
 fit <- trim(fit, 400)
-fit <- predict(fit, x_new)
+fit <- predict(fit, x_new, store_latent = TRUE)
 imse <- IMSE(fit)
 
 \donttest{
@@ -153,7 +161,7 @@ xx <- seq(0, 1, length = 100)
 yy <- f(xx)
 
 # Conduct MCMC
-fit <- fit_three_layer(x, y, D = 1, nmcmc = 10000)
+fit <- fit_three_layer(x, y, D = 1, nmcmc = 10000, cov = "exp2")
 plot(fit) # investigate trace plots
 fit <- trim(fit, 8000, 2)
 
@@ -179,7 +187,8 @@ rmse(yy, fit$mean) # lower is better
 }
 \references{
 Sauer, A, RB Gramacy, and D Higdon. 2020. "Active Learning for Deep Gaussian 
-    Process Surrogates." arXiv:2012.08015. \cr\cr
+    Process Surrogates." \emph{Technometrics, to appear;} arXiv:2012.08015. 
+    \cr\cr
 Murray, I, RP Adams, and D MacKay. 2010. "Elliptical slice sampling."
      \emph{Journal of Machine Learning Research 9}, 541-548.
 }

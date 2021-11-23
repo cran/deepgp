@@ -7,13 +7,13 @@
 \alias{continue.dgp3}
 \title{Continues MCMC sampling}
 \usage{
-continue(object, new_mcmc, trace)
+continue(object, new_mcmc, verb)
 
-\method{continue}{gp}(object, new_mcmc = 1000, trace = TRUE)
+\method{continue}{gp}(object, new_mcmc = 1000, verb = TRUE)
 
-\method{continue}{dgp2}(object, new_mcmc = 1000, trace = TRUE)
+\method{continue}{dgp2}(object, new_mcmc = 1000, verb = TRUE)
 
-\method{continue}{dgp3}(object, new_mcmc = 1000, trace = TRUE)
+\method{continue}{dgp3}(object, new_mcmc = 1000, verb = TRUE)
 }
 \arguments{
 \item{object}{object from \code{fit_one_layer}, \code{fit_two_layer}, or 
@@ -21,20 +21,20 @@ continue(object, new_mcmc, trace)
 
 \item{new_mcmc}{number of MCMC iterations to conduct and append}
 
-\item{trace}{logical indicating whether to print iteration progress}
+\item{verb}{logical indicating whether to print iteration progress}
 }
 \value{
 object of the same class with the new iterations appended
 }
 \description{
-Acts on a "\code{gp}", "\code{dgp2}", or "\code{dgp3}" object.  
+Acts on a \code{gp}, \code{dgp2}, or \code{dgp3} object.  
     Continues MCMC sampling of hyperparameters and hidden layers and appends
     results to existing object.
 }
 \details{
-See "\code{fit_one_layer}", "\code{fit_two_layer}", or 
-    "\code{fit_three_layer}" for details on MCMC.  The resulting object 
-    will have \code{nmcmc} equal to the previous \code{nmcmc} plus 
+See \code{fit_one_layer}, \code{fit_two_layer}, or 
+    \code{fit_three_layer} for details on MCMC.  The resulting 
+    object will have \code{nmcmc} equal to the previous \code{nmcmc} plus 
     \code{new_mcmc}.  It is recommended to start an MCMC fit then 
     investigate trace plots to assess burn-in.  The primary use of this 
     function is to gather more MCMC iterations in order to obtain burned-in 

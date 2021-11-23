@@ -12,11 +12,10 @@ rmse(y, mu)
 \item{mu}{predicted mean}
 }
 \description{
-Calculates root mean square error (lower RMSE indicate better 
-    fits).
+Calculates root mean square error (lower RMSE indicate better fits).
 }
 \examples{
-# See "deepgp-package", "fit_one_layer", "fit_two_layer", or 
-# "fit_three_layer" for an example
+# See "deepgp-package", "fit_one_layer", "fit_two_layer", or "fit_three_layer"
+# for an example
 
 }

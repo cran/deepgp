@@ -5,29 +5,28 @@
 \alias{plot.gp}
 \alias{plot.dgp2}
 \alias{plot.dgp3}
-\title{Plots object from "\code{deepgp}" package}
+\title{Plots object from \code{deepgp} package}
 \usage{
-\method{plot}{gp}(x, trace = TRUE, predict = TRUE, ...)
+\method{plot}{gp}(x, trace = NULL, predict = NULL, ...)
 
-\method{plot}{dgp2}(x, trace = TRUE, hidden = FALSE, predict = TRUE, ...)
+\method{plot}{dgp2}(x, trace = NULL, hidden = NULL, predict = NULL, ...)
 
-\method{plot}{dgp3}(x, trace = TRUE, hidden = FALSE, predict = TRUE, ...)
+\method{plot}{dgp3}(x, trace = NULL, hidden = NULL, predict = NULL, ...)
 }
 \arguments{
 \item{x}{object of class \code{gp}, \code{dgp2}, or \code{dgp3}}
 
 \item{trace}{logical indicating whether to generate trace plots}
 
-\item{predict}{logical indicating whether to generate posterior predictive 
-plot}
+\item{predict}{logical indicating whether to generate posterior predictive plot}
 
 \item{...}{N/A}
 
 \item{hidden}{logical indicating whether to generate plots of hidden layers
-("\code{dgp2}" or "\code{dgp3}" only)}
+(\code{dgp2} or \code{dgp3} only)}
 }
 \description{
-Acts on a "\code{gp}", "\code{dgp2}", or "\code{dgp3}" object.  
+Acts on a \code{gp}, \code{dgp2}, or \code{dgp3} object.  
     Generates trace plots for length scale and nugget hyperparameters.
     Generates plots of hidden layers for one-dimensional inputs.  Generates
     plots of the posterior mean and estimated 95\% prediction intervals for 
@@ -42,7 +41,7 @@ Trace plots are useful in assessing burn-in.  Hidden layer plots
     visualization.
 }
 \examples{
-# See "deepgp-package", "fit_one_layer", "fit_two_layer", or 
-# "fit_three_layer" for an example
+# See "deepgp-package", "fit_one_layer", "fit_two_layer", or "fit_three_layer"
+# for an example
 
 }

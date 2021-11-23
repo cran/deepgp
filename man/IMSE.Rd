@@ -27,36 +27,36 @@ parallelization is used}
 \value{
 list with elements:
 \itemize{
-  \item \code{value}: vector of IMSE values, indices correspond to 
-        \code{x_new}
+  \item \code{value}: vector of IMSE values, indices correspond to \code{x_new}
   \item \code{time}: computation time in seconds
 }
 }
 \description{
-Acts on a "\code{gp}", "\code{dgp2}", or "\code{dgp3}" object.
-    Calculates IMSE over the input locations \code{x_new}.  Optionally 
-    utilizes SNOW parallelization.  User should select the point with the 
-    lowest IMSE to add to the design.
+Acts on a \code{gp}, \code{dgp2}, or \code{dgp3} object.
+    Current version requires squared exponential covariance
+    (\code{cov = "exp2"}).  Calculates IMSE over the input locations 
+    \code{x_new}.  Optionally utilizes SNOW parallelization.  User should 
+    select the point with the lowest IMSE to add to the design.
 }
 \details{
 All iterations in the object are used in the calculation, so samples
     should be burned-in.  Thinning the samples using \code{trim} will speed 
     up computation.  This function may be used in two ways:
     \itemize{
-        \item called on an object with only MCMC iterations, in which case 
-              \code{x_new} must be specified
-        \item called on an object that has been predicted over, in which case
-        the \code{x_new} from \code{predict} is used
+        \item Option 1: called on an object with only MCMC iterations, in 
+        which case \code{x_new} must be specified
+        \item Option 2: called on an object that has been predicted over, in 
+        which case the \code{x_new} from \code{predict} is used
     }
-    In \code{dgp2} and \code{dgp3} objects that have been run through 
-    \code{predict}, the stored \code{w_new} mappings are used.  Through 
-    \code{predict}, the user may specify a mean mapping 
-    (\code{mean_map = TRUE}) or a full sample from the MVN distribution over 
-    \code{w_new} (\code{mean_map = FALSE}).  When the object has not yet 
-    been predicted over, the mean mapping is used.
+    In Option 2, it is recommended to set \code{store_latent = TRUE} for 
+    \code{dgp2} and \code{dgp3} objects so latent mappings do not have to 
+    be re-calculated.  Through \code{predict}, the user may
+    specify a mean mapping (\code{mean_map = TRUE}) or a full sample from 
+    the MVN distribution over \code{w_new} (\code{mean_map = FALSE}).  When 
+    the object has not yet been predicted over (Option 1), the mean mapping 
+    is used.
     
-    SNOW parallelization reduces computation time but requires more memory 
-    storage.
+    SNOW parallelization reduces computation time but requires more memory storage.
 }
 \examples{
 # See "deepgp-package" or "fit_three_layer" for an example
@@ -64,9 +64,9 @@ All iterations in the object are used in the calculation, so samples
 }
 \references{
 Sauer, A, RB Gramacy, and D Higdon. 2020. "Active Learning for Deep Gaussian 
-    Process Surrogates." arXiv:2012.08015. \cr\cr
-Binois, M, J Huang, RB Gramacy, and M Ludkovski. 2019. Replication or 
-    Exploration? Sequential Design for Stochastic Simulation Experiments.
-    \emph{Technometrics 61}, 7-23. Taylor & Francis. 
-    doi:10.1080/00401706.2018.1469433.
+    Process Surrogates." \emph{Technometrics, to appear:} arXiv:2012.08015. 
+    \cr\cr
+Binois, M, J Huang, RB Gramacy, and M Ludkovski. 2019. "Replication or Exploration? 
+    Sequential Design for Stochastic Simulation Experiments." \emph{Technometrics 
+    61}, 7-23. Taylor & Francis. doi:10.1080/00401706.2018.1469433.
 }

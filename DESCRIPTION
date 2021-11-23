@@ -1,26 +1,28 @@
 Package: deepgp
 Type: Package
 Title: Sequential Design for Deep Gaussian Processes using MCMC
-Version: 0.2.1
-Date: 2021-07-15
+Version: 0.3.0
+Date: 2021-11-23
 Author: Annie Sauer <anniees@vt.edu>
 Maintainer: Annie Sauer <anniees@vt.edu>
 Depends: R (>= 3.6)
 Description: Performs model fitting and sequential design for deep Gaussian
      processes following Sauer, Gramacy, and Higdon (2020) <arXiv:2012.08015>.  
-     Models extend up to three layers deep; a one layer model is equivalent to 
-     typical Gaussian process regression.  Sequential design criteria include 
-     integrated mean-squared error (IMSE), active learning Cohn (ALC), and 
-     expected improvement (EI).  Covariance structure is based on inverse 
-     exponentiated squared euclidean distance.  Applicable to noisy and 
-     deterministic functions.  Incorporates SNOW parallelization and utilizes 
-     C under the hood.
+     Models extend up to three layers deep; a one layer model is equivalent 
+     to typical Gaussian process regression.  Covariance kernel options are 
+     Matern (default) and squared exponential.  Sequential design criteria 
+     include integrated mean-squared error (IMSE), active learning Cohn (ALC), 
+     and expected improvement (EI).  Applicable to both noisy and 
+     deterministic functions.  Incorporates SNOW parallelization and 
+     utilizes C and C++ under the hood.
 License: LGPL
 Encoding: UTF-8
 NeedsCompilation: yes
-Imports: grDevices, graphics, stats, doParallel, foreach, parallel
+Imports: grDevices, graphics, stats, doParallel, foreach, parallel,
+        Rcpp, mvtnorm
+LinkingTo: Rcpp, RcppArmadillo, BH
 Suggests: akima, knitr
 RoxygenNote: 7.1.1
-Packaged: 2021-07-15 15:20:51 UTC; anniesauer
+Packaged: 2021-11-23 21:06:50 UTC; annie
 Repository: CRAN
-Date/Publication: 2021-07-15 15:40:07 UTC
+Date/Publication: 2021-11-23 23:20:11 UTC

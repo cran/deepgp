@@ -14,12 +14,13 @@ score(y, mu, sigma)
 \item{sigma}{predicted covariance}
 }
 \description{
-Calculates score (higher scores indicate better fits).  Only 
-    applicable to noisy data.  Requires full covariance matrix (e.g. 
-    \code{predict} with \code{lite = FALSE}).
+Calculates score, proportional to the multivariate normal log
+    likelihood.  Higher scores indicate better fits.  Only 
+    applicable to noisy data.  Requires full covariance matrix 
+    (e.g. \code{predict} with \code{lite = FALSE}).
 }
 \references{
 Gneiting, T, and AE Raftery. 2007. Strictly Proper Scoring Rules, Prediction, 
-    and Estimation. \emph{Journal of the American Statistical Association 
-    102} (477), 359-378.
+    and Estimation. \emph{Journal of the American Statistical Association 102} 
+    (477), 359-378.
 }

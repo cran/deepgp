@@ -5,21 +5,22 @@
 #   predict.dgp2
 #   predict.dgp3
 
-# Define Predict for S3 Objects -----------------------------------------------
+# Define Predict for S3 Objects --------------------------------------------------
 #' @name predict
 #' @title Predict posterior mean and variance/covariance
-#' @description Acts on a "\code{gp}", "\code{dgp2}", or "\code{dgp3}" object.
+#' @description Acts on a \code{gp}, \code{dgp2}, or \code{dgp3} object.
 #'     Calculates posterior mean and variance/covariance over specified input 
-#'     locations.  Optionally utilizes SNOW parallelization.
+#'     locations.  Optionally calculates expected improvement (EI) over candidate
+#'     inputs.  Optionally utilizes SNOW parallelization.
 #' 
 #' @details All iterations in the object are used for prediction, so samples 
 #'     should be burned-in.  Thinning the samples using \code{trim} will speed 
 #'     up computation.  Posterior moments are calculated using conditional 
 #'     expectation and variance.  As a default, only point-wise variance is 
-#'     calculated.  Full covariance may be calculated using \code{lite = FALSE}.  
-#'     The storage of means and point-wise variances for each individual 
-#'     iteration (specified using \code{store_all = TRUE}) is required in order 
-#'     to use \code{EI}.
+#'     calculated.  Full covariance may be calculated using \code{lite = FALSE}. 
+#'     
+#'     Expected improvement is calculated with the goal of minimizing the 
+#'     response.  See Chapter 7 of Gramacy (2020) for details.
 #'     
 #'     SNOW parallelization reduces computation time but requires significantly 
 #'     more memory storage.  Use \code{cores = 1} if memory is limited.
@@ -28,13 +29,15 @@
 #'        \code{fit_three_layer} with burn-in already removed
 #' @param x_new matrix of predictive input locations
 #' @param lite logical indicating whether to calculate only point-wise 
-#'        variances (\code{lite = TRUE}), or full covariance 
+#'        variances (\code{lite = TRUE}) or full covariance 
 #'        (\code{lite = FALSE})
-#' @param store_all logical indicating whether to store mean and variance for 
-#'        each iteration
-#' @param mean_map denotes whether to map hidden layers using conditional mean 
-#'        or a random sample from the full MVN distribution 
-#'        ("\code{dgp2}" or "\code{dgp3}" only) 
+#' @param EI logical indicating whether to calculate expected improvement 
+#'        (for minimizing the response)
+#' @param store_latent logical indicating whether to store and return mapped 
+#'        values of latent layers (\code{dgp2} or \code{dgp3} only)
+#' @param mean_map logical indicating whether to map hidden layers using 
+#'        conditional mean (\code{mean_map = TRUE}) or using a random sample
+#'        from the full MVN distribution (\code{dgp2} or \code{dgp3} only) 
 #' @param cores number of cores to utilize in parallel, by default no 
 #'        parallelization is used
 #' @param ... N/A
@@ -54,31 +57,28 @@
 #'         \code{x_new} location (only returned when \code{lite = FALSE})
 #'   \item \code{Sigma_smooth}: predicted posterior covariance with \code{g} 
 #'         removed from the diagonal (only returned when \code{lite = FALSE})
-#'   \item \code{mu_t}: matrix of posterior mean for each iteration, column 
-#'         index corresponds to iteration and row index corresponds to 
-#'         \code{x_new} location (only returned when \code{store_all = TRUE})
-#'   \item \code{s2_t}: matrix of posterior point-wise variance for each 
-#'         iteration, column index corresponds to iteration and row index 
-#'         corresponds to \code{x_new} location (only returned when 
-#'         \code{store_all = TRUE})
-#'   \item \code{w_new}: list of hidden layer mappings, list index corresponds 
-#'         to iteration and row index corresponds to \code{x_new} location 
-#'         ("\code{dgp2}" and "\code{dgp3}" only)
-#'   \item \code{z_new}: list of hidden layer mappings, list index corresponds 
-#'         to iteration and row index corresponds to \code{x_new} location 
-#'         ("\code{dgp3}" only) 
+#'   \item \code{EI}: vector of expected improvement values, indices correspond 
+#'         to \code{x_new} location (only returned when \code{EI = TRUE})
+#'   \item \code{w_new}: list of hidden layer mappings (only returned when 
+#'         \code{store_latent = TRUE}), list index corresponds to iteration and 
+#'         row index corresponds to \code{x_new} location (\code{dgp2} and 
+#'         \code{dgp3} only)
+#'   \item \code{z_new}: list of hidden layer mappings (only returned when 
+#'         \code{store_latent = TRUE}), list index corresponds to iteration and 
+#'         row index corresponds to \code{x_new} location (\code{dgp3} only) 
 #' }
 #' Computation time is added to the computation time of the existing object.
 #' 
 #' @references 
 #' Sauer, A, RB Gramacy, and D Higdon. 2020. "Active Learning for Deep Gaussian 
-#'     Process Surrogates." arXiv:2012.08015. \cr\cr
+#'     Process Surrogates." \emph{Technometrics, to appear;} arXiv:2012.08015. 
+#'     \cr\cr
 #' Gramacy, RB. \emph{Surrogates: Gaussian Process Modeling, Design, and 
 #'     Optimization for the Applied Sciences}. Chapman Hall, 2020.
 #' 
 #' @examples 
-#' # See "deepgp-package", "fit_one_layer", "fit_two_layer", or 
-#' # "fit_three_layer" for an example
+#' # See "deepgp-package", "fit_one_layer", "fit_two_layer", or "fit_three_layer"
+#' # for an example
 #' 
 #' @rdname predict
 NULL
@@ -87,17 +87,12 @@ NULL
 #' @rdname predict
 #' @export
 
-predict.gp <- function(object, x_new, lite = TRUE, store_all = FALSE, 
-                       cores = 1, ...) {
+predict.gp <- function(object, x_new, lite = TRUE, EI = FALSE, cores = 1, ...) {
   
   tic <- proc.time()[3]
-  
-  # check that x_new is a matrix
   if (is.numeric(x_new)) x_new <- as.matrix(x_new)
-  
   object$x_new <- x_new
-  
-  m <- nrow(object$x_new)
+  n_new <- nrow(object$x_new)
   dx <- sq_dist(object$x)
   d_new <- sq_dist(object$x_new)
   d_cross <- sq_dist(object$x_new, object$x)
@@ -105,20 +100,28 @@ predict.gp <- function(object, x_new, lite = TRUE, store_all = FALSE,
   if (cores == 1) { # running on a single core, no parallelization
     
     tau2 <- vector(length = object$nmcmc)
-    mu_t <- matrix(nrow = m, ncol = object$nmcmc)
+    mu_t <- matrix(nrow = n_new, ncol = object$nmcmc)
     if (lite) {
-      s2_t <- matrix(nrow = m, ncol = object$nmcmc)
-    } else sigma_t_sum <- matrix(0, nrow = m, ncol = m) # full covariance
+      s2_sum <- vector(length = n_new)
+    } else sigma_sum <- matrix(0, nrow = n_new, ncol = n_new)
+    if (EI) ei_sum <- vector(length = n_new)
     
+    # calculate predictions for each candidate MCMC iteration
     for(t in 1:object$nmcmc) {
-      # map x_new to mu_t and sigma_t
       k <- krig(object$y, dx, d_new, d_cross, object$theta[t], object$g[t], 
-                s2 = lite, sigma = !lite)
+                s2 = lite, sigma = !lite, tau2 = TRUE, f_min = EI, 
+                cov = object$cov, v = object$v)
       tau2[t] <- k$tau2
       mu_t[, t] <- k$mean
       if (lite) {
-        s2_t[, t] <- k$s2
-      } else sigma_t_sum <- sigma_t_sum + k$sigma
+        s2_sum <- s2_sum + k$s2
+      } else sigma_sum <- sigma_sum + k$sigma
+      if (EI) {
+        if (lite) {
+          sig2 <- k$s2 - (k$tau2 * object$g[t]) 
+        } else sig2 <- diag(k$sigma) - (k$tau2 * object$g[t])
+        ei_sum <- ei_sum + exp_improv(k$mean, sig2, k$f_min)
+      }
     }
     
   } else { # use foreach to run in parallel
@@ -128,9 +131,17 @@ predict.gp <- function(object, x_new, lite = TRUE, store_all = FALSE,
     cl <- makeCluster(cores)
     registerDoParallel(cl)
     
+    # calculate predictions for each candidate MCMC iteration
     result <- foreach(t = 1:object$nmcmc) %dopar% {
       k <- krig(object$y, dx, d_new, d_cross, object$theta[t], object$g[t], 
-                s2 = lite, sigma = !lite)
+                s2 = lite, sigma = !lite, tau2 = TRUE, f_min = EI,
+                cov = object$cov, v = object$v)
+      if (EI) {
+        if (lite) {
+          sig2 <- k$s2 - (k$tau2 * object$g[t]) 
+        } else sig2 <- diag(k$sigma) - (k$tau2 * object$g[t])
+        k$ei <- exp_improv(k$mean, sig2, k$f_min)
+      }
       return(k)
     }
     
@@ -140,33 +151,25 @@ predict.gp <- function(object, x_new, lite = TRUE, store_all = FALSE,
     mu_t <- sapply(result, with, eval(parse(text = "mean")))
     tau2 <- sapply(result, with, eval(parse(text = "tau2")))
     if (lite) {
-      s2_t <- sapply(result, with, eval(parse(text = "s2")))
-    } else sigma_t_sum <- Reduce("+", lapply(result, with, 
-                                             eval(parse(text = "sigma"))))
+      s2_sum <- Reduce("+", lapply(result, with, eval(parse(text = "s2"))))
+    } else {
+      sigma_sum <- Reduce("+", lapply(result, with, eval(parse(text = "sigma"))))
+    }
+    if (EI) ei_sum <- Reduce("+", lapply(result, with, eval(parse(text = "ei"))))
   } # end of else statement
   
-  # calculate expected value and covariance of means
-  mu_y <- rowMeans(mu_t)
-  mu_cov <- cov(t(mu_t))
-  
-  # store mean and s2 across iterations if requested
-  if (store_all) {
-    object$mu_t <- mu_t
-    if (lite) object$s2_t <- s2_t
-    # no option available to store all sigma matrices at this time
-  }
-  
   # add variables to the output list
+  mu_cov <- cov(t(mu_t))
+  object$mean <- rowMeans(mu_t)
   object$tau2 <- tau2
-  object$mean <- mu_y
   if (lite) { 
-    object$s2 <- rowSums(s2_t) / object$nmcmc + diag(mu_cov)
+    object$s2 <- s2_sum / object$nmcmc + diag(mu_cov)
     object$s2_smooth <- object$s2 - mean(object$g * object$tau2)
   } else {
-    object$Sigma <- sigma_t_sum / object$nmcmc + mu_cov
-    object$Sigma_smooth <- object$Sigma - diag(mean(object$g * object$tau2), m)
+    object$Sigma <- sigma_sum / object$nmcmc + mu_cov
+    object$Sigma_smooth <- object$Sigma - diag(mean(object$g * object$tau2), n_new)
   }
-  
+  if (EI) object$EI <- ei_sum / object$nmcmc
   toc <- proc.time()[3]
   object$time <- object$time + (toc - tic)
   
@@ -177,58 +180,63 @@ predict.gp <- function(object, x_new, lite = TRUE, store_all = FALSE,
 #' @rdname predict
 #' @export
 
-predict.dgp2 <- function(object, x_new, lite = TRUE, store_all = FALSE,
-                         mean_map = TRUE, cores = 1, ...) {
+predict.dgp2 <- function(object, x_new, lite = TRUE, store_latent = FALSE, 
+                         mean_map = TRUE, EI = FALSE, cores = 1, ...) {
   
   tic <- proc.time()[3]
-  
-  # check that x_new is a matrix
   if (is.numeric(x_new)) x_new <- as.matrix(x_new)
-  
   object$x_new <- x_new
-  
-  m <- nrow(object$x_new)
+  n_new <- nrow(object$x_new)
   D <- ncol(object$w[[1]])
   dx <- sq_dist(object$x)
   d_new <- sq_dist(object$x_new)
   d_cross <- sq_dist(object$x_new, object$x)
   
   if (cores == 1) { # running on a single core, no parallelization
-    w_new <- list()
-    tau2 <- vector(length = object$nmcmc)
-    mu_t <- matrix(nrow = m, ncol = object$nmcmc)
-    if (lite) {
-      s2_t <- matrix(nrow = m, ncol = object$nmcmc)
-    } else sigma_t_sum <- matrix(0, nrow = m, ncol = m)
     
+    if (store_latent) w_new_list <- list()
+    tau2 <- vector(length = object$nmcmc)
+    mu_t <- matrix(nrow = n_new, ncol = object$nmcmc)
+    if (lite) {
+      s2_sum <- vector(length = n_new)
+    } else sigma_sum <- matrix(0, nrow = n_new, ncol = n_new)
+    if (EI) ei_sum <- vector(length = n_new)
+    
+    # calculate predictions for each candidate MCMC iteration
     for(t in 1:object$nmcmc) {
-      
       w_t <- object$w[[t]]
       
       # map x_new to w_new (separately for each dimension)
-      w_new[[t]] <- matrix(nrow = m, ncol = D)
-      for (i in 1:D){
+      w_new <- matrix(nrow = n_new, ncol = D)
+      for (i in 1:D) {
         if (mean_map) {
-          k <- krig(w_t[, i], dx, d_new, d_cross, object$theta_w[t, i], 
-                    g = NULL, s2 = FALSE, sigma = FALSE,
-                    tau2 = FALSE)
-          w_new[[t]][, i] <- k$mean
+          k <- krig(w_t[, i], dx, NULL, d_cross, object$theta_w[t, i], 
+                    g = eps, cov = object$cov, v = object$v)
+          w_new[, i] <- k$mean
         } else {
           k <- krig(w_t[, i], dx, d_new, d_cross, object$theta_w[t, i], 
-                    g = NULL, tau2 = FALSE)
-          w_new[[t]][, i] <- rand_mvn(1, k$mean, k$sigma)
+                    g = eps, sigma = TRUE, cov = object$cov, v = object$v)
+          w_new[, i] <- mvtnorm::rmvnorm(1, k$mean, k$sigma)
         } 
       } # end of i for loop
+      if (store_latent) w_new_list[[t]] <- w_new
       
-      # map w_new to mu_t and sigma_t
-      k <- krig(object$y, sq_dist(w_t), sq_dist(w_new[[t]]), 
-                sq_dist(w_new[[t]], w_t), object$theta_y[t], object$g[t], 
-                s2 = lite, sigma = !lite)
+      # map w_new to y
+      k <- krig(object$y, sq_dist(w_t), sq_dist(w_new), 
+                sq_dist(w_new, w_t), object$theta_y[t], object$g[t], 
+                s2 = lite, sigma = !lite, tau2 = TRUE, f_min = EI,
+                cov = object$cov, v = object$v)
       tau2[t] <- k$tau2
       mu_t[, t] <- k$mean
       if (lite) {
-        s2_t[, t] <- k$s2
-      } else sigma_t_sum <- sigma_t_sum + k$sigma
+        s2_sum <- s2_sum + k$s2
+      } else sigma_sum <- sigma_sum + k$sigma
+      if (EI) {
+        if (lite) {
+          sig2 <- k$s2 - (k$tau2 * object$g[t]) 
+        } else sig2 <- diag(k$sigma) - (k$tau2 * object$g[t])
+        ei_sum <- ei_sum + exp_improv(k$mean, sig2, k$f_min)
+      }
     } # end of t for loop
     
   } else { # use foreach to run in parallel
@@ -239,27 +247,34 @@ predict.dgp2 <- function(object, x_new, lite = TRUE, store_all = FALSE,
     registerDoParallel(cl)
     
     result <- foreach(t = 1:object$nmcmc) %dopar% {
-      
       w_t <- object$w[[t]]
       
       # map x_new to w_new (separately for each dimension)
-      w_new <- matrix(nrow = m, ncol = D)
+      w_new <- matrix(nrow = n_new, ncol = D)
       for (i in 1:D) {
         if (mean_map) {
-          k <- krig(w_t[, i], dx, d_new, d_cross, object$theta_w[t, i], 
-                    g = NULL, sigma = FALSE, tau2 = FALSE)
+          k <- krig(w_t[, i], dx, NULL, d_cross, object$theta_w[t, i], 
+                    g = eps, cov = object$cov, v = object$v)
           w_new[, i] <- k$mean
         } else {
           k <- krig(w_t[, i], dx, d_new, d_cross, object$theta_w[t, i], 
-                    g = NULL, tau2 = FALSE)
-          w_new[, i] <- rand_mvn(1, k$mean, k$sigma)
+                    g = eps, sigma = TRUE, cov = object$cov, v = object$v)
+          w_new[, i] <- mvtnorm::rmvnorm(1, k$mean, k$sigma)
         } 
       } # end of i for loop
       
-      # map w_new to mu_t and sigma_t
-      k <- krig(object$y, sq_dist(w_t), sq_dist(w_new), sq_dist(w_new, w_t),
-                object$theta_y[t], object$g[t], s2 = lite, sigma = !lite)
-      k$w_new <- w_new
+      # map w_new to y
+      k <- krig(object$y, sq_dist(w_t), sq_dist(w_new), 
+                sq_dist(w_new, w_t), object$theta_y[t], object$g[t], 
+                s2 = lite, sigma = !lite, tau2 = TRUE, f_min = EI,
+                cov = object$cov, v = object$v)
+      if (store_latent) k$w_new <- w_new
+      if (EI) {
+        if (lite) {
+          sig2 <- k$s2 - (k$tau2 * object$g[t]) 
+        } else sig2 <- diag(k$sigma) - (k$tau2 * object$g[t])
+        k$ei <- exp_improv(k$mean, sig2, k$f_min)
+      }
       return(k)
     } # end of foreach statement
     
@@ -269,35 +284,27 @@ predict.dgp2 <- function(object, x_new, lite = TRUE, store_all = FALSE,
     mu_t <- sapply(result, with, eval(parse(text = "mean")))
     tau2 <- sapply(result, with, eval(parse(text = "tau2")))
     if (lite) {
-      s2_t <- sapply(result, with, eval(parse(text = "s2")))
-    } else sigma_t_sum <- Reduce("+", lapply(result, with, 
-                                             eval(parse(text = "sigma"))))
-    w_new <- lapply(result, with, eval(parse(text = "w_new")))
+      s2_sum <- Reduce("+", lapply(result, with, eval(parse(text = "s2"))))
+    } else {
+      sigma_sum <- Reduce("+", lapply(result, with, eval(parse(text = "sigma"))))
+    }
+    if (store_latent) w_new_list <- lapply(result, with, eval(parse(text = "w_new")))
+    if (EI) ei_sum <- Reduce("+", lapply(result, with, eval(parse(text = "ei"))))
   } # end of else statement
   
-  # calculate expected value and covariance of means
-  mu_y <- rowMeans(mu_t)
-  mu_cov <- cov(t(mu_t))
-  
-  # store mean and s2 across iterations if requested
-  if (store_all) {
-    object$mu_t <- mu_t
-    if (lite) object$s2_t <- s2_t
-    # no option available to store all sigma matrices at this time
-  }
-  
   # add variables to the output list
-  object$w_new <- w_new
+  mu_cov <- cov(t(mu_t))
+  object$mean <- rowMeans(mu_t)
   object$tau2 <- tau2
-  object$mean <- mu_y
+  if (store_latent) object$w_new <- w_new_list
   if (lite) {
-    object$s2 <- rowSums(s2_t) / object$nmcmc + diag(mu_cov)
+    object$s2 <- s2_sum / object$nmcmc + diag(mu_cov)
     object$s2_smooth <- object$s2 - mean(object$g * object$tau2)
   } else {
-    object$Sigma <- sigma_t_sum
-    object$Sigma_smooth <- object$Sigma - diag(mean(object$g * object$tau2), m)
+    object$Sigma <- sigma_sum / object$nmcmc + mu_cov
+    object$Sigma_smooth <- object$Sigma - diag(mean(object$g * object$tau2), n_new)
   }
-  
+  if (EI) object$EI <- ei_sum / object$nmcmc
   toc <- proc.time()[3]
   object$time <- object$time + (toc - tic)
   
@@ -308,75 +315,81 @@ predict.dgp2 <- function(object, x_new, lite = TRUE, store_all = FALSE,
 #' @rdname predict
 #' @export
 
-predict.dgp3 <- function(object, x_new, lite = TRUE, store_all = FALSE, 
-                         mean_map = TRUE, cores = 1, ...) {
+predict.dgp3 <- function(object, x_new, lite = TRUE, store_latent = FALSE, 
+                         mean_map = TRUE, EI = FALSE, cores = 1, ...) {
   
   tic <- proc.time()[3]
-  
-  # check that x_new is a matrix
   if (is.numeric(x_new)) x_new <- as.matrix(x_new)
-  
   object$x_new <- x_new
-  
-  m <- nrow(object$x_new)
+  n_new <- nrow(object$x_new)
   D <- ncol(object$z[[1]])
   dx <- sq_dist(object$x)
   d_new <- sq_dist(object$x_new)
   d_cross <- sq_dist(object$x_new, object$x)
   
   if (cores == 1) { # running on a single core, no parallelization
-    z_new <- list()
-    w_new <- list()
+    if (store_latent) {
+      z_new_list <- list()
+      w_new_list <- list()
+    }
     tau2 <- vector(length = object$nmcmc)
-    mu_t <- matrix(nrow = m, ncol = object$nmcmc)
+    mu_t <- matrix(nrow = n_new, ncol = object$nmcmc)
     if (lite) {
-      s2_t <- matrix(nrow = m, ncol = object$nmcmc)
-    } else sigma_t_sum <- matrix(0, nrow = m, ncol = m)
+      s2_sum <- vector(length = n_new)
+    } else sigma_sum <- matrix(0, nrow = n_new, ncol = n_new)
+    if (EI) ei_sum <- vector(length = n_new)
     
-    for(t in 1:object$nmcmc) {
-      
+    # calculate predictions for each candidate MCMC iteration
+    for (t in 1:object$nmcmc) {
       z_t <- object$z[[t]]
       w_t <- object$w[[t]]
       
       # map x_new to z_new (separately for each dimension)
-      z_new[[t]] <- matrix(nrow = m, ncol = D)
+      z_new <- matrix(nrow = n_new, ncol = D)
       for (i in 1:D) {
         if (mean_map) {
-          k <- krig(z_t[, i], dx, d_new, d_cross, object$theta_z[t, i], 
-                    g = NULL, sigma = FALSE, tau2 = FALSE)
-          z_new[[t]][, i] <- k$mean
+          k <- krig(z_t[, i], dx, NULL, d_cross, object$theta_z[t, i], 
+                    g = eps, cov = object$cov, v = object$v)
+          z_new[, i] <- k$mean
         } else {
           k <- krig(z_t[, i], dx, d_new, d_cross, object$theta_z[t, i], 
-                    g = NULL, tau2 = FALSE)
-          z_new[[t]][, i] <- rand_mvn(1, k$mean, k$sigma)
+                    g = eps, sigma = TRUE, cov = object$cov, v = object$v)
+          z_new[, i] <- mvtnorm::rmvnorm(1, k$mean, k$sigma)
         } 
       } # end of i for loop
+      if (store_latent) z_new_list[[t]] <- z_new
       
       # map z_new to w_new (separately for each dimension)
-      w_new[[t]] <- matrix(nrow = m, ncol = D)
+      w_new <- matrix(nrow = n_new, ncol = D)
       for (i in 1:D) {
         if (mean_map) { 
-          k <- krig(w_t[, i], sq_dist(z_t), sq_dist(z_new[[t]]), 
-                    sq_dist(z_new[[t]], z_t), object$theta_w[t, i], g = NULL, 
-                    sigma = FALSE, tau2 = FALSE)
-          w_new[[t]][, i] <- k$mean
+          k <- krig(w_t[, i], sq_dist(z_t), NULL, sq_dist(z_new, z_t),
+                    object$theta_w[t, i], g = eps, cov = object$cov, v = object$v)
+          w_new[, i] <- k$mean
         } else {
-          k <- krig(w_t[, i], sq_dist(z_t), sq_dist(z_new[[t]]), 
-                    sq_dist(z_new[[t]], z_t), object$theta_w[t, i], g = NULL, 
-                    tau2 = FALSE)
-          w_new[[t]][, i] <- rand_mvn(1, k$mean, k$sigma)
+          k <- krig(w_t[, i], sq_dist(z_t), sq_dist(z_new), sq_dist(z_new, z_t),
+                    object$theta_w[t, i], g = eps, sigma = TRUE,
+                    cov = object$cov, v = object$v)
+          w_new[, i] <- mvtnorm::rmvnorm(1, k$mean, k$sigma)
         } 
       } # end of i for loop
+      if (store_latent) w_new_list[[t]] <- w_new
       
-      # map w_new to mu_t and sigma_t
-      k <- krig(object$y, sq_dist(w_t), sq_dist(w_new[[t]]), 
-                sq_dist(w_new[[t]], w_t), object$theta_y[t], object$g[t], 
-                s2 = lite, sigma = !lite)
+      # map w_new to y
+      k <- krig(object$y, sq_dist(w_t), sq_dist(w_new), sq_dist(w_new, w_t),
+                object$theta_y[t], object$g[t], s2 = lite, sigma = !lite,
+                tau2 = TRUE, f_min = EI, cov = object$cov, v = object$v)
       tau2[t] <- k$tau2
       mu_t[, t] <- k$mean
       if (lite) {
-        s2_t[, t] <- k$s2
-      } else sigma_t_sum <- sigma_t_sum + k$sigma
+        s2_sum <- s2_sum + k$s2
+      } else sigma_sum <- sigma_sum + k$sigma
+      if (EI) {
+        if (lite) {
+          sig2 <- k$s2 - (k$tau2 * object$g[t]) 
+        } else sig2 <- diag(k$sigma) - (k$tau2 * object$g[t])
+        ei_sum <- ei_sum + exp_improv(k$mean, sig2, k$f_min)
+      }
     } # end of t for loop
     
   } else { # use foreach to run in parallel
@@ -392,38 +405,48 @@ predict.dgp3 <- function(object, x_new, lite = TRUE, store_all = FALSE,
       w_t <- object$w[[t]]
       
       # map x_new to z_new (separately for each dimension)
-      z_new <- matrix(nrow = m, ncol = D)
+      z_new <- matrix(nrow = n_new, ncol = D)
       for (i in 1:D) {
         if (mean_map) {
-          k <- krig(z_t[, i], dx, d_new, d_cross, object$theta_z[t, i], 
-                    g = NULL, sigma = FALSE, tau2 = FALSE)
+          k <- krig(z_t[, i], dx, NULL, d_cross, object$theta_z[t, i], 
+                    g = eps, cov = object$cov, v = object$v)
           z_new[, i] <- k$mean
         } else {
           k <- krig(z_t[, i], dx, d_new, d_cross, object$theta_z[t, i], 
-                    g = NULL, tau2 = FALSE)
-          z_new[, i] <- rand_mvn(1, k$mean, k$sigma)
+                    g = eps, sigma = TRUE, cov = object$cov, v = object$v)
+          z_new[, i] <- mvtnorm::rmvnorm(1, k$mean, k$sigma)
         } 
       } # end of i for loop
       
       # map z_new to w_new (separately for each dimension)
-      w_new <- matrix(nrow = m, ncol = D)
+      w_new <- matrix(nrow = n_new, ncol = D)
       for (i in 1:D) {
-        if (mean_map) {
-          k <- krig(w_t[, i], sq_dist(z_t), sq_dist(z_new), sq_dist(z_new, z_t),
-                    object$theta_w[t, i], g = NULL, sigma = FALSE, tau2 = FALSE)
+        if (mean_map) { 
+          k <- krig(w_t[, i], sq_dist(z_t), NULL, sq_dist(z_new, z_t),
+                    object$theta_w[t, i], g = eps, cov = object$cov, v = object$v)
           w_new[, i] <- k$mean
         } else {
           k <- krig(w_t[, i], sq_dist(z_t), sq_dist(z_new), sq_dist(z_new, z_t),
-                    object$theta_w[t, i], g = NULL, tau2 = FALSE)
-          w_new[, i] <- rand_mvn(1, k$mean, k$sigma)
+                    object$theta_w[t, i], g = eps, sigma = TRUE,
+                    cov = object$cov, v = object$v)
+          w_new[, i] <- mvtnorm::rmvnorm(1, k$mean, k$sigma)
         } 
       } # end of i for loop
       
-      # map w_new to mu_t and sigma_t
+      # map w_new to y
       k <- krig(object$y, sq_dist(w_t), sq_dist(w_new), sq_dist(w_new, w_t),
-                object$theta_y[t], object$g[t], s2 = lite, sigma = !lite)
-      k$z_new <- z_new
-      k$w_new <- w_new
+                object$theta_y[t], object$g[t], s2 = lite, sigma = !lite,
+                tau2 = TRUE, f_min = EI, cov = object$cov, v = object$v)
+      if (store_latent) {
+        k$z_new <- z_new
+        k$w_new <- w_new
+      }
+      if (EI) {
+        if (lite) {
+          sig2 <- k$s2 - (k$tau2 * object$g[t]) 
+        } else sig2 <- diag(k$sigma) - (k$tau2 * object$g[t])
+        k$ei <- exp_improv(k$mean, sig2, k$f_min)
+      }
       return(k)
     } # end of foreach statement
     
@@ -433,39 +456,35 @@ predict.dgp3 <- function(object, x_new, lite = TRUE, store_all = FALSE,
     mu_t <- sapply(result, with, eval(parse(text = "mean")))
     tau2 <- sapply(result, with, eval(parse(text = "tau2")))
     if (lite) {
-      s2_t <- sapply(result, with, eval(parse(text = "s2")))
-    } else sigma_t_sum <- Reduce("+", lapply(result, with, 
-                                             eval(parse(text = "sigma"))))
-    z_new <- lapply(result, with, eval(parse(text = "z_new")))
-    w_new <- lapply(result, with, eval(parse(text = "w_new")))
-    
+      s2_sum <- Reduce("+", lapply(result, with, eval(parse(text = "s2"))))
+    } else {
+      sigma_t_sum <- Reduce("+", lapply(result, with, eval(parse(text = "sigma"))))
+    }
+    if (store_latent) {
+      z_new_list <- lapply(result, with, eval(parse(text = "z_new")))
+      w_new_list <- lapply(result, with, eval(parse(text = "w_new")))
+    }
+    if (EI) ei_sum <- Reduce("+", lapply(result, with, eval(parse(text = "ei"))))
   } # end of else statement
   
-  # calculate expected value and covariance of means
-  mu_y <- rowMeans(mu_t)
-  mu_cov <- cov(t(mu_t))
-  
-  # store mean and s2 across iterations if requested
-  if (store_all) {
-    object$mu_t <- mu_t
-    if (lite) object$s2_t <- s2_t
-    # no option available to store all sigma matrices at this time
-  }
-  
   # add variables to the output list
-  object$z_new <- z_new
-  object$w_new <- w_new
+  mu_cov <- cov(t(mu_t))
+  object$mean <- rowMeans(mu_t)
   object$tau2 <- tau2
-  object$mean <- mu_y
+  if (store_latent) {
+    object$z_new <- z_new_list
+    object$w_new <- w_new_list
+  }
   if (lite) {
-    object$s2 <- rowSums(s2_t) / object$nmcmc + diag(mu_cov)
+    object$s2 <- s2_sum / object$nmcmc + diag(mu_cov)
     object$s2_smooth <- object$s2 - mean(object$g * object$tau2)
   } else {
-    object$Sigma <- sigma_t_sum / object$nmcmc + mu_cov
-    object$Sigma_smooth <- object$Sigma - diag(mean(object$g * object$tau2), m)
+    object$Sigma <- sigma_sum / object$nmcmc + mu_cov
+    object$Sigma_smooth <- object$Sigma - diag(mean(object$g * object$tau2), n_new)
   }
-  
+  if (EI) object$EI <- ei_sum / object$nmcmc
   toc <- proc.time()[3]
   object$time <- object$time + (toc - tic)
+  
   return(object)
 }

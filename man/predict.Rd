@@ -7,14 +7,15 @@
 \alias{predict.dgp3}
 \title{Predict posterior mean and variance/covariance}
 \usage{
-\method{predict}{gp}(object, x_new, lite = TRUE, store_all = FALSE, cores = 1, ...)
+\method{predict}{gp}(object, x_new, lite = TRUE, EI = FALSE, cores = 1, ...)
 
 \method{predict}{dgp2}(
   object,
   x_new,
   lite = TRUE,
-  store_all = FALSE,
+  store_latent = FALSE,
   mean_map = TRUE,
+  EI = FALSE,
   cores = 1,
   ...
 )
@@ -23,8 +24,9 @@
   object,
   x_new,
   lite = TRUE,
-  store_all = FALSE,
+  store_latent = FALSE,
   mean_map = TRUE,
+  EI = FALSE,
   cores = 1,
   ...
 )
@@ -36,20 +38,23 @@
 \item{x_new}{matrix of predictive input locations}
 
 \item{lite}{logical indicating whether to calculate only point-wise 
-variances (\code{lite = TRUE}), or full covariance 
+variances (\code{lite = TRUE}) or full covariance 
 (\code{lite = FALSE})}
 
-\item{store_all}{logical indicating whether to store mean and variance for 
-each iteration}
+\item{EI}{logical indicating whether to calculate expected improvement 
+(for minimizing the response)}
 
 \item{cores}{number of cores to utilize in parallel, by default no 
 parallelization is used}
 
 \item{...}{N/A}
 
-\item{mean_map}{denotes whether to map hidden layers using conditional mean 
-or a random sample from the full MVN distribution 
-("\code{dgp2}" or "\code{dgp3}" only)}
+\item{store_latent}{logical indicating whether to store and return mapped 
+values of latent layers (\code{dgp2} or \code{dgp3} only)}
+
+\item{mean_map}{logical indicating whether to map hidden layers using 
+conditional mean (\code{mean_map = TRUE}) or using a random sample
+from the full MVN distribution (\code{dgp2} or \code{dgp3} only)}
 }
 \value{
 object of the same class with the following additional elements:
@@ -68,48 +73,46 @@ object of the same class with the following additional elements:
         \code{x_new} location (only returned when \code{lite = FALSE})
   \item \code{Sigma_smooth}: predicted posterior covariance with \code{g} 
         removed from the diagonal (only returned when \code{lite = FALSE})
-  \item \code{mu_t}: matrix of posterior mean for each iteration, column 
-        index corresponds to iteration and row index corresponds to 
-        \code{x_new} location (only returned when \code{store_all = TRUE})
-  \item \code{s2_t}: matrix of posterior point-wise variance for each 
-        iteration, column index corresponds to iteration and row index 
-        corresponds to \code{x_new} location (only returned when 
-        \code{store_all = TRUE})
-  \item \code{w_new}: list of hidden layer mappings, list index corresponds 
-        to iteration and row index corresponds to \code{x_new} location 
-        ("\code{dgp2}" and "\code{dgp3}" only)
-  \item \code{z_new}: list of hidden layer mappings, list index corresponds 
-        to iteration and row index corresponds to \code{x_new} location 
-        ("\code{dgp3}" only) 
+  \item \code{EI}: vector of expected improvement values, indices correspond 
+        to \code{x_new} location (only returned when \code{EI = TRUE})
+  \item \code{w_new}: list of hidden layer mappings (only returned when 
+        \code{store_latent = TRUE}), list index corresponds to iteration and 
+        row index corresponds to \code{x_new} location (\code{dgp2} and 
+        \code{dgp3} only)
+  \item \code{z_new}: list of hidden layer mappings (only returned when 
+        \code{store_latent = TRUE}), list index corresponds to iteration and 
+        row index corresponds to \code{x_new} location (\code{dgp3} only) 
 }
 Computation time is added to the computation time of the existing object.
 }
 \description{
-Acts on a "\code{gp}", "\code{dgp2}", or "\code{dgp3}" object.
+Acts on a \code{gp}, \code{dgp2}, or \code{dgp3} object.
     Calculates posterior mean and variance/covariance over specified input 
-    locations.  Optionally utilizes SNOW parallelization.
+    locations.  Optionally calculates expected improvement (EI) over candidate
+    inputs.  Optionally utilizes SNOW parallelization.
 }
 \details{
 All iterations in the object are used for prediction, so samples 
     should be burned-in.  Thinning the samples using \code{trim} will speed 
     up computation.  Posterior moments are calculated using conditional 
     expectation and variance.  As a default, only point-wise variance is 
-    calculated.  Full covariance may be calculated using \code{lite = FALSE}.  
-    The storage of means and point-wise variances for each individual 
-    iteration (specified using \code{store_all = TRUE}) is required in order 
-    to use \code{EI}.
+    calculated.  Full covariance may be calculated using \code{lite = FALSE}. 
+    
+    Expected improvement is calculated with the goal of minimizing the 
+    response.  See Chapter 7 of Gramacy (2020) for details.
     
     SNOW parallelization reduces computation time but requires significantly 
     more memory storage.  Use \code{cores = 1} if memory is limited.
 }
 \examples{
-# See "deepgp-package", "fit_one_layer", "fit_two_layer", or 
-# "fit_three_layer" for an example
+# See "deepgp-package", "fit_one_layer", "fit_two_layer", or "fit_three_layer"
+# for an example
 
 }
 \references{
 Sauer, A, RB Gramacy, and D Higdon. 2020. "Active Learning for Deep Gaussian 
-    Process Surrogates." arXiv:2012.08015. \cr\cr
+    Process Surrogates." \emph{Technometrics, to appear;} arXiv:2012.08015. 
+    \cr\cr
 Gramacy, RB. \emph{Surrogates: Gaussian Process Modeling, Design, and 
     Optimization for the Applied Sciences}. Chapman Hall, 2020.
 }

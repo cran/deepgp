@@ -21,8 +21,8 @@ ALC(object, x_new, ref, cores)
 \item{x_new}{matrix of possible input locations, if object has been run 
 through \code{predict} the previously stored \code{x_new} is used}
 
-\item{ref}{optional reference grid for ALC approximation, if 
-\code{ref = NULL} then \code{x_new} is used}
+\item{ref}{optional reference grid for ALC approximation, if \code{ref = NULL} 
+then \code{x_new} is used}
 
 \item{cores}{number of cores to utilize in parallel, by default no 
 parallelization is used}
@@ -30,16 +30,17 @@ parallelization is used}
 \value{
 list with elements:
 \itemize{
-  \item \code{value}: vector of ALC values, indices correspond to 
-        \code{x_new}
+  \item \code{value}: vector of ALC values, indices correspond to \code{x_new}
   \item \code{time}: computation time in seconds
 }
 }
 \description{
-Acts on a "\code{gp}", "\code{dgp2}", or "\code{dgp3}" object. 
-   Calculates ALC over the input locations \code{x_new} using specified
-   reference grid.  If no reference grid is specified, \code{x_new} is used 
-   as the reference.  Optionally utilizes SNOW parallelization.  User should 
+Acts on a \code{gp}, \code{dgp2}, or \code{dgp3} object. 
+   Current version requires squared exponential covariance 
+   (\code{cov = "exp2"}).  Calculates ALC over the input locations 
+   \code{x_new} using specified reference grid.  If no reference grid is 
+   specified, \code{x_new} is used as the reference.  Optionally utilizes 
+   SNOW parallelization.  User should 
    select the point with the highest ALC to add to the design.
 }
 \details{
@@ -47,17 +48,18 @@ All iterations in the object are used in the calculation, so samples
     should be burned-in.  Thinning the samples using \code{trim} will
     speed up computation.  This function may be used in two ways:
     \itemize{
-        \item called on an object with only MCMC iterations, in which case 
-              \code{x_new} must be specified
-        \item called on an object that has been predicted over, in which 
-              case the \code{x_new} from \code{predict} is used
+        \item Option 1: called on an object with only MCMC iterations, in 
+              which case \code{x_new} must be specified
+        \item Option 2: called on an object that has been predicted over, in 
+              which case the \code{x_new} from \code{predict} is used
     }
-    In \code{dgp2} and \code{dgp3} objects that have been run through 
-    \code{predict}, the stored \code{w_new} mappings are used.  Through 
-    \code{predict}, the user may specify a mean mapping 
-    (\code{mean_map = TRUE}) or a full sample from the MVN distribution over 
-    \code{w_new} (\code{mean_map = FALSE}).  When the object has not yet 
-    been predicted over, the mean mapping is used.
+    In Option 2,  it is recommended to set \code{store_latent = TRUE} for 
+    \code{dgp2} and \code{dgp3} objects so
+    latent mappings do not have to be re-calculated.  Through \code{predict}, 
+    the user may specify a mean mapping (\code{mean_map = TRUE}) or a full 
+    sample from the MVN distribution over \code{w_new} 
+    (\code{mean_map = FALSE}).  When the object has not yet been predicted
+    over (Option 1), the mean mapping is used.
     
     SNOW parallelization reduces computation time but requires more memory
     storage.  C code derived from the "laGP" package (Robert B Gramacy and 
@@ -69,11 +71,12 @@ All iterations in the object are used in the calculation, so samples
 }
 \references{
 Sauer, A, RB Gramacy, and D Higdon. 2020. "Active Learning for Deep Gaussian 
-    Process Surrogates." arXiv:2012.08015. \cr\cr
-Seo, S, M Wallat, T Graepel, and K Obermayer. 2000. Gaussian Process 
-    Regression: Active Data Selection and Test Point Rejection. In 
-    Mustererkennung 2000, 27-34. New York, NY: Springer Verlag.\cr\cr
+    Process Surrogates." \emph{Technometrics, to appear;} arXiv:2012.08015. 
+    \cr\cr
+Seo, S, M Wallat, T Graepel, and K Obermayer. 2000. Gaussian Process Regression:
+    Active Data Selection and Test Point Rejection. In Mustererkennung 2000, 
+    2734. New York, NY: SpringerVerlag.\cr\cr
 Gramacy, RB and F Sun. (2016). laGP: Large-Scale Spatial Modeling via Local 
-    Approximate Gaussian Processes in R. \emph{Journal of Statistical 
-    Software 72} (1), 1-46. doi:10.18637/jss.v072.i01
+    Approximate Gaussian Processes in R. \emph{Journal of Statistical Software 
+    72} (1), 1-46. doi:10.18637/jss.v072.i01
 }

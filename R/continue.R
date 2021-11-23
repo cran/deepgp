@@ -7,13 +7,13 @@
 
 # Define Continue for S3 Objects ----------------------------------------------
 #' @title Continues MCMC sampling
-#' @description Acts on a "\code{gp}", "\code{dgp2}", or "\code{dgp3}" object.  
+#' @description Acts on a \code{gp}, \code{dgp2}, or \code{dgp3} object.  
 #'     Continues MCMC sampling of hyperparameters and hidden layers and appends
 #'     results to existing object.
 #'     
-#' @details See "\code{fit_one_layer}", "\code{fit_two_layer}", or 
-#'     "\code{fit_three_layer}" for details on MCMC.  The resulting object 
-#'     will have \code{nmcmc} equal to the previous \code{nmcmc} plus 
+#' @details See \code{fit_one_layer}, \code{fit_two_layer}, or 
+#'     \code{fit_three_layer} for details on MCMC.  The resulting 
+#'     object will have \code{nmcmc} equal to the previous \code{nmcmc} plus 
 #'     \code{new_mcmc}.  It is recommended to start an MCMC fit then 
 #'     investigate trace plots to assess burn-in.  The primary use of this 
 #'     function is to gather more MCMC iterations in order to obtain burned-in 
@@ -22,7 +22,7 @@
 #' @param object object from \code{fit_one_layer}, \code{fit_two_layer}, or 
 #'        \code{fit_three_layer}
 #' @param new_mcmc number of MCMC iterations to conduct and append
-#' @param trace logical indicating whether to print iteration progress
+#' @param verb logical indicating whether to print iteration progress
 #' @return object of the same class with the new iterations appended
 #' 
 #' @examples 
@@ -31,27 +31,34 @@
 #' @rdname continue
 #' @export
 
-continue <- function(object, new_mcmc, trace)
+continue <- function(object, new_mcmc, verb)
   UseMethod("continue", object)
 
 # Continue One Layer Function -------------------------------------------------
 #' @rdname continue
 #' @export
 
-continue.gp <- function(object, new_mcmc = 1000, trace = TRUE) {
+continue.gp <- function(object, new_mcmc = 1000, verb = TRUE) {
   
   tic <- proc.time()[3]
   
   # Use true nugget if it was specified
-  if (length(unique(object$g)) == 1) {
-    true_g = object$g[1] 
-  } else true_g = NULL
+  if (length(unique(object$g)) == 1) true_g <- object$g[1] else true_g <- NULL
+  
+  # Specify v if using matern covariance
+  if (object$cov == "matern") v <- object$v else v <- NULL
   
   # Run continuing MCMC iterations
-  new_fit <- fit_one_layer(object$x, object$y, nmcmc = new_mcmc, trace = trace,
+  new_fit <- fit_one_layer(x = object$x, 
+                           y = object$y, 
+                           nmcmc = new_mcmc, 
+                           verb = verb,
                            g_0 = object$g[object$nmcmc], 
                            theta_0 = object$theta[object$nmcmc],
-                           true_g = true_g, settings = object$settings)
+                           true_g = true_g, 
+                           settings = object$settings,
+                           cov = object$cov,
+                           v = v)
   
   # Append new information to original fit
   object$nmcmc <- object$nmcmc + new_mcmc
@@ -67,24 +74,30 @@ continue.gp <- function(object, new_mcmc = 1000, trace = TRUE) {
 #' @rdname continue
 #' @export
 
-continue.dgp2 <- function(object, new_mcmc = 1000, trace = TRUE) {
+continue.dgp2 <- function(object, new_mcmc = 1000, verb = TRUE) {
   
   tic <- proc.time()[3]
   
   # Use true nugget if it was specified
-  if (length(unique(object$g)) == 1) {
-    true_g = object$g[1] 
-  } else true_g = NULL
+  if (length(unique(object$g)) == 1) true_g <- object$g[1] else true_g <- NULL
+  
+  # Specify v if using matern covariance
+  if (object$cov == "matern") v <- object$v else v <- NULL
   
   # Run continuing MCMC iterations
-  new_fit <- fit_two_layer(object$x, object$y, D = ncol(object$w[[1]]),
-                           nmcmc = new_mcmc, trace = trace,
+  new_fit <- fit_two_layer(x = object$x, 
+                           y = object$y, 
+                           D = ncol(object$w[[1]]),
+                           nmcmc = new_mcmc, 
+                           verb = verb,
                            w_0 = object$w[[object$nmcmc]], 
                            g_0 = object$g[object$nmcmc],
                            theta_y_0 = object$theta_y[object$nmcmc],
                            theta_w_0 = object$theta_w[object$nmcmc, ], 
                            true_g = true_g,
-                           settings = object$settings)
+                           settings = object$settings,
+                           cov = object$cov,
+                           v = v)
   
   # Append new information to original fit
   object$nmcmc <- object$nmcmc + new_mcmc
@@ -102,18 +115,22 @@ continue.dgp2 <- function(object, new_mcmc = 1000, trace = TRUE) {
 #' @rdname continue
 #' @export
 
-continue.dgp3 <- function(object, new_mcmc = 1000, trace = TRUE) {
+continue.dgp3 <- function(object, new_mcmc = 1000, verb = TRUE) {
   
   tic <- proc.time()[3]
   
   # Use true nugget if it was specified
-  if (length(unique(object$g)) == 1) {
-    true_g = object$g[1] 
-  } else true_g = NULL
+  if (length(unique(object$g)) == 1) true_g <- object$g[1] else true_g <- NULL
+  
+  # Specify v if using matern covariance
+  if (object$cov == "matern") v <- object$v else v <- NULL
   
   # Run continuing MCMC iterations
-  new_fit <- fit_three_layer(object$x, object$y, D = ncol(object$w[[1]]),
-                             nmcmc = new_mcmc, trace = trace,
+  new_fit <- fit_three_layer(x = object$x, 
+                             y = object$y, 
+                             D = ncol(object$w[[1]]),
+                             nmcmc = new_mcmc, 
+                             verb = verb,
                              w_0 = object$w[[object$nmcmc]], 
                              z_0 = object$z[[object$nmcmc]],
                              g_0 = object$g[object$nmcmc], 
@@ -121,7 +138,9 @@ continue.dgp3 <- function(object, new_mcmc = 1000, trace = TRUE) {
                              theta_w_0 = object$theta_w[object$nmcmc, ],
                              theta_z_0 = object$theta_z[object$nmcmc, ], 
                              true_g = true_g,
-                             settings = object$settings)
+                             settings = object$settings,
+                             cov = object$cov,
+                             v = v)
   
   # Append new information to original fit
   object$nmcmc <- object$nmcmc + new_mcmc
