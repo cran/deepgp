@@ -1,7 +1,7 @@
 Package: deepgp
 Type: Package
 Title: Sequential Design for Deep Gaussian Processes using MCMC
-Version: 0.3.0
+Version: 0.3.1
 Date: 2021-11-23
 Author: Annie Sauer <anniees@vt.edu>
 Maintainer: Annie Sauer <anniees@vt.edu>
@@ -23,6 +23,6 @@ Imports: grDevices, graphics, stats, doParallel, foreach, parallel,
 LinkingTo: Rcpp, RcppArmadillo, BH
 Suggests: akima, knitr
 RoxygenNote: 7.1.1
-Packaged: 2021-11-23 21:06:50 UTC; annie
+Packaged: 2021-12-06 18:12:56 UTC; anniesauer
 Repository: CRAN
-Date/Publication: 2021-11-23 23:20:11 UTC
+Date/Publication: 2021-12-07 08:00:07 UTC

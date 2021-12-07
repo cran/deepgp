@@ -1,4 +1,7 @@
 
+#define BOOST_DISABLE_ASSERTS
+#define ARMA_DONT_PRINT_ERRORS
+
 // [[Rcpp::depends(RcppArmadillo)]]
 // [[Rcpp::plugins(openmp)]]
 // [[Rcpp::depends(BH)]]
@@ -15,7 +18,6 @@
 using namespace Rcpp;
 using namespace arma;
 using namespace std;
-
 
 double sqdist(rowvec l1, rowvec l2) { 
   double ssq = 0.0;

@@ -1,4 +1,4 @@
-21b53caee982b0cba5ed1a649d607d26 *DESCRIPTION
+889b84d1c7c914b9cdd7bc146a574ed7 *DESCRIPTION
 c643f941b39fcfbd5fd4f8c7d52dafdc *NAMESPACE
 e893e95fdd7c9e7814d0f98a8ede3d83 *R/RcppExports.R
 a4d7915ac6aca98cda53526f30255d82 *R/checks.R
@@ -29,7 +29,7 @@ cf374811845b586d17445873c18e53f9 *man/trim.Rd
 47f2870dd1165f2fbb2565b82fbd9630 *src/Makevars
 534ca55e0aa53cd1a1ffc1c0d3a58f68 *src/RcppExports.cpp
 0d289a6276af13b6df0f97be24d7e3bd *src/alc.c
-571fb674233a0bbf4b0e66b99faf2f38 *src/cov.cpp
+bce7c6ea018f11f73a78d97930083352 *src/cov.cpp
 3a3f7692c600072311c3e78eb24ca94c *src/general.c
 9058b0c2839290b2dd96231edd967e6c *src/general.h
 32bf9cdc10ebe28f8f06ae7789ab0ee7 *src/imspe.c
