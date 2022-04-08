@@ -85,7 +85,7 @@ void covar(const int col, double **X1, const int n1, double **X2,
            const int n2, double d, double **K)
 {
   int i, j, k;
-
+  
   /* calculate the covariance */
   for(i=0; i<n1; i++)
     for(j=0; j<n2; j++) {
@@ -110,17 +110,17 @@ void calc_g_mui_kxy(const int col, double *x, double **X,
 {
   double mu_neg;
   int i;
-
+  
   /* sanity check */
   if(m == 0) assert(!kxy && !Xref);
-
+  
   covar(col, &x, 1, X, n, d, &kx);
   if(m > 0) covar(col, &x, 1, Xref, m, d, &kxy);
-
+  
   linalg_dsymv(n,1.0,Ki,n,kx,1,0.0,gvec,1);
-
+  
   *mui = 1.0 + g - linalg_ddot(n, kx, 1, gvec, 1);
-
+  
   mu_neg = 0.0 - 1.0/(*mui);
   for(i=0; i<n; i++) gvec[i] *= mu_neg;
 }
@@ -133,18 +133,18 @@ void calc_g_mui_kxy(const int col, double *x, double **X,
  */
 
 void calc_ktKikx(double *ktKik, const int m, double **k, const int n,
-                   double *g, const double mui, double *kxy, double **Gmui,
-                   double *ktGmui, double *ktKikx)
+                 double *g, const double mui, double *kxy, double **Gmui,
+                 double *ktGmui, double *ktKikx)
 {
   int i;
   
   /* loop over all of the m candidates */
   for(i=0; i<m; i++) {
-
+    
     ktKikx[i] = sq(linalg_ddot(n, k[i], 1, g, 1))*mui;
-
+    
     ktKikx[i] += 2.0*linalg_ddot(n, k[i], 1, g, 1)*kxy[i];
-
+    
     ktKikx[i] += sq(kxy[i])/mui;
   }
 }
@@ -162,12 +162,12 @@ double calc_alc(const int m, double *ktKik, double *s2p, const double phi,
 {
   int i;
   double alc;
-
+  
   alc = 0.0;
   for(i=0; i<m; i++) {
     alc += phi*ktKik[i];
   }
-
+  
   return (alc/m);
 }
 
@@ -183,43 +183,43 @@ double calc_alc(const int m, double *ktKik, double *s2p, const double phi,
  */
 
 void alcGP(int col, double **X, double **Ki, double d, double g,
-               unsigned int n, double phi,
-               unsigned int ncand, double **Xcand, unsigned int nref,
-               double **Xref,  int verb, double *alc)
+           unsigned int n, double phi,
+           unsigned int ncand, double **Xcand, unsigned int nref,
+           double **Xref,  int verb, double *alc)
 {
   int i;
   double **k;
   double *kx, *kxy, *gvec, *ktKikx;
   double mui, df;
   double s2p[2] = {0, 0};
-
-     
+  
+  
   /* degrees of freedom */
   df = (double) n;
-
+  
   /* allocate g, kxy, and ktKikx vectors */
   gvec = new_vector(n);
   kxy = new_vector(nref);
   kx = new_vector(n);
   ktKikx = new_vector(nref);
-
+  
   k = new_matrix(nref, n);
   covar(col, Xref, nref, X, n, d, k);    //// CHANGED ncand to col
-
+  
   /* calculate the ALC for each candidate */
   for(i=0; i<ncand; i++) {
-
+    
     /* calculate the g vector, mui, and kxy */
     calc_g_mui_kxy(col, Xcand[i], X, n, Ki, Xref, nref, d,
                    g, gvec, &mui, kx, kxy);
-
+    
     /* use g, mu, and kxy to calculate ktKik.x */
     calc_ktKikx(NULL, nref, k, n, gvec, mui, kxy, NULL, NULL, ktKikx);
-
+    
     /* calculate the ALC */
     alc[i] = calc_alc(nref, ktKikx, s2p, phi, NULL, df, NULL);
   }
-
+  
   /* clean up */
   free(ktKikx);
   free(gvec);
@@ -242,20 +242,20 @@ void alcGP(int col, double **X, double **Ki, double d, double g,
  */
 
 void alcGP_R(double *X_in, int *n_in, int *col_in, double *Ki_in, double *d_in,
-              double *g_in, int *ncand_in, double *Xcand_in, int *nref_in,
-              double *Xref_in, double *phi_in, int *verb_in, double *alc_out)
+             double *g_in, int *ncand_in, double *Xcand_in, int *nref_in,
+             double *Xref_in, double *phi_in, int *verb_in, double *alc_out)
 {
   double **Xref, **Xcand, **X, **Ki;
-
+  
   /* make matrix bones */
   Xref = new_matrix_bones(Xref_in, *nref_in, *col_in);
   Xcand = new_matrix_bones(Xcand_in, *ncand_in, *col_in);
   Ki = new_matrix_bones(Ki_in, *n_in, *n_in);
   X = new_matrix_bones(X_in, *n_in, *col_in);
-
+  
   alcGP(*col_in, X, Ki, *d_in, *g_in, *n_in, *phi_in,
         *ncand_in, Xcand, *nref_in, Xref, *verb_in, alc_out);
-
+  
   /* clean up */
   free(Xref);
   free(Xcand);

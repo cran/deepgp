@@ -39,7 +39,9 @@ Acts on a \code{gp}, \code{dgp2}, or \code{dgp3} object.
     select the point with the lowest IMSE to add to the design.
 }
 \details{
-All iterations in the object are used in the calculation, so samples
+Not yet implemented for Vecchia-approximated fits.
+
+    All iterations in the object are used in the calculation, so samples
     should be burned-in.  Thinning the samples using \code{trim} will speed 
     up computation.  This function may be used in two ways:
     \itemize{
@@ -59,7 +61,70 @@ All iterations in the object are used in the calculation, so samples
     SNOW parallelization reduces computation time but requires more memory storage.
 }
 \examples{
-# See "deepgp-package" or "fit_three_layer" for an example
+# --------------------------------------------------------
+# Example 1: toy step function, runs in less than 5 seconds
+# --------------------------------------------------------
+
+f <- function(x) {
+    if (x <= 0.4) return(-1)
+    if (x >= 0.6) return(1)
+    if (x > 0.4 & x < 0.6) return(10*(x-0.5))
+}
+
+x <- seq(0.05, 0.95, length = 7)
+y <- sapply(x, f)
+x_new <- seq(0, 1, length = 100)
+
+# Fit model and calculate IMSE
+fit <- fit_one_layer(x, y, nmcmc = 100, cov = "exp2")
+fit <- trim(fit, 50)
+fit <- predict(fit, x_new, cores = 1, store_latent = TRUE)
+imse <- IMSE(fit)
+
+\donttest{
+# --------------------------------------------------------
+# Example 2: Higdon function
+# --------------------------------------------------------
+
+f <- function(x) {
+    i <- which(x <= 0.48)
+    x[i] <- 2 * sin(pi * x[i] * 4) + 0.4 * cos(pi * x[i] * 16)
+    x[-i] <- 2 * x[-i] - 1
+    return(x)
+}
+
+# Training data
+x <- seq(0, 1, length = 30)
+y <- f(x) + rnorm(30, 0, 0.05)
+
+# Testing data
+xx <- seq(0, 1, length = 100)
+yy <- f(xx)
+
+plot(xx, yy, type = "l")
+points(x, y, col = 2)
+
+# Conduct MCMC (can replace fit_three_layer with fit_one_layer/fit_two_layer)
+fit <- fit_three_layer(x, y, D = 1, nmcmc = 2000, cov = "exp2")
+plot(fit)
+fit <- trim(fit, 1000, 2)
+
+# Option 1 - calculate IMSE from only MCMC iterations
+imse <- IMSE(fit, xx)
+
+# Option 2 - calculate IMSE after predictions
+fit <- predict(fit, xx, cores = 1, store_latent = TRUE)
+imse <- IMSE(fit)
+
+# Visualize fit
+plot(fit)
+par(new = TRUE) # overlay IMSE
+plot(xx, imse$value, col = 2, type = 'l', lty = 2, 
+     axes = FALSE, xlab = '', ylab = '')
+
+# Select next design point
+x_new <- xx[which.min(imse$value)]
+}
 
 }
 \references{

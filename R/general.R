@@ -1,9 +1,12 @@
 
 # Function Contents -----------------------------------------------------------
 # Internal:
+#   eps: minimum nugget value (1.5e-8)
 #   krig: calculates posterior mean, sigma, and tau2 (optionally f_min)
 #   invdet: calculates inverse and log determinant of a matrix using C
+#           (credit given to the "laGP package, R.B. Gramacy & Furong Sun)
 #   fill_final_row: uses kriging to fill final row of w_0/z_0
+#   clean_prediction: removes prediction elements from object
 # External (see documentation below):
 #   sq_dist
 #   score
@@ -11,97 +14,76 @@
 
 eps <- sqrt(.Machine$double.eps)
 
-# Kriging Function ------------------------------------------------------------
-# Calculates posterior mean, sigma/s2 and estimate of tau2 using kriging equations
-# Optionally calculates f_min (min predicted mean at observed data locations)
+# Krig ------------------------------------------------------------------------
 
-krig <- function(y, dx, d_new = NULL, d_cross = NULL, theta, g, mean = TRUE, 
-                 s2 = FALSE, sigma = FALSE, tau2 = FALSE, f_min = FALSE, 
-                 cov = "matern", v = 2.5) {
-  
-  if (s2 & sigma) s2 <- FALSE # don't calculate diagonal separately
+krig <- function(y, dx, d_new = NULL, d_cross = NULL, theta, g, tau2 = 1,
+                 s2 = FALSE, sigma = FALSE, f_min = FALSE, v = 2.5) {
   
   out <- list()
-  if (cov == "matern") {
+  if (v == 999) {
+    C <- Exp2Fun(dx, c(1, theta, g))
+    C_cross <- Exp2Fun(d_cross, c(1, theta, 0)) # no g in rectangular matrix
+  } else {
     C <- MaternFun(dx, c(1, theta, g, v)) 
-  } else C <- ExpFun(dx, c(1, theta, g))
-  C_inv <- invdet(C)$Mi
-  
-  if (mean) {
-    if (cov == "matern") {
-      C_cross <- MaternFun(d_cross, c(1, theta, 0, v))
-    } else C_cross <- ExpFun(d_cross, c(1, theta, 0)) # no g in rectangular matrix
-    out$mean <- C_cross %*% C_inv %*% y
+    C_cross <- MaternFun(d_cross, c(1, theta, 0, v))
   }
+  C_inv <- invdet(C)$Mi
+  out$mean <- C_cross %*% C_inv %*% y
   
   if (f_min) { # predict at observed locations, return min expected value
-    if (cov == "matern") {
-      C_cross_observed_only <- MaternFun(dx, c(1, theta, 0, v))
-    } else C_cross_observed_only <- ExpFun(dx, c(1, theta, 0))
+    if (v == 999) {
+      C_cross_observed_only <- Exp2Fun(dx, c(1, theta, 0))
+    } else C_cross_observed_only <- MaternFun(dx, c(1, theta, 0, v))
     out$f_min <- min(C_cross_observed_only %*% C_inv %*% y)
   }
   
-  if (tau2) {
-    scale <- c(t(y) %*% C_inv %*% y)/length(y)
-    out$tau2 <- scale
-  } else scale <- 1
-  
   if (s2) {
-    if (!mean) {
-      if (cov == "matern") {
-        C_cross <- MaternFun(d_cross, c(1, theta, 0, v))
-      } else C_cross <- ExpFun(d_cross, c(1, theta, 0))
-    }
+    quadterm <- C_cross %*% C_inv %*% t(C_cross)
     C_new <- rep(1 + g, times = nrow(d_new))
-    out$s2 <- scale * (C_new - diag(C_cross %*% C_inv %*% t(C_cross)))
+    out$s2 <- tau2 * (C_new - diag(quadterm))
   }
   
   if (sigma) {
-    if (!mean) {
-      if (cov == "matern") {
-        C_cross <- MaternFun(d_cross, c(1, theta, 0, v))
-      } else C_cross <- ExpFun(d_cross, c(1, theta, 0))
-    }
-    if (cov == "matern") {
-      C_new <- MaternFun(d_new, c(1, theta, g, v)) 
-    } else C_new <- ExpFun(d_new, c(1, theta, g))
-    out$sigma <- scale * (C_new - (C_cross %*% C_inv %*% t(C_cross)))
+    quadterm <- C_cross %*% C_inv %*% t(C_cross)
+    if (v == 999) {
+      C_new <- Exp2Fun(d_new, c(1, theta, g))
+    } else  C_new <- MaternFun(d_new, c(1, theta, g, v)) 
+    out$sigma <- tau2 * (C_new - quadterm)
   }
-  
   return(out)
 }
 
-# Matrix Inverse C Function ---------------------------------------------------
-# Calculates matrix inverse and log determinant using C
-# Credit given to the "laGP" package (Robert B Gramacy & Furong Sun)
+# Matrix Inverse --------------------------------------------------------------
 
 invdet <- function(M) {
-  
+
   n <- nrow(M)
   out <- .C("inv_det_R",
             n = as.integer(n),
             M = as.double(M),
             Mi = as.double(diag(n)),
             ldet = double(1))
-  
+
   return(list(Mi = matrix(out$Mi, ncol=n), ldet = out$ldet))
 }
 
-# Distance C Function ---------------------------------------------------------
+# Squared Distance-------------------------------------------------------------
 #' @title Calculates squared pairwise distances
 #' @description Calculates squared pairwise euclidean distances using C.
 #' 
 #' @details C code derived from the "laGP" package (Robert B Gramacy and 
 #'     Furong Sun).
+#'     
 #' @param X1 matrix of input locations
 #' @param X2 matrix of second input locations (if \code{NULL}, distance is 
 #'        calculated between \code{X1} and itself)
+#'        
 #' @return symmetric matrix of squared euclidean distances
 #' 
 #' @references 
 #' Gramacy, RB and F Sun. (2016). laGP: Large-Scale Spatial Modeling via Local 
-#'     Approximate Gaussian Processes in R. \emph{Journal of Statistical Software 
-#'     72} (1), 1-46. doi:10.18637/jss.v072.i01
+#'     Approximate Gaussian Processes in R. \emph{Journal of Statistical 
+#'     Software 72} (1), 1-46. doi:10.18637/jss.v072.i01
 #' 
 #' @examples 
 #' x <- seq(0, 1, length = 10)
@@ -110,11 +92,11 @@ invdet <- function(M) {
 #' @export
 
 sq_dist <- function(X1, X2 = NULL) {
-  
+
   X1 <- as.matrix(X1)
   n1 <- nrow(X1)
   m <- ncol(X1)
-  
+
   if(is.null(X2)) {
     outD <- .C("distance_symm_R",
                X = as.double(t(X1)),
@@ -137,7 +119,7 @@ sq_dist <- function(X1, X2 = NULL) {
   }
 }
 
-# Calculate Score Function ----------------------------------------------------
+# Score -----------------------------------------------------------------------
 #' @title Calculates score
 #' @description Calculates score, proportional to the multivariate normal log
 #'     likelihood.  Higher scores indicate better fits.  Only 
@@ -162,15 +144,13 @@ score <- function(y, mu, sigma) {
   return(c(score))
 }
 
-# Calculate RMSE Function -----------------------------------------------------
+# RMSE ------------------------------------------------------------------------
 #' @title Calculates RMSE
-#' @description Calculates root mean square error (lower RMSE indicate better fits).
+#' @description Calculates root mean square error (lower RMSE indicate better 
+#'     fits).
+#' 
 #' @param y response vector
 #' @param mu predicted mean
-#' 
-#' @examples
-#' # See "deepgp-package", "fit_one_layer", "fit_two_layer", or "fit_three_layer"
-#' # for an example
 #' 
 #' @export
 
@@ -178,11 +158,9 @@ rmse <- function(y, mu) {
   return(sqrt(mean((y - mu) ^ 2)))
 }
 
-# Fill final row function -----------------------------------------------------
-# Uses kriging prediction to fill the final row of w_0 or z_0
-# Used in sequential design
+# Fill Final Row --------------------------------------------------------------
 
-fill_final_row <- function(x, w_0, D, theta_w_0, cov, v) {
+fill_final_row <- function(x, w_0, D, theta_w_0, v) {
   n <- nrow(x)
   dx <- sq_dist(x)
   new_w <- vector(length = D)
@@ -191,7 +169,29 @@ fill_final_row <- function(x, w_0, D, theta_w_0, cov, v) {
   for (i in 1:D) {
     new_w[i] <- krig(w_0[, i], dx[1:(n - 1), 1:(n - 1)], 
                      d_cross = sq_dist(new_x, old_x), theta = theta_w_0[i], 
-                     g = eps, cov = cov, v = v)$mean
+                     g = eps, v = v)$mean
   }
   return(rbind(w_0, new_w))
+}
+
+# Clean Prediction ------------------------------------------------------------
+
+clean_prediction <- function(object) {
+  
+  if (!is.null(object$x_new)) 
+    object <- object[-which(names(object) == "x_new")]
+  if (!is.null(object$mean)) 
+    object <- object[-which(names(object) == "mean")]
+  if (!is.null(object$s2)) 
+    object <- object[-which(names(object) == "s2")]
+  if (!is.null(object$s2_smooth)) 
+    object <- object[-which(names(object) == "s2_smooth")]
+  if (!is.null(object$Sigma)) 
+    object <- object[-which(names(object) == "Sigma")]
+  if (!is.null(object$Sigma_smooth)) 
+    object[-which(names(object) == "Sigma_smooth")]
+  if (!is.null(object$EI)) 
+    object[-which(names(object) == "EI")]
+  
+  return(object)
 }

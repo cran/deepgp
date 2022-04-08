@@ -5,31 +5,50 @@
 \alias{continue.gp}
 \alias{continue.dgp2}
 \alias{continue.dgp3}
+\alias{continue.gpvec}
+\alias{continue.dgp2vec}
+\alias{continue.dgp3vec}
 \title{Continues MCMC sampling}
 \usage{
-continue(object, new_mcmc, verb)
+continue(object, new_mcmc, verb, re_approx, ...)
 
-\method{continue}{gp}(object, new_mcmc = 1000, verb = TRUE)
+\method{continue}{gp}(object, new_mcmc = 1000, verb = TRUE, ...)
 
-\method{continue}{dgp2}(object, new_mcmc = 1000, verb = TRUE)
+\method{continue}{dgp2}(object, new_mcmc = 1000, verb = TRUE, ...)
 
-\method{continue}{dgp3}(object, new_mcmc = 1000, verb = TRUE)
+\method{continue}{dgp3}(object, new_mcmc = 1000, verb = TRUE, ...)
+
+\method{continue}{gpvec}(object, new_mcmc = 1000, verb = TRUE, re_approx = FALSE, ...)
+
+\method{continue}{dgp2vec}(object, new_mcmc = 1000, verb = TRUE, re_approx = FALSE, ...)
+
+\method{continue}{dgp3vec}(object, new_mcmc = 1000, verb = TRUE, re_approx = FALSE, ...)
 }
 \arguments{
 \item{object}{object from \code{fit_one_layer}, \code{fit_two_layer}, or 
 \code{fit_three_layer}}
 
-\item{new_mcmc}{number of MCMC iterations to conduct and append}
+\item{new_mcmc}{number of new MCMC iterations to conduct and append}
 
 \item{verb}{logical indicating whether to print iteration progress}
+
+\item{re_approx}{logical indicating whether to re-randomize the ordering 
+and update Vecchia nearest-neighbor conditioning sets (only for fits 
+with \code{vecchia = TRUE})}
+
+\item{...}{N/A}
 }
 \value{
 object of the same class with the new iterations appended
 }
 \description{
-Acts on a \code{gp}, \code{dgp2}, or \code{dgp3} object.  
-    Continues MCMC sampling of hyperparameters and hidden layers and appends
-    results to existing object.
+Acts on a \code{gp}, \code{gpvec}, \code{dgp2}, 
+    \code{dgp2vec}, \code{dgp3}, or \code{dgp3vec} object.  
+    Continues MCMC sampling of hyperparameters and hidden layers using 
+    settings from the original object.  Appends new samples to existing
+    samples.  When \code{vecchia = TRUE}, this function provides the option
+    to update Vecchia ordering/conditioning sets based on latent layer
+    warpings through the specification of \code{re_approx = TRUE}.
 }
 \details{
 See \code{fit_one_layer}, \code{fit_two_layer}, or 
@@ -39,8 +58,19 @@ See \code{fit_one_layer}, \code{fit_two_layer}, or
     investigate trace plots to assess burn-in.  The primary use of this 
     function is to gather more MCMC iterations in order to obtain burned-in 
     samples.
+    
+    Specifying \code{re_approx = TRUE} updates random orderings and 
+    nearest-neighbor conditioning sets (only for \code{vecchia = TRUE} 
+    fits).  In one-layer, there is no latent warping but the Vecchia 
+    approximation is still re-randomized and nearest-neighbors are adjusted 
+    accordingly.  In two- and three-layers, the latest samples of hidden 
+    layers are used to update nearest-neighbors.  If you update the 
+    Vecchia approximation, you should later remove previous samples 
+    (updating the approximation effectively starts a new chain).  When 
+    \code{re_approx = FALSE} the previous orderings and conditioning sets 
+    are used (maintaining the continuity of the previous chain).
 }
 \examples{
-# See "deepgp-package" or "fit_two_layer" for an example
+# See "fit_two_layer" for an example
 
 }

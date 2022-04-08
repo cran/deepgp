@@ -3,30 +3,43 @@
 \name{plot}
 \alias{plot}
 \alias{plot.gp}
+\alias{plot.gpvec}
 \alias{plot.dgp2}
+\alias{plot.dgp2vec}
 \alias{plot.dgp3}
+\alias{plot.dgp3vec}
 \title{Plots object from \code{deepgp} package}
 \usage{
 \method{plot}{gp}(x, trace = NULL, predict = NULL, ...)
 
+\method{plot}{gpvec}(x, trace = NULL, predict = NULL, ...)
+
 \method{plot}{dgp2}(x, trace = NULL, hidden = NULL, predict = NULL, ...)
 
+\method{plot}{dgp2vec}(x, trace = NULL, hidden = NULL, predict = NULL, ...)
+
 \method{plot}{dgp3}(x, trace = NULL, hidden = NULL, predict = NULL, ...)
+
+\method{plot}{dgp3vec}(x, trace = NULL, hidden = NULL, predict = NULL, ...)
 }
 \arguments{
-\item{x}{object of class \code{gp}, \code{dgp2}, or \code{dgp3}}
+\item{x}{object of class \code{gp}, \code{gpvec}, \code{dgp2}, 
+\code{dgp2vec}, \code{dgp3}, or \code{dgp3vec}}
 
-\item{trace}{logical indicating whether to generate trace plots}
+\item{trace}{logical indicating whether to generate trace plots (default is
+TRUE if the object has not been through \code{predict})}
 
-\item{predict}{logical indicating whether to generate posterior predictive plot}
+\item{predict}{logical indicating whether to generate posterior predictive 
+plot (default is TRUE if the object has been through \code{predict})}
 
 \item{...}{N/A}
 
 \item{hidden}{logical indicating whether to generate plots of hidden layers
-(\code{dgp2} or \code{dgp3} only)}
+(two or three layer only, default is FALSE)}
 }
 \description{
-Acts on a \code{gp}, \code{dgp2}, or \code{dgp3} object.  
+Acts on a \code{gp}, \code{gpvec}, \code{dgp2}, \code{dgp2vec},
+    \code{dgp3}, or \code{dgp3vec} object.  
     Generates trace plots for length scale and nugget hyperparameters.
     Generates plots of hidden layers for one-dimensional inputs.  Generates
     plots of the posterior mean and estimated 95\% prediction intervals for 
@@ -41,7 +54,7 @@ Trace plots are useful in assessing burn-in.  Hidden layer plots
     visualization.
 }
 \examples{
-# See "deepgp-package", "fit_one_layer", "fit_two_layer", or "fit_three_layer"
+# See "fit_one_layer", "fit_two_layer", or "fit_three_layer"
 # for an example
 
 }

@@ -1,15 +1,16 @@
 
 # Function Contents -----------------------------------------------------------
 # External: (see documentation below)
-#   plot.gp
-#   plot.dgp2
-#   plot.dgp3
+#   plot.gp == plot.gpvec
+#   plot.dgp2 == plot.dgp2vec
+#   plot.dgp3 == plot.dgp3vec
 
 # Define Plot for S3 Objects --------------------------------------------------
 #' @name plot
 #' @title Plots object from \code{deepgp} package
 #' 
-#' @description Acts on a \code{gp}, \code{dgp2}, or \code{dgp3} object.  
+#' @description Acts on a \code{gp}, \code{gpvec}, \code{dgp2}, \code{dgp2vec},
+#'     \code{dgp3}, or \code{dgp3vec} object.  
 #'     Generates trace plots for length scale and nugget hyperparameters.
 #'     Generates plots of hidden layers for one-dimensional inputs.  Generates
 #'     plots of the posterior mean and estimated 95\% prediction intervals for 
@@ -22,21 +23,24 @@
 #'     hidden layers.  These plots are meant to help in model fitting and 
 #'     visualization.
 #' 
-#' @param x object of class \code{gp}, \code{dgp2}, or \code{dgp3}
-#' @param trace logical indicating whether to generate trace plots
+#' @param x object of class \code{gp}, \code{gpvec}, \code{dgp2}, 
+#'        \code{dgp2vec}, \code{dgp3}, or \code{dgp3vec}
+#' @param trace logical indicating whether to generate trace plots (default is
+#'        TRUE if the object has not been through \code{predict})
 #' @param hidden logical indicating whether to generate plots of hidden layers
-#'        (\code{dgp2} or \code{dgp3} only)
-#' @param predict logical indicating whether to generate posterior predictive plot
+#'        (two or three layer only, default is FALSE)
+#' @param predict logical indicating whether to generate posterior predictive 
+#'        plot (default is TRUE if the object has been through \code{predict})
 #' @param ... N/A
 #' 
 #' @examples 
-#' # See "deepgp-package", "fit_one_layer", "fit_two_layer", or "fit_three_layer"
+#' # See "fit_one_layer", "fit_two_layer", or "fit_three_layer"
 #' # for an example
 #' 
 #' @rdname plot
 NULL
 
-# Plot One Layer Function -----------------------------------------------------
+# Plot One Layer --------------------------------------------------------------
 #' @rdname plot
 #' @export
 
@@ -55,7 +59,7 @@ plot.gp <- function(x, trace = NULL, predict = NULL, ...) {
     if (is.null(predict)) predict <- TRUE
   }
   
-  if(trace) {
+  if (trace) {
     par(mfrow = c(1, 2), mar = c(5, 4, 2, 2))
     plot(x$g, type = 'l', ylab = 'g', xlab = 'Iteration',
          main = 'Trace Plot of g')
@@ -63,7 +67,7 @@ plot.gp <- function(x, trace = NULL, predict = NULL, ...) {
          main = 'Trace Plot of theta')
   }
   
-  if(predict) {
+  if (predict) {
     if (Dx == 1) {
       par(mfrow = c(1, 1))
       if (is.null(x$Sigma)) {
@@ -107,7 +111,13 @@ plot.gp <- function(x, trace = NULL, predict = NULL, ...) {
   }
 }
 
-# Plot Two Layer Function -----------------------------------------------------
+# Plot One Layer Vecchia ------------------------------------------------------
+#' @rdname plot
+#' @export
+
+plot.gpvec <- plot.gp
+
+# Plot Two Layer --------------------------------------------------------------
 #' @rdname plot
 #' @export
 
@@ -128,7 +138,7 @@ plot.dgp2 <- function(x, trace = NULL, hidden = NULL, predict = NULL, ...) {
   }
   if (is.null(hidden)) hidden <- FALSE
   
-  if(trace) {
+  if (trace) {
     par(mfrow = c(1, D + 2), mar = c(5, 4, 2, 2))
     plot(x$g, type = 'l', ylab = 'g', xlab = 'Iteration',
          main = 'Trace Plot of g')
@@ -158,7 +168,7 @@ plot.dgp2 <- function(x, trace = NULL, hidden = NULL, predict = NULL, ...) {
     } else cat('Default plotting not prepared for these dimensions')
   }
   
-  if(predict) {
+  if (predict) {
     if (Dx == 1){
       par(mfrow = c(1, 1), mar = c(5, 4, 2, 2))
       if (is.null(x$Sigma)) {
@@ -202,7 +212,13 @@ plot.dgp2 <- function(x, trace = NULL, hidden = NULL, predict = NULL, ...) {
   }
 }
 
-# Plot Three Layer Function ---------------------------------------------------
+# Plot Two Layer Vecchia ------------------------------------------------------
+#' @rdname plot
+#' @export
+
+plot.dgp2vec <- plot.dgp2
+
+# Plot Three Layer ------------------------------------------------------------
 #' @rdname plot
 #' @export
 
@@ -223,7 +239,7 @@ plot.dgp3 <- function(x, trace = NULL, hidden = NULL, predict = NULL, ...) {
   }
   if (is.null(hidden)) hidden <- FALSE
   
-  if(trace) {
+  if (trace) {
     par(mfrow = c(2, D + 1), mar = c(5, 4, 2, 2))
     plot(x$g, type = 'l', ylab = 'g', xlab = 'Iteration',
          main = 'Trace Plot of g')
@@ -237,7 +253,7 @@ plot.dgp3 <- function(x, trace = NULL, hidden = NULL, predict = NULL, ...) {
            main = paste0('Trace Plot of theta_z [', i, ']'))
   }
   
-  if(hidden) {
+  if (hidden) {
     if (Dx == 1 & D == 1) {
       # specify the hidden layers to plot
       indx <- floor(seq(from = 1, to = x$nmcmc, length = 100))
@@ -270,7 +286,7 @@ plot.dgp3 <- function(x, trace = NULL, hidden = NULL, predict = NULL, ...) {
     } else cat('Default plotting not prepared for these dimensions')
   }
   
-  if(predict) {
+  if (predict) {
     if (Dx == 1) {
       par(mfrow = c(1, 1), mar = c(5, 4, 2, 2))
       if (is.null(x$Sigma)) {
@@ -313,3 +329,8 @@ plot.dgp3 <- function(x, trace = NULL, hidden = NULL, predict = NULL, ...) {
   }
 }
 
+# Plot Three Layer Vecchia ----------------------------------------------------
+#' @rdname plot
+#' @export
+
+plot.dgp3vec <- plot.dgp3

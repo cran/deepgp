@@ -5,15 +5,19 @@
 \alias{deepgp-package}
 \title{Package deepgp}
 \description{
-Performs model fitting and sequential design for deep Gaussian
-    processes following Sauer, Gramacy, and Higdon (2020) <arXiv:2012.08015>.  
-    Models extend up to three layers deep; a one layer model is equivalent 
-    to typical Gaussian process regression.  Both Matern and squared exponential
-    kernels are implemented.  Sequential design criteria 
-    include integrated mean-squared error (IMSE), active learning Cohn (ALC), 
-    and expected improvement (EI).  Applicable to both noisy and 
-    deterministic functions.  Incorporates SNOW parallelization and 
-    utilizes C and C++ under the hood.
+Performs posterior inference for deep Gaussian processes 
+following Sauer, Gramacy, and Higdon (2020) <arXiv:2012.08015>.  Models are 
+trained through MCMC including elliptical slice sampling of latent Gaussian 
+layers and Metropolis-Hastings sampling of kernel hyperparameters.  
+Vecchia-approximation for faster computation is implemented following Sauer, 
+Cooper, and Gramacy (2022) <arXiv:2204.02904>.  Downstream tasks include
+sequential design through active learning Cohn/integrated mean squared error 
+(ALC/IMSE; Sauer, Gramacy, and Higdon, 2020) and optimization through expected 
+improvement (EI; Gramacy, Sauer, and Wycoff, 2021 <arXiv:2112.07457>).  Models 
+extend up to three layers deep; a one layer model is equivalent to typical Gaussian 
+process regression.  Covariance kernel options are matern (default) and squared
+exponential.  Applicable to both noisy and deterministic functions.  
+Incorporates SNOW parallelization and utilizes C and C++ under the hood.
 }
 \section{Important Functions}{
 
@@ -39,128 +43,21 @@ Performs model fitting and sequential design for deep Gaussian
 }
 
 \examples{
-\donttest{
-# 1. One Layer and EI ---------------------------------------------------------
+# See "fit_one_layer", "fit_two_layer", "fit_three_layer", 
+# "ALC", or "IMSE" for examples
+# Examples of real-world implementations are available at: 
+# https://bitbucket.org/gramacylab/deepgp-ex/
 
-f <- function(x) {
-  sin(5 * pi * x) / (2 * x) + (x - 1) ^ 4
-}
-
-# Training data
-x <- seq(0.5, 2, length = 30)
-y <- f(x) + rnorm(30, 0, 0.01)
-
-# Testing data
-xx <- seq(0.5, 2, length = 100)
-yy <- f(xx)
-
-# Standardize inputs and outputs
-xx <- (xx - min(x)) / (max(x) - min(x))
-x <- (x - min(x)) / (max(x) - min(x))
-yy <- (yy - mean(y)) / sd(y)
-y <- (y - mean(y)) / sd(y)
-
-# Conduct MCMC
-fit <- fit_one_layer(x, y, nmcmc = 10000)
-plot(fit) # investigate trace plots
-fit <- trim(fit, 8000, 2)
-
-# Predict and calculate EI
-fit <- predict(fit, xx, EI = TRUE)
-
-# Visualize Fit
-plot(fit)
-par(new = TRUE) # overlay EI
-plot(xx, fit$EI, type = 'l', lty = 2, axes = FALSE, xlab = '', ylab = '')
-
-# Select next design point
-x_new <- xx[which.max(fit$EI)]
-
-# Evaluate fit
-rmse(yy, fit$mean) # lower is better
-
-# 2. Two Layer and ALC ------------------------------------------------------
-
-f <- function(x) {
-  exp(-10 * x) * (cos(10 * pi * x - 1) + sin(10 * pi * x - 1)) * 5 - 0.2
-}
-
-# Training data
-x <- seq(0, 1, length = 30)
-y <- f(x) + rnorm(30, 0, 0.05)
-
-# Testing data
-xx <- seq(0, 1, length = 100)
-yy <- f(xx)
-
-# Conduct MCMC
-fit <- fit_two_layer(x, y, D = 1, nmcmc = 9000, cov = "exp2")
-fit <- continue(fit, 1000)
-plot(fit) # investigate trace plots
-fit <- trim(fit, 8000, 2)
-
-# Option 1 - calculate ALC from MCMC iterations
-alc <- ALC(fit, xx)
-
-# Option 2 - calculate ALC after predictions
-fit <- predict(fit, xx, store_latent = TRUE)
-alc <- ALC(fit)
-
-# Visualize fit
-plot(fit)
-par(new = TRUE) # overlay ALC
-plot(xx, alc$value, type = 'l', lty = 2, axes = FALSE, xlab = '', ylab = '')
-
-# Select next design point
-x_new <- xx[which.max(alc$value)]
-
-# Evaluate fit
-rmse(yy, fit$mean) # lower is better
-
-# 3. Three Layer and IMSE ------------------------------------------------------
-
-f <- function(x) {
-  i <- which(x <= 0.48)
-  x[i] <- 2 * sin(pi * x[i] * 4) + 0.4 * cos(pi * x[i] * 16)
-  x[-i] <- 2 * x[-i] - 1
-  return(x)
-}
-
-# Training data
-x <- seq(0, 1, length = 30)
-y <- f(x) + rnorm(30, 0, 0.05)
-
-# Testing data
-xx <- seq(0, 1, length = 100)
-yy <- f(xx)
-
-# Conduct MCMC
-fit <- fit_three_layer(x, y, D = 1, nmcmc = 10000, cov = "exp2")
-plot(fit) # investigate trace plots
-fit <- trim(fit, 8000, 2)
-
-# Option 1 - calculate IMSE from only MCMC iterations
-imse <- IMSE(fit, xx)
-
-# Option 2 - calculate IMSE after predictions
-fit <- predict(fit, xx, store_latent = TRUE)
-imse <- IMSE(fit)
-
-# Visualize fit
-plot(fit)
-par(new = TRUE) # overlay IMSE
-plot(xx, imse$value, col = 2, type = 'l', lty = 2, axes = FALSE, xlab = '', ylab = '')
-
-# Select next design point
-x_new <- xx[which.min(imse$value)]
-
-# Evaluate fit
-rmse(yy, fit$mean) # lower is better
-}
 }
 \references{
-Sauer, A, RB Gramacy, and D Higdon. 2020. "Active Learning for Deep Gaussian 
-    Process Surrogates." \emph{Technometrics, to appear;} arXiv:2012.08015. \cr\cr
+Sauer, A, RB Gramacy, and D Higdon. 2021. "Active Learning for Deep Gaussian 
+    Process Surrogates." \emph{Technometrics}, (just-accepted), 1-39. \cr\cr
+Sauer, A, A Cooper, and RB Gramacy. 2022. "Vecchia-approximated Deep Gaussian
+    Processes for Computer Experiments." \emph{pre-print on arXiv:2204.02904} 
+    \cr\cr
+Katzfuss, M, J Guinness, W Gong, and D Zilber. 2020. "Vecchia aproximations
+    of Gaussian-process predictions." \emph{Journal of Agricultural,
+    Biological, and Environmental Statistics 25}, 383-414.\cr\cr
 Binois, M, J Huang, RB Gramacy, and M Ludkovski. 2019. Replication or 
     Exploration? Sequential Design for Stochastic Simulation Experiments. 
     \emph{Technometrics 61}, 7-23. Taylor & Francis. 

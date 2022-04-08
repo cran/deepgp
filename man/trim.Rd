@@ -3,17 +3,26 @@
 \name{trim}
 \alias{trim}
 \alias{trim.gp}
+\alias{trim.gpvec}
 \alias{trim.dgp2}
+\alias{trim.dgp2vec}
 \alias{trim.dgp3}
+\alias{trim.dgp3vec}
 \title{Trim/Thin MCMC iterations}
 \usage{
 trim(object, burn, thin)
 
 \method{trim}{gp}(object, burn, thin = 1)
 
+\method{trim}{gpvec}(object, burn, thin = 1)
+
 \method{trim}{dgp2}(object, burn, thin = 1)
 
+\method{trim}{dgp2vec}(object, burn, thin = 1)
+
 \method{trim}{dgp3}(object, burn, thin = 1)
+
+\method{trim}{dgp3vec}(object, burn, thin = 1)
 }
 \arguments{
 \item{object}{object from \code{fit_one_layer}, \code{fit_two_layer}, or 
@@ -29,21 +38,23 @@ iterations, \code{thin = 2} keeps every other iteration,
 object of the same class with the selected iterations removed
 }
 \description{
-Acts on a \code{gp}, \code{dgp2}, or \code{dgp3} object.
+Acts on a \code{gp}, \code{gpvec}, \code{dgp2}, \code{dgp2vec},
+   \code{dgp3vec}, or \code{dgp3} object.
    Removes the specified number of MCMC iterations (starting at the first 
-   iteration).  After these samples are removed, the remaining samples may 
-   be thinned.
+   iteration).  After these samples are removed, the remaining samples are
+   optionally thinned.
 }
 \details{
 The resulting object will have \code{nmcmc} equal to the previous 
-    \code{nmcmc} minus \code{burn} divided by \code{thin}.  It is recommended 
-    to start an MCMC fit then investigate trace plots to assess burn-in.  Once
-    burn-in has been achieved, use this function to remove the starting 
-    iterations.  Thinning reduces the size of the resulting object while 
-    accounting for the high correlation between consecutive iterations.
+    \code{nmcmc} minus \code{burn} divided by \code{thin}.  It is 
+    recommended to start an MCMC fit then investigate trace plots to assess 
+    burn-in.  Once burn-in has been achieved, use this function to remove 
+    the starting iterations.  Thinning reduces the size of the resulting 
+    object while accounting for the high correlation between consecutive 
+    iterations.
 }
 \examples{
-# See "deepgp-package", "fit_one_layer", "fit_two_layer", or "fit_three_layer"
+# See "fit_one_layer", "fit_two_layer", or "fit_three_layer"
 # for an example
 
 }

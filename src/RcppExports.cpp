@@ -7,15 +7,27 @@ Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
 Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
-// ExpFun
-arma::mat ExpFun(const arma::mat distmat, const arma::vec covparms);
-RcppExport SEXP _deepgp_ExpFun(SEXP distmatSEXP, SEXP covparmsSEXP) {
+// rev_matrix
+arma::mat rev_matrix(const arma::mat x);
+RcppExport SEXP _deepgp_rev_matrix(SEXP xSEXP) {
+    BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::mat >::type x(xSEXP);
+    rcpp_result_gen = Rcpp::wrap(rev_matrix(x));
+    return rcpp_result_gen;
+    END_RCPP
+}
+
+// Exp2Fun
+arma::mat Exp2Fun(const arma::mat distmat, const arma::vec covparms);
+RcppExport SEXP _deepgp_Exp2Fun(SEXP distmatSEXP, SEXP covparmsSEXP) {
     BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< const arma::mat >::type distmat(distmatSEXP);
     Rcpp::traits::input_parameter< const arma::vec >::type covparms(covparmsSEXP);
-    rcpp_result_gen = Rcpp::wrap(ExpFun(distmat, covparms));
+    rcpp_result_gen = Rcpp::wrap(Exp2Fun(distmat, covparms));
     return rcpp_result_gen;
     END_RCPP
 }
@@ -29,6 +41,23 @@ RcppExport SEXP _deepgp_MaternFun(SEXP distmatSEXP, SEXP covparmsSEXP) {
     Rcpp::traits::input_parameter< const arma::mat >::type distmat(distmatSEXP);
     Rcpp::traits::input_parameter< const arma::vec >::type covparms(covparmsSEXP);
     rcpp_result_gen = Rcpp::wrap(MaternFun(distmat, covparms));
+    return rcpp_result_gen;
+    END_RCPP
+}
+
+// U_entries
+arma::mat U_entries(const int Ncores, const arma::uword n, const arma::mat& locs, const arma::umat& revNNarray, const arma::mat& revCondOnLatent, const arma::vec covparms);
+RcppExport SEXP _deepgp_U_entries(SEXP NcoresSEXP, SEXP nSEXP, SEXP locsSEXP, SEXP revNNarraySEXP, SEXP revCondOnLatentSEXP, SEXP covparmsSEXP) {
+    BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const int >::type Ncores(NcoresSEXP);
+    Rcpp::traits::input_parameter< const arma::uword >::type n(nSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type locs(locsSEXP);
+    Rcpp::traits::input_parameter< const arma::umat& >::type revNNarray(revNNarraySEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type revCondOnLatent(revCondOnLatentSEXP);
+    Rcpp::traits::input_parameter< const arma::vec >::type covparms(covparmsSEXP);
+    rcpp_result_gen = Rcpp::wrap(U_entries(Ncores, n, locs, revNNarray, revCondOnLatent, covparms));
     return rcpp_result_gen;
     END_RCPP
 }
@@ -55,8 +84,10 @@ extern "C" {
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_deepgp_ExpFun",     (DL_FUNC) &_deepgp_ExpFun,     2},
+    {"_deepgp_rev_matrix", (DL_FUNC) &_deepgp_rev_matrix, 1},
+    {"_deepgp_Exp2Fun",     (DL_FUNC) &_deepgp_Exp2Fun,     2},
     {"_deepgp_MaternFun",  (DL_FUNC) &_deepgp_MaternFun,  2},
+    {"_deepgp_U_entries",  (DL_FUNC) &_deepgp_U_entries,  6},
     {NULL, NULL, 0}
 };
 

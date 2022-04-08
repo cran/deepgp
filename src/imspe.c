@@ -8,20 +8,6 @@ double pnorm(double x, double mu, double sigma, int lower_tail,
              int give_log);
 
 /*
- * er_function:
- * 
- * calculates Gaussian error function
- */ 
-
-double er_function(double x) 
-{
-  double m;
-
-  m = 2. * pnorm(x * sqrt(2.), 0.0,1.0,1,0) - 1.;
-  return m;
-}
-
-/*
  * Wij:
  * 
  * calculates Wij matrix
@@ -39,10 +25,10 @@ void Wij(double ** W, double ** X1, int n1, double ** X2, int n2, int col,
       for (k=0; k<col; k++) {
         y1 = X1[i][k];
         y2 = X2[j][k];
-        comp1 = (2. * b[k][0] - y1 - y2)/sqrt(2. * theta);
-        comp2 = (2. * a[k][0] - y1 - y2)/sqrt(2. * theta);
-        W[i][j] *= sqrt(M_PI * theta/8.) * exp(-(y1 - y2)*(y1 - y2)/(2. * theta)) * 
-          (er_function(comp1) - er_function(comp2));
+        comp1 = (2. * b[k][0] - y1 - y2)/sqrt(theta);
+        comp2 = (2. * a[k][0] - y1 - y2)/sqrt(theta);
+        W[i][j] *= sqrt(M_PI * theta/2.) * exp(-(y1 - y2)*(y1 - y2)/(2. * theta)) * 
+          (pnorm(comp1, 0.0,1.0,1,0) - pnorm(comp2, 0.0,1.0,1,0));
       }
     }
   }

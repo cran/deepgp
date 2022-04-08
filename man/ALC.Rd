@@ -44,7 +44,9 @@ Acts on a \code{gp}, \code{dgp2}, or \code{dgp3} object.
    select the point with the highest ALC to add to the design.
 }
 \details{
-All iterations in the object are used in the calculation, so samples 
+Not yet implemented for Vecchia-approximated fits.
+
+    All iterations in the object are used in the calculation, so samples 
     should be burned-in.  Thinning the samples using \code{trim} will
     speed up computation.  This function may be used in two ways:
     \itemize{
@@ -66,7 +68,67 @@ All iterations in the object are used in the calculation, so samples
     Furong Sun).
 }
 \examples{
-# See "deepgp-package" or "fit_two_layer" for an example
+# --------------------------------------------------------
+# Example 1: toy step function, runs in less than 5 seconds
+# --------------------------------------------------------
+
+f <- function(x) {
+    if (x <= 0.4) return(-1)
+    if (x >= 0.6) return(1)
+    if (x > 0.4 & x < 0.6) return(10*(x-0.5))
+}
+
+x <- seq(0.05, 0.95, length = 7)
+y <- sapply(x, f)
+x_new <- seq(0, 1, length = 100)
+
+# Fit model and calculate ALC
+fit <- fit_two_layer(x, y, nmcmc = 100, cov = "exp2")
+fit <- trim(fit, 50)
+fit <- predict(fit, x_new, cores = 1, store_latent = TRUE)
+alc <- ALC(fit)
+
+\donttest{
+# --------------------------------------------------------
+# Example 2: damped sine wave
+# --------------------------------------------------------
+
+f <- function(x) {
+    exp(-10*x) * (cos(10*pi*x - 1) + sin(10*pi*x - 1)) * 5 - 0.2
+}
+
+# Training data
+x <- seq(0, 1, length = 30)
+y <- f(x) + rnorm(30, 0, 0.05)
+
+# Testing data
+xx <- seq(0, 1, length = 100)
+yy <- f(xx)
+
+plot(xx, yy, type = "l")
+points(x, y, col = 2)
+
+# Conduct MCMC (can replace fit_two_layer with fit_one_layer/fit_three_layer)
+fit <- fit_two_layer(x, y, D = 1, nmcmc = 2000, cov = "exp2")
+plot(fit)
+fit <- trim(fit, 1000, 2)
+
+# Option 1 - calculate ALC from MCMC iterations
+alc <- ALC(fit, xx)
+
+# Option 2 - calculate ALC after predictions
+fit <- predict(fit, xx, cores = 1, store_latent = TRUE)
+alc <- ALC(fit)
+
+# Visualize fit
+plot(fit)
+par(new = TRUE) # overlay ALC
+plot(xx, alc$value, type = 'l', lty = 2, 
+     axes = FALSE, xlab = '', ylab = '')
+
+# Select next design point
+x_new <- xx[which.max(alc$value)]
+}
 
 }
 \references{

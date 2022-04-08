@@ -10,15 +10,16 @@ fit_two_layer(
   D = ifelse(is.matrix(x), ncol(x), 1),
   nmcmc = 10000,
   verb = TRUE,
-  w_0 = suppressWarnings(matrix(x, nrow = length(y), ncol = D)),
+  w_0 = NULL,
   g_0 = 0.01,
   theta_y_0 = 0.1,
   theta_w_0 = 0.1,
   true_g = NULL,
-  settings = list(l = 1, u = 2, alpha = list(g = 1.5, theta_w = 1.5, theta_y = 1.5),
-    beta = list(g = 3.9, theta_w = 3.9/4, theta_y = 3.9/6)),
+  settings = NULL,
   cov = c("matern", "exp2"),
-  v = 2.5
+  v = 2.5,
+  vecchia = FALSE,
+  m = min(25, length(y) - 1)
 )
 }
 \arguments{
@@ -49,27 +50,34 @@ layer), may be single value or vector of length \code{D}}
 small value to make fit deterministic).  Note - values that are too 
 small may cause numerical issues in matrix inversions.}
 
-\item{settings}{hyperparameters for proposals and priors on \code{g}, 
-\code{theta_y}, and \code{theta_w}}
+\item{settings}{hyperparameters for proposals and priors (see details)}
 
-\item{cov}{covariance kernel, either Matern or squared exponential (\code{exp2})}
+\item{cov}{covariance kernel, either Matern or squared exponential 
+(\code{"exp2"})}
 
 \item{v}{Matern smoothness parameter (only used if \code{cov = "matern"})}
+
+\item{vecchia}{logical indicating whether to use Vecchia approximation}
+
+\item{m}{size of Vecchia conditioning sets (only used if 
+\code{vecchia = TRUE})}
 }
 \value{
-a list of the S3 class \code{dgp2} with elements:
+a list of the S3 class \code{dgp2} or \code{dgp2vec} with elements:
 \itemize{
   \item \code{x}: copy of input matrix
   \item \code{y}: copy of response vector
   \item \code{nmcmc}: number of MCMC iterations
   \item \code{settings}: copy of proposal/prior settings
-  \item \code{cov}: copy of covariance kernel setting
-  \item \code{v}: copy of Matern smoothness parameter (if \code{cov = "matern"}) 
+  \item \code{v}: copy of Matern smoothness parameter (\code{v = 999} 
+        indicates \code{cov = "exp2"}) 
   \item \code{g}: vector of MCMC samples for \code{g}
   \item \code{theta_y}: vector of MCMC samples for \code{theta_y} (length
         scale of outer layer)
   \item \code{theta_w}: matrix of MCMC samples for \code{theta_w} (length 
         scale of inner layer)
+  \item \code{tau2}: vector of MLE estimates for \code{tau2} (scale 
+        parameter of outer layer)
   \item \code{w}: list of MCMC samples for hidden layer \code{w}
   \item \code{time}: computation time in seconds
 }
@@ -87,89 +95,105 @@ Maps inputs \code{x} through hidden layer \code{w} to outputs
     \code{y}.  Conducts sampling of the hidden layer using Elliptical 
     Slice sampling.  Utilizes Metropolis Hastings sampling of the length 
     scale and nugget parameters with proposals and priors controlled by 
-    \code{settings}.  Proposals for \code{g}, \code{theta_y}, and 
+    \code{settings}.  When \code{true_g} is set to a specific value, the 
+    nugget is not estimated.  When \code{vecchia = TRUE}, all calculations
+    leverage the Vecchia approximation with specified conditioning set size
+    \code{m}.  Vecchia approximation is only implemented for 
+    \code{cov = "matern"}.
+    
+    Proposals for \code{g}, \code{theta_y}, and 
     \code{theta_w} follow a uniform sliding window scheme, e.g.
     
     \code{g_star <- runif(1, l * g_t / u, u * g_t / l)}, 
     
-    with defaults \code{l = 1} and \code{u = 2} provided in \code{settings}.   
-    Priors on \code{g} and \code{theta} follow Gamma distributions with 
-    shape parameter (\code{alpha}) and rate parameter (\code{beta}) provided 
-    in \code{settings}.  These priors are designed for \code{x} scaled to 
-    [0, 1] and \code{y} scaled to have mean 0 and variance 1.  
+    with defaults \code{l = 1} and \code{u = 2} provided in \code{settings}.
+    To adjust these, set \code{settings = list(l = new_l, u = new_u)}.    
+    Priors on \code{g}, \code{theta_y}, and \code{theta_w} follow Gamma 
+    distributions with shape parameters (\code{alpha}) and rate parameters 
+    (\code{beta}) controlled within the \code{settings} list object.  
+    Defaults are
+    \itemize{
+        \item \code{settings$alpha$g <- 1.5}
+        \item \code{settings$beta$g <- 3.9}
+        \item \code{settings$alpha$theta_w <- 1.5}
+        \item \code{settings$beta$theta_w <- 3.9 / 4}
+        \item \code{settings$alpha$theta_y <- 1.5}
+        \item \code{settings$beta$theta_y <- 3.9 / 6}
+    }
+    These priors are designed for \code{x} scaled to 
+    [0, 1] and \code{y} scaled to have mean 0 and variance 1.  These may be 
+    adjusted using the \code{settings} input.
     
-    The output object of class \code{dgp2} is designed for use with 
-    \code{continue}, \code{trim}, and \code{predict}. If \code{w_0} is 
-    of dimension \code{nrow(x) - 1} by 
-    \code{D}, the final row is predicted using kriging.  This is helpful in 
-    sequential design when adding a new input location and starting the MCMC 
-    at the place where the previous MCMC left off.
+    When \code{w_0 = NULL}, the hidden layer is initialized at \code{x} 
+    (i.e. the identity mapping).  The default prior mean of the hidden layer 
+    is zero, but may be adjusted to \code{x} using 
+    \code{settings = list(w_prior_mean = x)}.  If \code{w_0} is of dimension 
+    \code{nrow(x) - 1} by \code{D}, the final row is predicted using kriging. 
+    This is helpful in sequential design when adding a new input location 
+    and starting the MCMC at the place where the previous MCMC left off.
+    
+    The output object of class \code{dgp2} or \code{dgp2vec} is designed for 
+    use with \code{continue}, \code{trim}, and \code{predict}.
 }
 \examples{
-# Toy example (runs in less than 5 seconds) --------------------------------
-# This example uses a small number of MCMC iterations in order to run quickly
-# More iterations are required to get appropriate fits
-# Function defaults are recommended (see additional example below)
-
-f <- function(x) {
-  if (x <= 0.4) return(-1)
-  if (x >= 0.6) return(1)
-  if (x > 0.4 & x < 0.6) return(10 * (x - 0.5))
-}
-x <- seq(0.05, 0.95, length = 7)
-y <- sapply(x, f)
-x_new <- seq(0, 1, length = 100)
-
-# Fit model and calculate ALC
-fit <- fit_two_layer(x, y, nmcmc = 500, cov = "exp2")
-fit <- trim(fit, 400)
-fit <- predict(fit, x_new, store_latent = TRUE)
-alc <- ALC(fit)
-
+# Examples of real-world implementations are available at: 
+# https://bitbucket.org/gramacylab/deepgp-ex/
 \donttest{
-# Two Layer and ALC --------------------------------------------------------
-
-f <- function(x) {
-  exp(-10 * x) * (cos(10 * pi * x - 1) + sin(10 * pi * x - 1)) * 5 - 0.2
+# G function (https://www.sfu.ca/~ssurjano/gfunc.html)
+f <- function(xx, a = (c(1:length(xx)) - 1) / 2) { 
+    new1 <- abs(4 * xx - 2) + a
+    new2 <- 1 + a
+    prod <- prod(new1 / new2)
+    return((prod - 1) / 0.86)
 }
 
 # Training data
-x <- seq(0, 1, length = 30)
-y <- f(x) + rnorm(30, 0, 0.05)
+d <- 1 
+n <- 20
+x <- matrix(runif(n * d), ncol = d)
+y <- apply(x, 1, f)
 
 # Testing data
-xx <- seq(0, 1, length = 100)
-yy <- f(xx)
+n_test <- 100
+xx <- matrix(runif(n_test * d), ncol = d)
+yy <- apply(xx, 1, f)
 
-# Conduct MCMC
-fit <- fit_two_layer(x, y, D = 1, nmcmc = 9000, cov = "exp2")
-fit <- continue(fit, 1000)
-plot(fit) # investigate trace plots
-fit <- trim(fit, 8000, 2)
+plot(xx[order(xx)], yy[order(xx)], type = "l")
+points(x, y, col = 2)
 
-# Option 1 - calculate ALC from MCMC iterations
-alc <- ALC(fit, xx)
-
-# Option 2 - calculate ALC after predictions
-fit <- predict(fit, xx, store_latent = TRUE)
-alc <- ALC(fit)
-
-# Visualize fit
+# Example 1: full model (nugget estimated, using continue)
+fit <- fit_two_layer(x, y, nmcmc = 1000)
 plot(fit)
-par(new = TRUE) # overlay ALC
-plot(xx, alc$value, type = 'l', lty = 2, axes = FALSE, xlab = '', ylab = '')
+fit <- continue(fit, 1000) 
+plot(fit) 
+fit <- trim(fit, 1000, 2)
+fit <- predict(fit, xx, cores = 1)
+plot(fit, hidden = TRUE)
 
-# Select next design point
-x_new <- xx[which.max(alc$value)]
+# Example 2: Vecchia approximated model
+# (Vecchia approximation is faster for larger data sizes)
+fit <- fit_two_layer(x, y, nmcmc = 2000, vecchia = TRUE, m = 10)
+plot(fit) 
+fit <- trim(fit, 1000, 2)
+fit <- predict(fit, xx, cores = 1)
+plot(fit, hidden = TRUE)
 
-# Evaluate fit
-rmse(yy, fit$mean) # lower is better
+# Example 3: Vecchia approximated model (re-approximated after burn-in)
+fit <- fit_two_layer(x, y, nmcmc = 1000, vecchia = TRUE, m = 10)
+fit <- continue(fit, 1000, re_approx = TRUE)
+plot(fit)
+fit <- trim(fit, 1000, 2)
+fit <- predict(fit, xx, cores = 1)
+plot(fit, hidden = TRUE)
 }
 
 }
 \references{
 Sauer, A, RB Gramacy, and D Higdon. 2020. "Active Learning for Deep Gaussian 
     Process Surrogates." \emph{Technometrics, to appear;} arXiv:2012.08015. 
+    \cr\cr
+Sauer, A, A Cooper, and RB Gramacy. 2022. "Vecchia-approximated Deep Gaussian
+    Processes for Computer Experiments." \emph{pre-print on arXiv:2204.02904} 
     \cr\cr
 Murray, I, RP Adams, and D MacKay. 2010. "Elliptical slice sampling." 
     \emph{Journal of Machine Learning Research 9}, 541-548.

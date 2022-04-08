@@ -1,10 +1,13 @@
 
-#define BOOST_DISABLE_ASSERTS
 #define ARMA_DONT_PRINT_ERRORS
+#define _USE_MATH_DEFINES
 
 // [[Rcpp::depends(RcppArmadillo)]]
 // [[Rcpp::plugins(openmp)]]
-// [[Rcpp::depends(BH)]]
+
+/*
+ * Code derived from GPvecchia package (Katzfuss et al.)
+ */
 
 #include <iostream>
 #ifdef _OPENMP
@@ -13,11 +16,15 @@
 #include <math.h>
 #include <RcppArmadillo.h>
 #include <Rcpp.h>
-#include <boost/math/special_functions/gamma.hpp>
 
 using namespace Rcpp;
 using namespace arma;
 using namespace std;
+
+// [[Rcpp::export]]
+arma::mat rev_matrix(arma::mat x) {
+  return reverse(x, 1);
+}
 
 double sqdist(rowvec l1, rowvec l2) { 
   double ssq = 0.0;
@@ -40,24 +47,23 @@ arma::mat calc_sqdist(arma::mat x) {
 }
 
 // [[Rcpp::export]]
-arma::mat ExpFun(arma::mat distmat, arma::vec covparms) { 
+arma::mat Exp2Fun(arma::mat distmat, arma::vec covparms) { 
   // distmat = matrix of SQUARED distances
   // covparms = c(tau2, theta, g, v = NULL)
   int d1 = distmat.n_rows;
   int d2 = distmat.n_cols;
-  int j1;
-  int j2;
+  int j1, j2;
   arma::mat covmat(d1, d2);
-  double scaledist;
+  double r;
   for (j1 = 0; j1 < d1; j1++) {
     for (j2 = 0; j2 < d2; j2++) {
-      if (distmat(j1, j2) == 0) {
-        covmat(j1, j2) = covparms(0)*(1 + covparms(2));
-      } else {
-        scaledist = distmat(j1, j2)/covparms(1);
-        covmat(j1, j2) = covparms(0)*exp(-scaledist);
-      }
+      r = distmat(j1, j2)/covparms(1);
+      covmat(j1, j2) = covparms(0)*exp(-r);
     }
+  }
+  if (d1 == d2) {
+    for (j1 = 0; j1 < d1; j1++) 
+      covmat(j1, j1) += covparms(0) * covparms(2);
   }
   return covmat;
 }
@@ -68,47 +74,80 @@ arma::mat MaternFun(arma::mat distmat, arma::vec covparms) {
   // covparms = c(tau2, theta, g, v)
   int d1 = distmat.n_rows;
   int d2 = distmat.n_cols;
-  int j1;
-  int j2;
+  int j1, j2;
   arma::mat covmat(d1, d2);
-  double scaledist;
-  double alpha = sqrt(covparms(1));
+  double r;
   if (covparms(3) == 0.5) { 
     for (j1 = 0; j1 < d1; j1++) {
       for (j2 = 0; j2 < d2; j2++) {
-        if (distmat(j1, j2) == 0) {
-          covmat(j1, j2) = covparms(0)*(1 + covparms(2));
-        } else {
-          scaledist = sqrt(distmat(j1, j2))/alpha;
-          covmat(j1, j2) = covparms(0)*exp(-scaledist);
-        }
+        r = sqrt(distmat(j1, j2) / covparms(1));
+        covmat(j1, j2) = covparms(0) * exp(-r);
       }
     }
   } else if(covparms(3) == 1.5) {
-    double normcon = (pow(alpha, -3)/sqrt(M_PI))*(boost::math::tgamma(2)/boost::math::tgamma(1.5));
     for (j1 = 0; j1 < d1; j1++) {
       for (j2 = 0; j2 < d2; j2++) {
-        if (distmat(j1, j2) == 0) {
-          covmat(j1,j2) = covparms(0)*(1 + covparms(2));
-        } else {
-          scaledist = sqrt(distmat(j1, j2))/alpha;
-          covmat(j1, j2) = normcon*covparms(0)*0.5*M_PI*pow(alpha,3)*exp(-scaledist)*(1+scaledist);
-        }
+        r = sqrt(3 * distmat(j1, j2) / covparms(1));
+        covmat(j1, j2) = covparms(0) * (1 + r) * exp(-r);
       }
     }
   } else if(covparms(3) == 2.5) {
-    double normcon = (pow(alpha, -5)/sqrt(M_PI))*(boost::math::tgamma(3)/boost::math::tgamma(2.5));
     for (j1 = 0; j1 < d1; j1++) {
       for (j2 = 0; j2 < d2; j2++) {
-        if (distmat(j1, j2) == 0) {
-          covmat(j1,j2) = covparms(0)*(1 + covparms(2));
-        } else {
-          scaledist = sqrt(distmat(j1, j2))/alpha;
-          covmat(j1, j2) = normcon*covparms(0)*0.125*M_PI*pow(alpha,5)*exp(-scaledist)*(3+3*scaledist+scaledist*scaledist);
-        }
+        r = sqrt(5 * distmat(j1, j2) / covparms(1));
+        covmat(j1, j2) = covparms(0) * (1 + r + pow(r, 2) / 3) * exp(-r);
       }
     }
   } 
+  if (d1 == d2) {
+    for (j1 = 0; j1 < d1; j1++) 
+      covmat(j1, j1) += covparms(0) * covparms(2);
+  }
   return covmat;
 }
 
+// [[Rcpp::export]]
+arma::mat U_entries (const int Ncores, const arma::uword n, const arma::mat& locs, 
+                     const arma::umat& revNNarray, const arma::mat& revCondOnLatent, 
+                     const arma::vec covparms){
+  
+  const uword m = revNNarray.n_cols - 1;
+  const uword Nlocs = locs.n_rows;
+  arma::mat Lentries = zeros(Nlocs, m + 1);
+  
+  #ifdef _OPENMP
+  
+  #pragma omp parallel for num_threads(Ncores) shared(Lentries) schedule(static)
+  
+    for (uword k = 0; k < Nlocs; k++) {
+      arma::uvec inds = revNNarray.row(k).t();
+      arma::vec revCon_row = revCondOnLatent.row(k).t();
+      arma::uvec inds00 = inds.elem(find(inds)) - 1;
+      uword n0 = inds00.n_elem;
+      arma::mat dist = calc_sqdist(locs.rows(inds00));
+      arma::mat covmat = MaternFun(dist, covparms);
+      arma::vec onevec = zeros(n0);
+      onevec[n0 - 1] = 1;
+      arma::vec M = solve(chol(covmat, "upper"), onevec);
+      Lentries(k, span(0, n0 - 1)) = M.t();
+    }
+  
+  #else
+  
+    for (uword k = 0; k < Nlocs; k++) {
+      arma::uvec inds = revNNarray.row(k).t();
+      arma::vec revCon_row = revCondOnLatent.row(k).t();
+      arma::uvec inds00 = inds.elem(find(inds)) - 1;
+      uword n0 = inds00.n_elem;
+      arma::mat dist = calc_sqdist(locs.rows(inds00));
+      arma::mat covmat = MaternFun(dist, covparms);
+      arma::vec onevec = zeros(n0);
+      onevec[n0 - 1] = 1;
+      arma::vec M = solve(chol(covmat, "upper"), onevec);
+      Lentries(k, span(0, n0 - 1)) = M.t();
+    }
+  
+  #endif
+  
+  return Lentries;
+}

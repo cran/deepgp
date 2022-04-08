@@ -29,6 +29,6 @@ d2 <- sq_dist(x)
 }
 \references{
 Gramacy, RB and F Sun. (2016). laGP: Large-Scale Spatial Modeling via Local 
-    Approximate Gaussian Processes in R. \emph{Journal of Statistical Software 
-    72} (1), 1-46. doi:10.18637/jss.v072.i01
+    Approximate Gaussian Processes in R. \emph{Journal of Statistical 
+    Software 72} (1), 1-46. doi:10.18637/jss.v072.i01
 }

@@ -8,8 +8,7 @@
 #   ALC (S3 method for gp, dgp2, dgp3 classes)
 #   IMSE (S3 method for gp, dgp2, dgp3 classes)
 
-# ALC C Function --------------------------------------------------------------
-# Calculates vector of ALC values in C
+# ALC C -----------------------------------------------------------------------
 
 alc.C <- function(X, Ki, theta, g, Xcand, Xref, tau2, verb = 0) {
   result <- .C("alcGP_R",
@@ -39,7 +38,9 @@ alc.C <- function(X, Ki, theta, g, Xcand, Xref, tau2, verb = 0) {
 #'    SNOW parallelization.  User should 
 #'    select the point with the highest ALC to add to the design.   
 #'    
-#' @details All iterations in the object are used in the calculation, so samples 
+#' @details Not yet implemented for Vecchia-approximated fits.
+#' 
+#'     All iterations in the object are used in the calculation, so samples 
 #'     should be burned-in.  Thinning the samples using \code{trim} will
 #'     speed up computation.  This function may be used in two ways:
 #'     \itemize{
@@ -85,7 +86,67 @@ alc.C <- function(X, Ki, theta, g, Xcand, Xref, tau2, verb = 0) {
 #'     72} (1), 1-46. doi:10.18637/jss.v072.i01
 #' 
 #' @examples
-#' # See "deepgp-package" or "fit_two_layer" for an example
+#' # --------------------------------------------------------
+#' # Example 1: toy step function, runs in less than 5 seconds
+#' # --------------------------------------------------------
+#' 
+#' f <- function(x) {
+#'     if (x <= 0.4) return(-1)
+#'     if (x >= 0.6) return(1)
+#'     if (x > 0.4 & x < 0.6) return(10*(x-0.5))
+#' }
+#' 
+#' x <- seq(0.05, 0.95, length = 7)
+#' y <- sapply(x, f)
+#' x_new <- seq(0, 1, length = 100)
+#' 
+#' # Fit model and calculate ALC
+#' fit <- fit_two_layer(x, y, nmcmc = 100, cov = "exp2")
+#' fit <- trim(fit, 50)
+#' fit <- predict(fit, x_new, cores = 1, store_latent = TRUE)
+#' alc <- ALC(fit)
+#' 
+#' \donttest{
+#' # --------------------------------------------------------
+#' # Example 2: damped sine wave
+#' # --------------------------------------------------------
+#' 
+#' f <- function(x) {
+#'     exp(-10*x) * (cos(10*pi*x - 1) + sin(10*pi*x - 1)) * 5 - 0.2
+#' }
+#' 
+#' # Training data
+#' x <- seq(0, 1, length = 30)
+#' y <- f(x) + rnorm(30, 0, 0.05)
+#' 
+#' # Testing data
+#' xx <- seq(0, 1, length = 100)
+#' yy <- f(xx)
+#' 
+#' plot(xx, yy, type = "l")
+#' points(x, y, col = 2)
+#' 
+#' # Conduct MCMC (can replace fit_two_layer with fit_one_layer/fit_three_layer)
+#' fit <- fit_two_layer(x, y, D = 1, nmcmc = 2000, cov = "exp2")
+#' plot(fit)
+#' fit <- trim(fit, 1000, 2)
+#' 
+#' # Option 1 - calculate ALC from MCMC iterations
+#' alc <- ALC(fit, xx)
+#' 
+#' # Option 2 - calculate ALC after predictions
+#' fit <- predict(fit, xx, cores = 1, store_latent = TRUE)
+#' alc <- ALC(fit)
+#' 
+#' # Visualize fit
+#' plot(fit)
+#' par(new = TRUE) # overlay ALC
+#' plot(xx, alc$value, type = 'l', lty = 2, 
+#'      axes = FALSE, xlab = '', ylab = '')
+#' 
+#' # Select next design point
+#' x_new <- xx[which.max(alc$value)]
+#' }
 #' 
 #' @rdname ALC
 #' @export
@@ -93,7 +154,7 @@ alc.C <- function(X, Ki, theta, g, Xcand, Xref, tau2, verb = 0) {
 ALC <- function(object, x_new, ref, cores)
   UseMethod("ALC", object)
 
-# ALC One Layer Function ------------------------------------------------------
+# ALC One Layer ---------------------------------------------------------------
 #' @rdname ALC
 #' @export
 
@@ -101,62 +162,46 @@ ALC.gp <- function(object, x_new = NULL, ref = NULL, cores = 1) {
   
   tic <- proc.time()[3]
   
-  if (object$cov == "matern") stop("Currently, ALC is only implemented for the
-                                    squared exponential kernel.  
-                                    Re-fit model with cov = 'exp2' in order to 
-                                    use ALC.")
+  if (object$v != 999) stop("Currently, ALC is only implemented for the
+                             un-approximated squared exponential kernel.  
+                             Re-fit model with 'vecchia = FALSE' and  
+                             cov = 'exp2' in order to use ALC.")
   
   if (is.null(x_new)) {
     if (is.null(object$x_new)) {
       stop("x_new has not been specified")
-    } else {
-      x_new <- object$x_new
-      predicted <- TRUE
-    }
-  } else {
-    predicted <- FALSE
-    if (is.numeric(x_new)) x_new <- as.matrix(x_new)
+    } else x_new <- object$x_new
   }
-  
-  # check that ref is a matrix
-  if (!is.null(ref) & !is.matrix(ref)) stop('ref must be a matrix')
+  if (is.numeric(x_new)) x_new <- as.matrix(x_new)
+  if (!is.null(ref) & !is.matrix(ref)) stop("ref must be a matrix")
   if (is.null(ref)) ref <- x_new
   
   dx <- sq_dist(object$x)
-  
+  n_new <- nrow(x_new)
+
+  # Prepare parallel clusters
+  iters <- 1:object$nmcmc
   if (cores == 1) {
-    alc <- rep(0, times = nrow(x_new))
+    chunks <- list(iters)
+  } else chunks <- split(iters, sort(cut(iters, cores, labels = FALSE)))
+  if (cores > detectCores()) warning("cores is greater than available nodes")
+  cl <- makeCluster(cores)
+  registerDoParallel(cl)
     
-    for(t in 1:object$nmcmc) {
+  thread <- NULL
+  alc <- foreach(thread = 1:cores, .combine = "+") %dopar% {
+    alc_sum <- rep(0, times = n_new)
       
-      K <- ExpFun(dx, c(1, object$theta[t], object$g[t]))
+    for (t in chunks[[thread]]) {
+      K <- Exp2Fun(dx, c(1, object$theta[t], object$g[t]))
       Ki <- invdet(K)$Mi
-      if (predicted) { tau2 <- object$tau2[t] 
-      } else tau2 <- krig(object$y, dx, theta = object$theta[t], g = object$g[t], 
-                          mean = FALSE, tau2 = TRUE, cov = "exp2")$tau2
-      
-      alc <- alc + alc.C(object$x, Ki, object$theta[t], object$g[t], x_new, ref, tau2)
+      alc_sum <- alc_sum + alc.C(object$x, Ki, object$theta[t], object$g[t], 
+                                 x_new, ref, object$tau2[t])
     } # end of t for loop
-  } else {
-    # prepare parallel clusters
-    if (cores > detectCores()) warning('cores is greater than available nodes')
-    cl <- makeCluster(cores)
-    registerDoParallel(cl)
+    return(alc_sum)
+  } # end of foreach statement
     
-    alc <- foreach(t = 1:object$nmcmc, .combine = '+') %dopar% {
-      
-      K <- ExpFun(dx, c(1, object$theta[t], object$g[t]))
-      Ki <- invdet(K)$Mi
-      if (predicted) { tau2 <- object$tau2[t] 
-      } else tau2 <- krig(object$y, dx, theta = object$theta[t], g = object$g[t], 
-                          mean = FALSE, tau2 = TRUE, cov = "exp2")$tau2
-      
-      return(alc.C(object$x, Ki, object$theta[t], object$g[t], x_new, ref, tau2))
-    } # end of foreach statement
-    
-    stopCluster(cl)
-  } # end of else statement
-  
+  stopCluster(cl)
   toc <- proc.time()[3]
   return(list(value = alc / object$nmcmc, time = toc - tic))
 }
@@ -169,10 +214,10 @@ ALC.dgp2 <- function(object, x_new = NULL, ref = NULL, cores = 1) {
   
   tic <- proc.time()[3]
   
-  if (object$cov == "matern") stop("Currently, ALC is only implemented for the
-                                    squared exponential kernel.  
-                                    Re-fit model with cov = 'exp2' in order to 
-                                    use ALC.")
+  if (object$v != 999) stop("Currently, ALC is only implemented for the
+                             un-approximated squared exponential kernel.  
+                             Re-fit model with 'vecchia = FALSE' and  
+                             cov = 'exp2' in order to use ALC.")
   
   if (is.null(x_new)) {
     if (is.null(object$x_new)) {
@@ -185,87 +230,54 @@ ALC.dgp2 <- function(object, x_new = NULL, ref = NULL, cores = 1) {
                 speed up computation")
       } else predicted <- TRUE
     }
-  } else {
-    predicted <- FALSE
-    if (is.numeric(x_new)) x_new <- as.matrix(x_new)
-  }
-  
-  # check that ref is a matrix
+  } else predicted <- FALSE
+  if (is.numeric(x_new)) x_new <- as.matrix(x_new)
   if (!is.null(ref) & !is.matrix(ref)) stop('ref must be a matrix')
   
-  # specify pre-calculations if predicted is FALSE
+  # Specify pre-calculations if predicted is FALSE
+  n_new <- nrow(x_new)
   if (!predicted) {
-    m <- nrow(x_new)
     D <- ncol(object$w[[1]])
     dx <- sq_dist(object$x)
     d_cross <- sq_dist(x_new, object$x)
   }
   
+  # Prepare parallel clusters
+  iters <- 1:object$nmcmc
   if (cores == 1) {
-    alc <- rep(0, times = nrow(x_new))
-    
-    for(t in 1:object$nmcmc) {
-      w <- object$w[[t]]
-      
-      if (predicted) {
-        w_new <- object$w_new[[t]]
-        tau2 <- object$tau2[t]
-      } else {
-        # calculate w_new using conditional uncertainty
-        w_new <- matrix(nrow = m, ncol = D)
-        for (i in 1:D) {
-          w_new[, i] <- krig(w[, i], dx, NULL, d_cross, object$theta_w[t, i], 
-                             g = eps, cov = "exp2")$mean
-        }
-        # calculate tau2
-        tau2 <- krig(object$y, sq_dist(w), theta = object$theta_y[t], 
-                     g = object$g[t], mean = FALSE, tau2 = TRUE,
-                     cov = "exp2")$tau2
-      } 
-      
-      if (is.null(ref)) ref <- w_new
-      
-      K <- ExpFun(sq_dist(w), c(1, object$theta_y[t], object$g[t]))
-      Ki <- invdet(K)$Mi
-      
-      alc <- alc + alc.C(w, Ki, object$theta_y[t], object$g[t], w_new, ref, tau2)
-    } # end of t for loop
-  } else {
-    # prepare parallel clusters
-    if (cores > detectCores()) warning('cores is greater than available nodes')
-    cl <- makeCluster(cores)
-    registerDoParallel(cl)
-    
-    alc <- foreach(t = 1:object$nmcmc, .combine = '+') %dopar% {
-      w <- object$w[[t]]
-      
-      if (predicted) {
-        w_new <- object$w_new[[t]]
-        tau2 <- object$tau2[t]
-      } else {
-        # calculate w_new using conditional uncertainty
-        w_new <- matrix(nrow = m, ncol = D)
-        for (i in 1:D) {
-          w_new[, i] <- krig(w[, i], dx, NULL, d_cross, object$theta_w[t, i], 
-                             g = eps, cov = "exp2")$mean
-        }
-        # calculate tau2
-        tau2 <- krig(object$y, sq_dist(w), theta = object$theta_y[t], 
-                     g = object$g[t], mean = FALSE, tau2 = TRUE,
-                     cov = "exp2")$tau2
-      } 
-      
-      if (is.null(ref)) ref <- w_new
-      
-      K <- ExpFun(sq_dist(w), c(1, object$theta_y[t], object$g[t]))
-      Ki <- invdet(K)$Mi
-      
-      return(alc.C(w, Ki, object$theta_y[t], object$g[t], w_new, ref, tau2))
-    } # end of foreach statement
-    
-    stopCluster(cl)
-  } # end of else statement
+    chunks <- list(iters)
+  } else chunks <- split(iters, sort(cut(iters, cores, labels = FALSE)))
+  if (cores > detectCores()) warning("cores is greater than available nodes")
+  cl <- makeCluster(cores)
+  registerDoParallel(cl)
   
+  thread <- NULL
+  alc <- foreach(thread = 1:cores, .combine = "+") %dopar% {
+    alc_sum <- rep(0, times = n_new)
+    
+    for (t in chunks[[thread]]) {
+      w <- object$w[[t]]
+      
+      if (predicted) {
+        w_new <- object$w_new[[t]]
+      } else {
+        w_new <- matrix(nrow = n_new, ncol = D)
+        for (i in 1:D)
+          w_new[, i] <- krig(w[, i], dx, NULL, d_cross, object$theta_w[t, i], 
+                             g = eps, v = 999)$mean
+      } 
+      
+      if (is.null(ref)) ref <- w_new
+      
+      K <- Exp2Fun(sq_dist(w), c(1, object$theta_y[t], object$g[t]))
+      Ki <- invdet(K)$Mi
+      alc_sum <- alc_sum + alc.C(w, Ki, object$theta_y[t], object$g[t], w_new, 
+                                 ref, object$tau2[t])
+    } # end of t for loop
+    return(alc_sum)
+  } # end of foreach statement
+
+  stopCluster(cl)
   toc <- proc.time()[3]
   return(list(value = alc / object$nmcmc, time = toc - tic))
 }
@@ -278,10 +290,10 @@ ALC.dgp3 <- function(object, x_new = NULL, ref = NULL, cores = 1) {
   
   tic <- proc.time()[3]
   
-  if (object$cov == "matern") stop("Currently, ALC is only implemented for the
-                                    squared exponential kernel.  
-                                    Re-fit model with cov = 'exp2' in order to 
-                                    use ALC.")
+  if (object$v != 999) stop("Currently, ALC is only implemented for the
+                             un-approximated squared exponential kernel.  
+                             Re-fit model with 'vecchia = FALSE' and  
+                             cov = 'exp2' in order to use ALC.")
   
   if (is.null(x_new)) {
     if (is.null(object$x_new)) {
@@ -294,108 +306,64 @@ ALC.dgp3 <- function(object, x_new = NULL, ref = NULL, cores = 1) {
                 speed up computation")
       } else predicted <- TRUE
     } 
-  } else {
-    predicted <- FALSE
-    if (is.numeric(x_new)) x_new <- as.matrix(x_new)
-  }
-  
-  # check that w_ref is a matrix
+  } else predicted <- FALSE
+  if (is.numeric(x_new)) x_new <- as.matrix(x_new)
   if (!is.null(ref) & !is.matrix(ref)) stop('ref must be a matrix')
   
-  # specify pre-calculations if predicted is FALSE
+  # Specify pre-calculations if predicted is FALSE
+  n_new <- nrow(x_new)
   if (!predicted) {
-    m <- nrow(x_new)
     D <- ncol(object$w[[1]])
     dx <- sq_dist(object$x)
     d_cross <- sq_dist(x_new, object$x)
   }
-  
+
+  # Prepare parallel clusters
+  iters <- 1:object$nmcmc
   if (cores == 1) {
-    alc <- rep(0, times = nrow(x_new))
+    chunks <- list(iters)
+  } else chunks <- split(iters, sort(cut(iters, cores, labels = FALSE)))
+  if (cores > detectCores()) warning("cores is greater than available nodes")
+  cl <- makeCluster(cores)
+  registerDoParallel(cl)
     
-    for(t in 1:object$nmcmc) {
+  thread <- NULL
+  alc <- foreach(thread = 1:cores, .combine = '+') %dopar% {
+    alc_sum <- rep(0, times = n_new)
+    
+    for (t in chunks[[thread]]) {
       w <- object$w[[t]]
       
       if (predicted) {
         w_new <- object$w_new[[t]]
-        tau2 <- object$tau2[t]
       } else {
-        # calculate z_new using conditional uncertainty
         z <- object$z[[t]]
-        z_new <- matrix(nrow = m, ncol = D)
-        for (i in 1:D) {
+        z_new <- matrix(nrow = n_new, ncol = D)
+        for (i in 1:D)
           z_new[, i] <- krig(z[, i], dx, NULL, d_cross, object$theta_z[t, i], 
-                             g = eps, cov = "exp2")$mean
-        }
-        
-        # calculate w_new using conditional uncertainty
-        w_new <- matrix(nrow = m, ncol = D)
-        for (i in 1:D) {
+                             g = eps, v = 999)$mean
+        w_new <- matrix(nrow = n_new, ncol = D)
+        for (i in 1:D) 
           w_new[, i] <- krig(w[, i], sq_dist(z), NULL, sq_dist(z_new, z), 
-                             object$theta_w[t, i], g = eps, cov = "exp2")$mean
-        }
-        # calculate tau2
-        tau2 <- krig(object$y, sq_dist(w), theta = object$theta_y[t], 
-                     g = object$g[t], mean = FALSE, tau2 = TRUE, cov = "exp2")$tau2
+                             object$theta_w[t, i], g = eps, v = 999)$mean
       } 
       
       if (is.null(ref)) ref <- w_new
       
-      K <- ExpFun(sq_dist(w), c(1, object$theta_y[t], object$g[t]))
+      K <- Exp2Fun(sq_dist(w), c(1, object$theta_y[t], object$g[t]))
       Ki <- invdet(K)$Mi
-      
-      alc <- alc + alc.C(w, Ki, object$theta_y[t], object$g[t], w_new, ref, tau2)
+      alc_sum <- alc_sum + alc.C(w, Ki, object$theta_y[t], object$g[t], w_new, 
+                                 ref, object$tau2[t])
     } # end of t for loop
-  } else {
-    # prepare parallel clusters
-    if (cores > detectCores()) warning('cores is greater than available nodes')
-    cl <- makeCluster(cores)
-    registerDoParallel(cl)
+    return(alc_sum)
+  } # end of foreach statement
     
-    alc <- foreach(t = 1:object$nmcmc, .combine = '+') %dopar% {
-      w <- object$w[[t]]
-      
-      if (predicted) {
-        w_new <- object$w_new[[t]]
-        tau2 <- object$tau2[t]
-      } else {
-        # calculate z_new using conditional uncertainty
-        z <- object$z[[t]]
-        z_new <- matrix(nrow = m, ncol = D)
-        for (i in 1:D) {
-          z_new[, i] <- krig(z[, i], dx, NULL, d_cross, object$theta_z[t, i], 
-                             g = eps, cov = "exp2")$mean
-        }
-        
-        # calculate w_new using conditional uncertainty
-        w_new <- matrix(nrow = m, ncol = D)
-        for (i in 1:D) {
-          w_new[, i] <- krig(w[, i], sq_dist(z), NULL, sq_dist(z_new, z), 
-                             object$theta_w[t, i], g = eps, cov = "exp2")$mean
-        }
-        # calculate tau2
-        tau2 <- krig(object$y, sq_dist(w), theta = object$theta_y[t], 
-                     g = object$g[t], mean = FALSE, tau2 = TRUE, cov = "exp2")$tau2
-      } 
-      
-      if (is.null(ref)) ref <- w_new
-      
-      K <- ExpFun(sq_dist(w), c(1, object$theta_y[t], object$g[t]))
-      Ki <- invdet(K)$Mi
-      
-      return(alc.C(w, Ki, object$theta_y[t], object$g[t], w_new, ref, tau2))
-    } # end of foreach statement
-    
-    stopCluster(cl)
-  } # end of else statement
-  
+  stopCluster(cl)
   toc <- proc.time()[3]
   return(list(value = alc / object$nmcmc, time = toc - tic))
 }
 
-
-# Wij C Function --------------------------------------------------------------
-# Calculates the Wij matrix in C
+# Wij C -----------------------------------------------------------------------
 
 Wij.C <- function(x1, x2, theta, a, b){
   W <- matrix(1, nrow = nrow(x1), ncol = nrow(x2))
@@ -420,7 +388,9 @@ Wij.C <- function(x1, x2, theta, a, b){
 #'     \code{x_new}.  Optionally utilizes SNOW parallelization.  User should 
 #'     select the point with the lowest IMSE to add to the design.
 #'     
-#' @details All iterations in the object are used in the calculation, so samples
+#' @details Not yet implemented for Vecchia-approximated fits.
+#' 
+#'     All iterations in the object are used in the calculation, so samples
 #'     should be burned-in.  Thinning the samples using \code{trim} will speed 
 #'     up computation.  This function may be used in two ways:
 #'     \itemize{
@@ -459,7 +429,70 @@ Wij.C <- function(x1, x2, theta, a, b){
 #'     61}, 7-23. Taylor & Francis. doi:10.1080/00401706.2018.1469433.
 #' 
 #' @examples
-#' # See "deepgp-package" or "fit_three_layer" for an example
+#' # --------------------------------------------------------
+#' # Example 1: toy step function, runs in less than 5 seconds
+#' # --------------------------------------------------------
+#' 
+#' f <- function(x) {
+#'     if (x <= 0.4) return(-1)
+#'     if (x >= 0.6) return(1)
+#'     if (x > 0.4 & x < 0.6) return(10*(x-0.5))
+#' }
+#' 
+#' x <- seq(0.05, 0.95, length = 7)
+#' y <- sapply(x, f)
+#' x_new <- seq(0, 1, length = 100)
+#' 
+#' # Fit model and calculate IMSE
+#' fit <- fit_one_layer(x, y, nmcmc = 100, cov = "exp2")
+#' fit <- trim(fit, 50)
+#' fit <- predict(fit, x_new, cores = 1, store_latent = TRUE)
+#' imse <- IMSE(fit)
+#' 
+#' \donttest{
+#' # --------------------------------------------------------
+#' # Example 2: Higdon function
+#' # --------------------------------------------------------
+#' 
+#' f <- function(x) {
+#'     i <- which(x <= 0.48)
+#'     x[i] <- 2 * sin(pi * x[i] * 4) + 0.4 * cos(pi * x[i] * 16)
+#'     x[-i] <- 2 * x[-i] - 1
+#'     return(x)
+#' }
+#' 
+#' # Training data
+#' x <- seq(0, 1, length = 30)
+#' y <- f(x) + rnorm(30, 0, 0.05)
+#' 
+#' # Testing data
+#' xx <- seq(0, 1, length = 100)
+#' yy <- f(xx)
+#' 
+#' plot(xx, yy, type = "l")
+#' points(x, y, col = 2)
+#' 
+#' # Conduct MCMC (can replace fit_three_layer with fit_one_layer/fit_two_layer)
+#' fit <- fit_three_layer(x, y, D = 1, nmcmc = 2000, cov = "exp2")
+#' plot(fit)
+#' fit <- trim(fit, 1000, 2)
+#' 
+#' # Option 1 - calculate IMSE from only MCMC iterations
+#' imse <- IMSE(fit, xx)
+#' 
+#' # Option 2 - calculate IMSE after predictions
+#' fit <- predict(fit, xx, cores = 1, store_latent = TRUE)
+#' imse <- IMSE(fit)
+#' 
+#' # Visualize fit
+#' plot(fit)
+#' par(new = TRUE) # overlay IMSE
+#' plot(xx, imse$value, col = 2, type = 'l', lty = 2, 
+#'      axes = FALSE, xlab = '', ylab = '')
+#' 
+#' # Select next design point
+#' x_new <- xx[which.min(imse$value)]
+#' }
 #' 
 #' @rdname IMSE
 #' @export
@@ -467,7 +500,7 @@ Wij.C <- function(x1, x2, theta, a, b){
 IMSE <- function(object, x_new, cores)
   UseMethod("IMSE", object)
 
-# IMSE One Layer Function ----------------------------------------------------
+# IMSE One Layer --------------------------------------------------------------
 #' @rdname IMSE
 #' @export
 
@@ -475,57 +508,55 @@ IMSE.gp <- function(object, x_new = NULL, cores = 1) {
   
   tic <- proc.time()[3]
   
-  if (object$cov == "matern") stop("Currently, IMSE is only implemented for the
-                                    squared exponential kernel.  
-                                    Re-fit model with cov = 'exp2' in order to 
-                                    use IMSE.")
+  if (object$v != 999) stop("Currently, ALC is only implemented for the
+                             un-approximated squared exponential kernel.  
+                             Re-fit model with 'vecchia = FALSE' and  
+                             cov = 'exp2' in order to use ALC.")
   
   if (is.null(x_new)) {
     if (is.null(object$x_new)) {
       stop("x_new has not been specified")
-    } else {
-      x_new <- object$x_new
-      predicted <- TRUE
-    }
-  } else {
-    predicted <- FALSE
-    if (is.numeric(x_new)) x_new <- as.matrix(x_new)
+    } else x_new <- object$x_new
   }
-  
+  if (is.numeric(x_new)) x_new <- as.matrix(x_new)
+
   n <- nrow(object$x)
-  m <- nrow(x_new)
+  n_new <- nrow(x_new)
   dx <- sq_dist(object$x)
   
-  # define bounds
+  # Define bounds
   a <- apply(x_new, 2, min)
   b <- apply(x_new, 2, max)
   
   Knew_inv <- matrix(nrow = n + 1, ncol = n + 1)
   Wijs <- matrix(nrow = n + 1, ncol = n + 1)
-  
+
+  # Prepare parallel clusters
+  iters <- 1:object$nmcmc
   if (cores == 1) {
-    imse <- rep(0, times = nrow(x_new))
-    
-    for (t in 1:object$nmcmc) {
-      Kn <- ExpFun(dx, c(1, object$theta[t], object$g[t]))
+    chunks <- list(iters)
+  } else chunks <- split(iters, sort(cut(iters, cores, labels = FALSE)))
+  if (cores > detectCores()) warning("cores is greater than available nodes")
+  cl <- makeCluster(cores)
+  registerDoParallel(cl)
+  
+  thread <- NULL  
+  imse <- foreach(thread = 1:cores, .combine = '+') %dopar% {
+    imse_sum <- rep(0, times = n_new)
+     
+    for (t in chunks[[thread]]) { 
+      Kn <- Exp2Fun(dx, c(1, object$theta[t], object$g[t]))
       Kn_inv <- invdet(Kn)$Mi
       kk <- 1 + object$g[t]
       
-      # precalculate all except the last row and last column
+      # Precalculate all except the last row and last column
       Wijs[1:n, 1:n] <- Wij.C(object$x, object$x, object$theta[t], a, b)
       
-      if (predicted) { tau2 <- object$tau2[t] 
-      } else tau2 <- krig(object$y, dx, theta = object$theta[t], g = object$g[t], 
-                          mean = FALSE, tau2 = TRUE, cov = "exp2")$tau2
-      
-      imse_store <- vector(length = m)
-      
-      for (i in 1:m) {
-        # specify new design point
+      for (i in 1:n_new) {
         x_star <- matrix(x_new[i, ], nrow = 1)
         
-        # calculate new Ki matrix
-        k <- ExpFun(sq_dist(object$x, x_star), c(1, object$theta[t], eps))
+        # Calculate new Ki matrix
+        k <- Exp2Fun(sq_dist(object$x, x_star), c(1, object$theta[t], eps))
         v <- c(kk - t(k) %*% Kn_inv %*% k)
         g <- (- 1 / v) * Kn_inv %*% k
         Knew_inv[1:n, 1:n] <- Kn_inv + g %*% t(g) * v
@@ -536,63 +567,20 @@ IMSE.gp <- function(object, x_new = NULL, cores = 1) {
         Wijs[1:n, n+1] <- Wijs[n+1, 1:n] <- Wij.C(object$x, x_star, 
                                                   object$theta[t], a, b)
         Wijs[n+1, n+1] <- Wij.C(x_star, x_star, object$theta[t], a, b)
-        imse_store[i] <- tau2 * prod(b - a) * (1 - sum(Knew_inv * Wijs))
+        imse_sum[i] <- imse_sum[i] + object$tau2[t] * prod(b - a) * 
+                                      (1 - sum(Knew_inv * Wijs))
         # Note: sum(Ki * Wijs) == sum(diag(Ki %*% Wijs)) because symmetric
       } # end of i for loop
-      imse <- imse + imse_store
     } # end of t for loop
-  } else {
-    # prepare parallel clusters
-    if (cores > detectCores()) warning('cores is greater than available nodes')
-    cl <- makeCluster(cores)
-    registerDoParallel(cl)
+    return(imse_sum)
+  } # end of foreach statement
     
-    imse <- foreach(t = 1:object$nmcmc, .combine = '+') %dopar% {
-      
-      Kn <- ExpFun(dx, c(1, object$theta[t], object$g[t]))
-      Kn_inv <- invdet(Kn)$Mi
-      kk <- 1 + object$g[t]
-      
-      # precalculate all except the last row and last column
-      Wijs[1:n, 1:n] <- Wij.C(object$x, object$x, object$theta[t], a, b)
-      
-      if (predicted) { tau2 <- object$tau2[t] 
-      } else tau2 <- krig(object$y, dx, theta = object$theta[t], g = object$g[t], 
-                          mean = FALSE, tau2 = TRUE, cov = "exp2")$tau2
-      
-      imse_store <- vector(length = m)
-      
-      for (i in 1:m) {
-        # specify new design point
-        x_star <- matrix(x_new[i, ], nrow = 1)
-        
-        # calculate new Ki matrix
-        k <- ExpFun(sq_dist(object$x, x_star), c(1, object$theta[t], eps))
-        v <- c(kk - t(k) %*% Kn_inv %*% k)
-        g <- (- 1 / v) * Kn_inv %*% k
-        Knew_inv[1:n, 1:n] <- Kn_inv + g %*% t(g) * v
-        Knew_inv[1:n, n+1] <- g
-        Knew_inv[n+1, 1:n] <- g
-        Knew_inv[n+1, n+1] <- 1 / v
-        
-        Wijs[1:n, n+1] <- Wijs[n+1, 1:n] <- Wij.C(object$x, x_star, 
-                                                  object$theta[t], a, b)
-        Wijs[n+1, n+1] <- Wij.C(x_star, x_star, object$theta[t], a, b)
-        imse_store[i] <- tau2 * prod(b - a) * (1 - sum(Knew_inv * Wijs))
-        # Note: sum(Ki * Wijs) == sum(diag(Ki %*% Wijs)) because symmetric
-      } # end of i for loop
-      return(imse_store)
-    } # end of foreach statement
-    
-    stopCluster(cl)
-  } # end of else statement
-  
+  stopCluster(cl)
   toc <- proc.time()[3]
-  
   return(list(value = imse / object$nmcmc, time = toc - tic))
 }
 
-# IMSE Two Layer Function ----------------------------------------------------
+# IMSE Two Layer --------------------------------------------------------------
 #' @rdname IMSE
 #' @export
 
@@ -600,10 +588,10 @@ IMSE.dgp2 <- function(object, x_new = NULL, cores = 1) {
   
   tic <- proc.time()[3]
   
-  if (object$cov == "matern") stop("Currently, IMSE is only implemented for the
-                                    squared exponential kernel.  
-                                    Re-fit model with cov = 'exp2' in order to 
-                                    use IMSE.")
+  if (object$v != 999) stop("Currently, ALC is only implemented for the
+                             un-approximated squared exponential kernel.  
+                             Re-fit model with 'vecchia = FALSE' and  
+                             cov = 'exp2' in order to use ALC.")
   
   if (is.null(x_new)) {
     if (is.null(object$x_new)) {
@@ -616,13 +604,11 @@ IMSE.dgp2 <- function(object, x_new = NULL, cores = 1) {
                 speed up computation")
       } else predicted <- TRUE
     }
-  } else {
-    predicted <- FALSE
-    if (is.numeric(x_new)) x_new <- as.matrix(x_new)
-  }
+  } else predicted <- FALSE
+  if (is.numeric(x_new)) x_new <- as.matrix(x_new)
   
   n <- nrow(object$x)
-  m <- nrow(x_new)
+  n_new <- nrow(x_new)
   if (!predicted) {
     D <- ncol(object$w[[1]])
     dx <- sq_dist(object$x)
@@ -632,96 +618,46 @@ IMSE.dgp2 <- function(object, x_new = NULL, cores = 1) {
   Knew_inv <- matrix(nrow = n + 1, ncol = n + 1)
   Wijs <- matrix(nrow = n + 1, ncol = n + 1)
   
+  # Prepare parallel clusters
+  iters <- 1:object$nmcmc
   if (cores == 1) {
-    imse <- rep(0, times = nrow(x_new))
+    chunks <- list(iters)
+  } else chunks <- split(iters, sort(cut(iters, cores, labels = FALSE)))
+  if (cores > detectCores()) warning("cores is greater than available nodes")
+  cl <- makeCluster(cores)
+  registerDoParallel(cl)
     
-    for (t in 1:object$nmcmc) {
+  thread <- NULL
+  imse <- foreach(thread = 1:cores, .combine = '+') %dopar% {
+    imse_sum <- rep(0, times = n_new)
+    
+    for (t in chunks[[thread]]) {
       w <- object$w[[t]]
-      Kn <- ExpFun(sq_dist(w), c(1, object$theta_y[t], object$g[t]))
+      Kn <- Exp2Fun(sq_dist(w), c(1, object$theta_y[t], object$g[t]))
       Kn_inv <- invdet(Kn)$Mi
       kk <- 1 + object$g[t]
       
       if (predicted) {
         w_new <- object$w_new[[t]]
-        tau2 <- object$tau2[t]
       } else {
-        w_new <- matrix(nrow = m, ncol = D)
+        w_new <- matrix(nrow = n_new, ncol = D)
         for (i in 1:D)
           w_new[, i] <- krig(w[, i], dx, NULL, d_cross, object$theta_w[t, i], 
-                             g = eps, cov = "exp2")$mean
-        tau2 <- krig(object$y, sq_dist(w), theta = object$theta_y[t], 
-                     g = object$g[t], mean = FALSE, tau2 = TRUE, cov = "exp2")$tau2
+                             g = eps, v = 999)$mean
       }
       
-      # define bounds
+      # Define bounds
       a <- apply(w_new, 2, min)
       b <- apply(w_new, 2, max)
       
-      # precalculate all except the last row and last column
+      # Precalculate all except the last row and last column
       Wijs[1:n, 1:n] <- Wij.C(w, w, object$theta_y[t], a, b)
       
-      imse_store <- vector(length = m)
-      
-      for (i in 1:m) {
-        # specify new design point
+      for (i in 1:n_new) {
         w_star <- matrix(w_new[i, ], nrow = 1)
         
-        # calculate new Ki matrix
-        k <- ExpFun(sq_dist(w, w_star), c(1, object$theta_y[t], eps))
-        v <- c(kk - t(k) %*% Kn_inv %*% k)
-        g <- (- 1 / v) * Kn_inv %*% k
-        Knew_inv[1:n, 1:n] <- Kn_inv + g %*% t(g) * v
-        Knew_inv[1:n, n+1] <- g
-        Knew_inv[n+1, 1:n] <- g
-        Knew_inv[n+1, n+1] <- 1 / v
-        
-        Wijs[1:n, n+1] <- Wijs[n+1, 1:n] <- Wij.C(w, w_star, 
-                                                  object$theta_y[t], a, b)
-        Wijs[n+1, n+1] <- Wij.C(w_star, w_star, object$theta_y[t], a, b)
-        imse_store[i] <- tau2 * prod(b - a) * (1 - sum(Knew_inv * Wijs))
-        # Note: sum(Ki * Wijs) == sum(diag(Ki %*% Wijs)) because symmetric
-      } # end of i for loop
-      imse <- imse + imse_store
-    } # end of t for loop
-  } else {
-    # prepare parallel clusters
-    if (cores > detectCores()) warning('cores is greater than available nodes')
-    cl <- makeCluster(cores)
-    registerDoParallel(cl)
-    
-    imse <- foreach(t = 1:object$nmcmc, .combine = '+') %dopar% {
-      w <- object$w[[t]]
-      Kn <- ExpFun(sq_dist(w), c(1, object$theta_y[t], object$g[t]))
-      Kn_inv <- invdet(Kn)$Mi
-      kk <- 1 + object$g[t]
-      
-      if (predicted) {
-        w_new <- object$w_new[[t]]
-        tau2 <- object$tau2[t]
-      } else {
-        w_new <- matrix(nrow = m, ncol = D)
-        for (i in 1:D)
-          w_new[, i] <- krig(w[, i], dx, NULL, d_cross, object$theta_w[t, i], 
-                             g = eps, cov = "exp2")$mean
-        tau2 <- krig(object$y, sq_dist(w), theta = object$theta_y[t],
-                     g = object$g[t], mean = FALSE, tau2 = TRUE, cov = "exp2")$tau2
-      }
-      
-      # define bounds
-      a <- apply(w_new, 2, min)
-      b <- apply(w_new, 2, max)
-      
-      # precalculate all except the last row and last column
-      Wijs[1:n, 1:n] <- Wij.C(w, w, object$theta_y[t], a, b)
-      
-      imse_store <- vector(length = m)
-      
-      for (i in 1:m) {
-        # specify new design point
-        w_star <- matrix(w_new[i, ], nrow = 1)
-        
-        # calculate new Ki matrix
-        k <- ExpFun(sq_dist(w, w_star), c(1, object$theta_y[t], eps))
+        # Calculate new Ki matrix
+        k <- Exp2Fun(sq_dist(w, w_star), c(1, object$theta_y[t], eps))
         v <- c(kk - t(k) %*% Kn_inv %*% k)
         g <- (- 1 / v) * Kn_inv %*% k
         Knew_inv[1:n, 1:n] <- Kn_inv + g %*% t(g) * v
@@ -731,21 +667,20 @@ IMSE.dgp2 <- function(object, x_new = NULL, cores = 1) {
         
         Wijs[1:n, n+1] <- Wijs[n+1, 1:n] <- Wij.C(w, w_star, object$theta_y[t], a, b)
         Wijs[n+1, n+1] <- Wij.C(w_star, w_star, object$theta_y[t], a, b)
-        imse_store[i] <- tau2 * prod(b - a) * (1 - sum(Knew_inv * Wijs))
+        imse_sum[i] <- imse_sum[i] + object$tau2[t] * prod(b - a) * 
+                                        (1 - sum(Knew_inv * Wijs))
         # Note: sum(Ki * Wijs) == sum(diag(Ki %*% Wijs)) because symmetric
       } # end of i for loop
-      return(imse_store)
-    } # end of foreach statement
+    } # end of t for loop
+    return(imse_sum)
+  } # end of foreach statement
     
-    stopCluster(cl)
-  } # end of else statement
-  
+  stopCluster(cl)
   toc <- proc.time()[3]
-  
   return(list(value = imse / object$nmcmc, time = toc - tic))
 }
 
-# IMSE Three Layer Function ---------------------------------------------------
+# IMSE Three Layer ------------------------------------------------------------
 #' @rdname IMSE
 #' @export
 
@@ -753,10 +688,10 @@ IMSE.dgp3 <- function(object, x_new = NULL, cores = 1) {
   
   tic <- proc.time()[3]
   
-  if (object$cov == "matern") stop("Currently, IMSE is only implemented for the
-                                    squared exponential kernel.  
-                                    Re-fit model with cov = 'exp2' in order to 
-                                    use IMSE.")
+  if (object$v != 999) stop("Currently, ALC is only implemented for the
+                             un-approximated squared exponential kernel.  
+                             Re-fit model with 'vecchia = FALSE' and  
+                             cov = 'exp2' in order to use ALC.")
   
   if (is.null(x_new)) {
     if (is.null(object$x_new)) {
@@ -769,13 +704,11 @@ IMSE.dgp3 <- function(object, x_new = NULL, cores = 1) {
                 speed up computation")
       } else predicted <- TRUE
     }
-  } else {
-    predicted <- FALSE
-    if (is.numeric(x_new)) x_new <- as.matrix(x_new)
-  }
+  } else predicted <- FALSE
+  if (is.numeric(x_new)) x_new <- as.matrix(x_new)
   
   n <- nrow(object$x)
-  m <- nrow(x_new)
+  n_new <- nrow(x_new)
   if (!predicted) {
     D <- ncol(object$w[[1]])
     dx <- sq_dist(object$x)
@@ -785,48 +718,51 @@ IMSE.dgp3 <- function(object, x_new = NULL, cores = 1) {
   Knew_inv <- matrix(nrow = n + 1, ncol = n + 1)
   Wijs <- matrix(nrow = n + 1, ncol = n + 1)
   
+  # Prepare parallel clusters
+  iters <- 1:object$nmcmc
   if (cores == 1) {
-    imse <- rep(0, times = nrow(x_new))
+    chunks <- list(iters)
+  } else chunks <- split(iters, sort(cut(iters, cores, labels = FALSE)))
+  if (cores > detectCores()) warning("cores is greater than available nodes")
+  cl <- makeCluster(cores)
+  registerDoParallel(cl)
     
-    for (t in 1:object$nmcmc) {
+  thread <- NULL
+  imse <- foreach(thread = 1:cores, .combine = '+') %dopar% {
+    imse_sum <- rep(0, times = n_new)
+    
+    for (t in chunks[[thread]]) {
       w <- object$w[[t]]
-      Kn <- ExpFun(sq_dist(w), c(1, object$theta_y[t], object$g[t]))
+      Kn <- Exp2Fun(sq_dist(w), c(1, object$theta_y[t], object$g[t]))
       Kn_inv <- invdet(Kn)$Mi
       kk <- 1 + object$g[t]
       
       if (predicted) {
         w_new <- object$w_new[[t]]
-        tau2 <- object$tau2[t]
       } else {
-        # calculate z_new using conditional uncertainty
         z <- object$z[[t]]
-        z_new <- matrix(nrow = m, ncol = D)
+        z_new <- matrix(nrow = n_new, ncol = D)
         for (i in 1:D)
           z_new[, i] <- krig(z[, i], dx, NULL, d_cross, object$theta_z[t, i], 
-                             g = eps, cov = "exp2")$mean
-        w_new <- matrix(nrow = m, ncol = D)
+                             g = eps, v = 999)$mean
+        w_new <- matrix(nrow = n_new, ncol = D)
         for (i in 1:D)
           w_new[, i] <- krig(w[, i], sq_dist(z), NULL, sq_dist(z_new, z), 
-                             object$theta_w[t, i], g = eps, cov = "exp2")$mean
-        tau2 <- krig(object$y, sq_dist(w), theta = object$theta_y[t], 
-                     g = object$g[t], mean = FALSE, tau2 = TRUE, cov = "exp2")$tau2
+                             object$theta_w[t, i], g = eps, v = 999)$mean
       }
       
-      # define bounds
+      # Define bounds
       a <- apply(w_new, 2, min)
       b <- apply(w_new, 2, max)
       
-      # precalculate all except the last row and last column
+      # Precalculate all except the last row and last column
       Wijs[1:n, 1:n] <- Wij.C(w, w, object$theta_y[t], a, b)
       
-      imse_store <- vector(length = m)
-      
-      for (i in 1:m) {
-        # specify new design point
+      for (i in 1:n_new) {
         w_star <- matrix(w_new[i, ], nrow = 1)
         
-        # calculate new Ki matrix
-        k <- ExpFun(sq_dist(w, w_star), c(1, object$theta_y[t], eps))
+        # Calculate new Ki matrix
+        k <- Exp2Fun(sq_dist(w, w_star), c(1, object$theta_y[t], eps))
         v <- c(kk - t(k) %*% Kn_inv %*% k)
         g <- (- 1 / v) * Kn_inv %*% k
         Knew_inv[1:n, 1:n] <- Kn_inv + g %*% t(g) * v
@@ -837,91 +773,30 @@ IMSE.dgp3 <- function(object, x_new = NULL, cores = 1) {
         Wijs[1:n, n+1] <- Wijs[n+1, 1:n] <- Wij.C(w, w_star, 
                                                   object$theta_y[t], a, b)
         Wijs[n+1, n+1] <- Wij.C(w_star, w_star, object$theta_y[t], a, b)
-        imse_store[i] <- tau2 * prod(b - a) * (1 - sum(Knew_inv * Wijs))
+        imse_sum[i] <- imse_sum[i] + object$tau2[t] * prod(b - a) * 
+                                        (1 - sum(Knew_inv * Wijs))
         # Note: sum(Ki * Wijs) == sum(diag(Ki %*% Wijs)) because symmetric
       } # end of i for loop
-      imse <- imse + imse_store
     } # end of t for loop
-  } else {
-    # prepare parallel clusters
-    if (cores > detectCores()) warning('cores is greater than available nodes')
-    cl <- makeCluster(cores)
-    registerDoParallel(cl)
+    return(imse_sum)
+  } # end of foreach statement
     
-    imse <- foreach(t = 1:object$nmcmc, .combine = '+') %dopar% {
-      w <- object$w[[t]]
-      Kn <- ExpFun(sq_dist(w), c(1, object$theta_y[t], object$g[t]))
-      Kn_inv <- invdet(Kn)$Mi
-      kk <- 1 + object$g[t]
-      
-      if (predicted) {
-        w_new <- object$w_new[[t]]
-        tau2 <- object$tau2[t]
-      } else {
-        # calculate z_new using conditional uncertainty
-        z <- object$z[[t]]
-        z_new <- matrix(nrow = m, ncol = D)
-        for (i in 1:D)
-          z_new[, i] <- krig(z[, i], dx, NULL, d_cross, object$theta_z[t, i], 
-                             g = eps, cov = "exp2")$mean
-        w_new <- matrix(nrow = m, ncol = D)
-        for (i in 1:D)
-          w_new[, i] <- krig(w[, i], sq_dist(z), NULL, sq_dist(z_new, z), 
-                             object$theta_w[t, i], g = eps, cov = "exp2")$mean
-        tau2 <- krig(object$y, sq_dist(w), theta = object$theta_y[t], 
-                     g = object$g[t], mean = FALSE, tau2 = TRUE, cov = "exp2")$tau2
-      }
-      
-      # define bounds
-      a <- apply(w_new, 2, min)
-      b <- apply(w_new, 2, max)
-      
-      # precalculate all except the last row and last column
-      Wijs[1:n, 1:n] <- Wij.C(w, w, object$theta_y[t], a, b)
-      
-      imse_store <- vector(length = m)
-      
-      for (i in 1:m) {
-        # specify new design point
-        w_star <- matrix(w_new[i, ], nrow = 1)
-        
-        # calculate new Ki matrix
-        k <- ExpFun(sq_dist(w, w_star), c(1, object$theta_y[t], eps))
-        v <- c(kk - t(k) %*% Kn_inv %*% k)
-        g <- (- 1 / v) * Kn_inv %*% k
-        Knew_inv[1:n, 1:n] <- Kn_inv + g %*% t(g) * v
-        Knew_inv[1:n, n+1] <- g
-        Knew_inv[n+1, 1:n] <- g
-        Knew_inv[n+1, n+1] <- 1 / v
-        
-        Wijs[1:n, n+1] <- Wijs[n+1, 1:n] <- Wij.C(w, w_star, 
-                                                  object$theta_y[t], a, b)
-        Wijs[n+1, n+1] <- Wij.C(w_star, w_star, object$theta_y[t], a, b)
-        imse_store[i] <- tau2 * prod(b - a) * (1 - sum(Knew_inv * Wijs))
-        # Note: sum(Ki * Wijs) == sum(diag(Ki %*% Wijs)) because symmetric
-      } # end of i for loop
-      return(imse_store)
-    } # end of foreach statement
-    
-    stopCluster(cl)
-  } # end of else statement
-  
+  stopCluster(cl)
   toc <- proc.time()[3]
-  
   return(list(value = imse / object$nmcmc, time = toc - tic))
 }
 
-# EI Function -----------------------------------------------------------------
-# Calculates expected improvement
+# EI --------------------------------------------------------------------------
 
 exp_improv <- function(mu, sig2, f_min) {
   
-  ei_store <- rep(0, length(mu))
+  ei_store <- rep(0, times = length(mu))
   i <- which(sig2 > eps)
   mu_i <- mu[i]
   sig_i <- sqrt(sig2[i])
   ei <- (f_min - mu_i) * pnorm(f_min, mean = mu_i, sd = sig_i) + 
     sig_i * dnorm(f_min, mean = mu_i, sd = sig_i)
   ei_store[i] <- ei
+  
   return(ei_store)
 }
