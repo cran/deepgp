@@ -42,7 +42,7 @@ Acts on a \code{gp}, \code{gpvec}, \code{dgp2}, \code{dgp2vec},
     \code{dgp3}, or \code{dgp3vec} object.  
     Generates trace plots for length scale and nugget hyperparameters.
     Generates plots of hidden layers for one-dimensional inputs.  Generates
-    plots of the posterior mean and estimated 95\% prediction intervals for 
+    plots of the posterior mean and estimated 90\% prediction intervals for 
     one-dimensional inputs; generates heat maps of the posterior mean and 
     point-wise variance for two-dimensional inputs.
 }

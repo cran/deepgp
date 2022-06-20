@@ -1,8 +1,8 @@
 Package: deepgp
 Type: Package
 Title: Deep Gaussian Processes using MCMC
-Version: 1.0.0
-Date: 2022-4-04
+Version: 1.0.1
+Date: 2022-6-20
 Author: Annie Sauer <anniees@vt.edu>
 Maintainer: Annie Sauer <anniees@vt.edu>
 Depends: R (>= 3.6)
@@ -24,8 +24,8 @@ NeedsCompilation: yes
 Imports: grDevices, graphics, stats, doParallel, foreach, parallel,
         GpGp, Matrix, Rcpp, mvtnorm, FNN
 LinkingTo: Rcpp, RcppArmadillo,
-Suggests: akima, knitr
+Suggests: interp, knitr, rmarkdown
 RoxygenNote: 7.1.2
-Packaged: 2022-04-08 13:17:27 UTC; anniesauer
+Packaged: 2022-06-20 19:21:17 UTC; anniesauer
 Repository: CRAN
-Date/Publication: 2022-04-08 14:12:32 UTC
+Date/Publication: 2022-06-20 19:40:05 UTC

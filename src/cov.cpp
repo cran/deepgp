@@ -117,8 +117,7 @@ arma::mat U_entries (const int Ncores, const arma::uword n, const arma::mat& loc
   
   #ifdef _OPENMP
   
-  #pragma omp parallel for num_threads(Ncores) shared(Lentries) schedule(static)
-  
+    #pragma omp parallel for num_threads(Ncores) shared(Lentries) schedule(static)
     for (uword k = 0; k < Nlocs; k++) {
       arma::uvec inds = revNNarray.row(k).t();
       arma::vec revCon_row = revCondOnLatent.row(k).t();
@@ -151,3 +150,13 @@ arma::mat U_entries (const int Ncores, const arma::uword n, const arma::mat& loc
   
   return Lentries;
 }
+
+// [[Rcpp::export]]
+void check_omp () {
+  #ifdef _OPENMP
+    // DO NOTHING
+  #else 
+    Rcout << "NOTE: OpenMP install suggested for best results; see ?fit_two_layer for details \n";
+  #endif
+}
+  

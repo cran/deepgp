@@ -79,6 +79,13 @@ Utilizes Metropolis Hastings sampling of the length scale and
     \code{m}.  Vecchia approximation is only implemented for 
     \code{cov = "matern"}.
     
+    NOTE on OpenMP: The Vecchia implementation relies on OpenMP parallelization
+    for efficient computation.  This function will produce a warning message 
+    if the package was installed without OpenMP (this is the default for 
+    CRAN packages installed on Apple machines).  To set up OpenMP 
+    parallelization, download the package source code and install 
+    using the gcc/g++ compiler.  
+    
     Proposals for \code{g} and \code{theta} follow a uniform sliding window 
     scheme, e.g. 
     

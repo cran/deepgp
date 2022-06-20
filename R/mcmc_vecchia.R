@@ -86,7 +86,7 @@ sample_theta_vec <- function(y, g, theta_t, alpha, beta, l, u, outer,
 # Elliptical Slice W Vecchia --------------------------------------------------
 
 sample_w_vec <- function(y, w_approx, x_approx, g, theta_y, theta_w, 
-                         ll_prev = NULL, v, prior_mean) {
+                         ll_prev = NULL, v) {
 
   D <- ncol(w_approx$x_ord) # dimension of hidden layer
 
@@ -95,7 +95,7 @@ sample_w_vec <- function(y, w_approx, x_approx, g, theta_y, theta_w,
 
   for (i in 1:D) { # separate sampling for each dimension of hidden layer
 
-    w_prior <- rand_mvn_vec(x_approx, theta_w[i], v, prior_mean[, i])
+    w_prior <- rand_mvn_vec(x_approx, theta_w[i], v)
     
     # Initialize a and bounds on a
     a <- runif(1, min = 0, max = 2 * pi)
@@ -145,7 +145,7 @@ sample_w_vec <- function(y, w_approx, x_approx, g, theta_y, theta_w,
 # Elliptical Slice Z Vecchia --------------------------------------------------
 
 sample_z_vec <- function(w, z_approx, x_approx, g, theta_w, theta_z, 
-                         ll_prev = NULL, v, prior_mean) {
+                         ll_prev = NULL, v) {
   
   D <- ncol(z_approx$x_ord) # dimension of hidden layer
   
@@ -158,7 +158,7 @@ sample_z_vec <- function(w, z_approx, x_approx, g, theta_w, theta_z,
   
   for (i in 1:D) { # separate sampling for each dimension of hidden layer
     
-    z_prior <- rand_mvn_vec(x_approx, theta_z[i], v, prior_mean[, i])
+    z_prior <- rand_mvn_vec(x_approx, theta_z[i], v)
     
     # Initialize a and bounds on a
     a <- runif(1, min = 0, max = 2 * pi)

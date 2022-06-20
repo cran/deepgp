@@ -100,8 +100,7 @@ gibbs_two_layer <- function(x, y, nmcmc, D, verb, initial, true_g,
     
     # Sample hidden Gaussian layer (w)
     samp <- sample_w(y, w[[j - 1]], dw, dx, g[j], theta_y[j], theta_w[j, ], 
-                     ll_prev = ll_outer, v = v, 
-                     prior_mean = settings$w_prior_mean)
+                     ll_prev = ll_outer, v = v)
     w[[j]] <- samp$w
     ll_outer <- samp$ll
     dw <- samp$dw
@@ -181,15 +180,13 @@ gibbs_three_layer <- function(x, y, nmcmc, D, verb, initial, true_g,
     
     # Sample inner hidden Gaussian layer (z)
     samp <- sample_z(w[[j - 1]], z[[j - 1]], dz, dx, g = eps, theta_w[j, ], 
-                     theta_z[j, ], ll_prev = ll_mid, v = v, 
-                     prior_mean = settings$z_prior_mean)
+                     theta_z[j, ], ll_prev = ll_mid, v = v)
     z[[j]] <- samp$z
     dz <- samp$dz
     
     # Sample middle hidden Gaussian layer (w)
     samp <- sample_w(y, w[[j - 1]], dw, dz, g[j], theta_y[j], theta_w[j, ], 
-                     ll_prev = ll_outer, v = v, 
-                     prior_mean = settings$w_prior_mean)
+                     ll_prev = ll_outer, v = v)
     w[[j]] <- samp$w
     ll_outer <- samp$ll
     dw <- samp$dw

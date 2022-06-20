@@ -14,11 +14,15 @@ Sauer, A., Cooper, A., & Gramacy, R. B. (2022). Vecchia-approximated deep Gaussi
 
 ## Version History
 
+What's new in version 1.0.1?
+
+* Minor bug fixes/improvements.
+* New warning message when OpenMP parallelization is not utilized for the Vecchia approximation.  This happens when the package is downloaded from CRAN on a Mac.  To set up OpenMP, download package source and compile with gcc/g++ instead of clang.
+
 What's new in version 1.0.0?
 
 * Models may now leverage the Vecchia approximation (through the specification of `vecchia = TRUE` in fit functions) for faster computation.  The speed of this implementation relies on OpenMP parallelization (make sure the `-fopenmp` flag is present with package installation).
 * SNOW parallelization now uses less memory/storage.
-* Option to set W prior mean of X (e.g. `settings = list(w_prior_mean = x)` in fit functions).
 * `tau2` is now calculated at the time of MCMC, not at the time of prediction.  This avoids some extra calculations.
 
 What's new in version 0.3.0?

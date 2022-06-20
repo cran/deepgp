@@ -16,7 +16,7 @@ logl <- function(out_vec, in_dmat, g, theta, outer = TRUE, v, tau2 = FALSE) {
     K <- Exp2Fun(in_dmat, c(1, theta, g))
   } else K <- MaternFun(in_dmat, c(1, theta, g, v)) 
   id <- invdet(K)
-  quadterm <- t(out_vec) %*% id$Mi %*% (out_vec)
+  quadterm <- t(out_vec) %*% id$Mi %*% out_vec
   
   if (outer) { # use profile log likelihood (with tau2 integrated out)
     logl <- (- n * 0.5) * log(quadterm) - 0.5 * id$ldet
@@ -85,7 +85,7 @@ sample_theta <- function(out_vec, in_dmat, g, theta_t, alpha, beta, l, u,
 # Elliptical Slice W ----------------------------------------------------------
 
 sample_w <- function(out_vec, w_t, w_t_dmat, in_dmat, g, theta_y, theta_w,
-                     ll_prev = NULL, v, prior_mean) {
+                     ll_prev = NULL, v) {
   
   D <- ncol(w_t) # dimension of hidden layer
 
@@ -98,11 +98,9 @@ sample_w <- function(out_vec, w_t, w_t_dmat, in_dmat, g, theta_y, theta_w,
     
     # Draw from prior distribution
     if (v == 999) {
-      w_prior <- mvtnorm::rmvnorm(1, mean = prior_mean[, i], 
-                    sigma = Exp2Fun(in_dmat, c(1, theta_w[i], 0)))
+      w_prior <- mvtnorm::rmvnorm(1, sigma = Exp2Fun(in_dmat, c(1, theta_w[i], 0)))
     } else {
-      w_prior <- mvtnorm::rmvnorm(1, mean = prior_mean[, i], 
-                    sigma = MaternFun(in_dmat, c(1, theta_w[i], 0, v)))
+      w_prior <- mvtnorm::rmvnorm(1, sigma = MaternFun(in_dmat, c(1, theta_w[i], 0, v)))
     }
     
     # Initialize a and bounds on a
@@ -151,7 +149,7 @@ sample_w <- function(out_vec, w_t, w_t_dmat, in_dmat, g, theta_y, theta_w,
 # Elliptical Slice Z ----------------------------------------------------------
 
 sample_z <- function(out_mat, z_t, z_t_dmat, in_dmat, g, theta_w, theta_z,
-                     ll_prev = NULL, v, prior_mean) {
+                     ll_prev = NULL, v) {
   
   D <- ncol(z_t) # dimension of hidden layer
   
@@ -166,11 +164,9 @@ sample_z <- function(out_mat, z_t, z_t_dmat, in_dmat, g, theta_w, theta_z,
     
     # Draw from prior distribution
     if (v == 999) {
-      z_prior <- mvtnorm::rmvnorm(1, mean = prior_mean[, i], 
-                    sigma = Exp2Fun(in_dmat, c(1, theta_z[i], 0)))
+      z_prior <- mvtnorm::rmvnorm(1, sigma = Exp2Fun(in_dmat, c(1, theta_z[i], 0)))
     } else {
-      z_prior <- mvtnorm::rmvnorm(1, mean = prior_mean[, i], 
-                    sigma = MaternFun(in_dmat, c(1, theta_z[i], 0, v)))
+      z_prior <- mvtnorm::rmvnorm(1, sigma = MaternFun(in_dmat, c(1, theta_z[i], 0, v)))
     }
     
     # Initialize a and bounds on a

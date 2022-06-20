@@ -62,6 +62,16 @@ RcppExport SEXP _deepgp_U_entries(SEXP NcoresSEXP, SEXP nSEXP, SEXP locsSEXP, SE
     END_RCPP
 }
 
+// check_omp
+void check_omp();
+RcppExport SEXP _deepgp_check_omp() {
+    BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    check_omp();
+    return R_NilValue;
+    END_RCPP
+}
+
 extern "C" {
 #include <stdlib.h>
 #include <R_ext/Rdynload.h>
@@ -84,10 +94,11 @@ extern "C" {
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_deepgp_rev_matrix", (DL_FUNC) &_deepgp_rev_matrix, 1},
+    {"_deepgp_rev_matrix",  (DL_FUNC) &_deepgp_rev_matrix,  1},
     {"_deepgp_Exp2Fun",     (DL_FUNC) &_deepgp_Exp2Fun,     2},
-    {"_deepgp_MaternFun",  (DL_FUNC) &_deepgp_MaternFun,  2},
-    {"_deepgp_U_entries",  (DL_FUNC) &_deepgp_U_entries,  6},
+    {"_deepgp_MaternFun",   (DL_FUNC) &_deepgp_MaternFun,   2},
+    {"_deepgp_U_entries",   (DL_FUNC) &_deepgp_U_entries,   6},
+    {"_deepgp_check_omp",   (DL_FUNC) &_deepgp_check_omp,   0},
     {NULL, NULL, 0}
 };
 

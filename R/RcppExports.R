@@ -17,3 +17,7 @@ U_entries <- function(Ncores, n, locs, revNNarray, revCondOnLatent, covparms) {
     .Call(`_deepgp_U_entries`, Ncores, n, locs, revNNarray, revCondOnLatent, covparms)
 }
 
+check_omp <- function() {
+    invisible(.Call(`_deepgp_check_omp`))
+}
+

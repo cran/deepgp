@@ -27,16 +27,6 @@ check_settings <- function(settings, layers = 1, D = NULL, n = NULL) {
     if (is.null(settings$alpha$theta_y)) settings$alpha$theta_y <- 1.5
     if (is.null(settings$beta$theta_w)) settings$beta$theta_w <- 3.9/4
     if (is.null(settings$beta$theta_y)) settings$beta$theta_y <- 3.9/6
-    if (is.null(settings$w_prior_mean)) {
-      settings$w_prior_mean <- matrix(0, nrow = n, ncol = D)
-    } else {
-      if (!is.matrix(settings$w_prior_mean)) 
-        settings$w_prior_mean <- as.matrix(settings$w_prior_mean)
-      if (nrow(settings$w_prior_mean) != n) 
-        stop("Number of rows of settings$w_prior_mean does not match n")
-      if (ncol(settings$w_prior_mean) != D)
-        stop("Number of columns of settings$w_prior_mean does not match D")
-    }
     
   } else if (layers == 3) {
     
@@ -46,26 +36,7 @@ check_settings <- function(settings, layers = 1, D = NULL, n = NULL) {
     if (is.null(settings$beta$theta_z)) settings$beta$theta_z <- 3.9/4
     if (is.null(settings$beta$theta_w)) settings$beta$theta_w <- 3.9/12
     if (is.null(settings$beta$theta_y)) settings$beta$theta_y <- 3.9/6
-    if (is.null(settings$w_prior_mean)) {
-      settings$w_prior_mean <- matrix(0, nrow = n, ncol = D)
-    } else {
-      if (!is.matrix(settings$w_prior_mean)) 
-        settings$w_prior_mean <- as.matrix(settings$w_prior_mean)
-      if (nrow(settings$w_prior_mean) != n) 
-        stop("Number of rows of settings$w_prior_mean does not match n")
-      if (ncol(settings$w_prior_mean) != D)
-        stop("Number of columns of settings$w_prior_mean does not match D")
-    }
-    if (is.null(settings$z_prior_mean)) {
-      settings$z_prior_mean <- matrix(0, nrow = n, ncol = D)
-    } else {
-      if (!is.matrix(settings$z_prior_mean)) 
-        settings$z_prior_mean <- as.matrix(settings$z_prior_mean)
-      if (nrow(settings$w_prior_mean) != n) 
-        stop("Number of rows of settings$w_prior_mean does not match n")
-      if (ncol(settings$w_prior_mean) != D)
-        stop("Number of columns of settings$w_prior_mean does not match D")
-    }
+  
   }
   return(settings)
 }

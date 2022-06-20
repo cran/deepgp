@@ -107,8 +107,7 @@ gibbs_two_layer_vec <- function(x, y, nmcmc, D, verb, initial, true_g, settings,
     
     # Sample hidden Gaussian layer (w)
     samp <- sample_w_vec(y, w_approx, x_approx, g[j], 
-                         theta_y[j], theta_w[j, ], ll_prev = ll_outer, 
-                         v = v, prior_mean = settings$w_prior_mean)
+                         theta_y[j], theta_w[j, ], ll_prev = ll_outer, v = v)
     w_approx <- samp$w_approx
     w[[j]] <- w_approx$x_ord[w_approx$rev_ord_obs, , drop = FALSE]
     ll_outer <- samp$ll
@@ -195,15 +194,13 @@ gibbs_three_layer_vec <- function(x, y, nmcmc, D, verb, initial, true_g,
     
     # Sample inner hidden Gaussian layer (z)
     samp <- sample_z_vec(w[[j - 1]], z_approx, x_approx, g = eps, theta_w[j, ], 
-                         theta_z[j, ], ll_prev = ll_mid, v = v, 
-                         prior_mean = settings$z_prior_mean) 
+                         theta_z[j, ], ll_prev = ll_mid, v = v)
     z_approx <- samp$z_approx
     z[[j]] <- z_approx$x_ord[z_approx$rev_ord_obs, , drop = FALSE]
     
     # Sample middle hidden Gaussian layer (w)
     samp <- sample_w_vec(y, w_approx, z_approx, g = g[j], theta_y[j], 
-                         theta_w[j, ], ll_prev = ll_outer, v = v, 
-                         prior_mean = settings$w_prior_mean) 
+                         theta_w[j, ], ll_prev = ll_outer, v = v) 
     w_approx <- samp$w_approx
     w[[j]] <- w_approx$x_ord[w_approx$rev_ord_obs, , drop = FALSE]
     ll_outer <- samp$ll

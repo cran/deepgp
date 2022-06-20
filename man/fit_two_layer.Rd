@@ -101,6 +101,13 @@ Maps inputs \code{x} through hidden layer \code{w} to outputs
     \code{m}.  Vecchia approximation is only implemented for 
     \code{cov = "matern"}.
     
+    NOTE on OpenMP: The Vecchia implementation relies on OpenMP parallelization
+    for efficient computation.  This function will produce a warning message 
+    if the package was installed without OpenMP (this is the default for 
+    CRAN packages installed on Apple machines).  To set up OpenMP 
+    parallelization, download the package source code and install 
+    using the gcc/g++ compiler.  
+    
     Proposals for \code{g}, \code{theta_y}, and 
     \code{theta_w} follow a uniform sliding window scheme, e.g.
     
@@ -125,9 +132,7 @@ Maps inputs \code{x} through hidden layer \code{w} to outputs
     adjusted using the \code{settings} input.
     
     When \code{w_0 = NULL}, the hidden layer is initialized at \code{x} 
-    (i.e. the identity mapping).  The default prior mean of the hidden layer 
-    is zero, but may be adjusted to \code{x} using 
-    \code{settings = list(w_prior_mean = x)}.  If \code{w_0} is of dimension 
+    (i.e. the identity mapping).  If \code{w_0} is of dimension 
     \code{nrow(x) - 1} by \code{D}, the final row is predicted using kriging. 
     This is helpful in sequential design when adding a new input location 
     and starting the MCMC at the place where the previous MCMC left off.

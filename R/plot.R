@@ -13,7 +13,7 @@
 #'     \code{dgp3}, or \code{dgp3vec} object.  
 #'     Generates trace plots for length scale and nugget hyperparameters.
 #'     Generates plots of hidden layers for one-dimensional inputs.  Generates
-#'     plots of the posterior mean and estimated 95\% prediction intervals for 
+#'     plots of the posterior mean and estimated 90\% prediction intervals for 
 #'     one-dimensional inputs; generates heat maps of the posterior mean and 
 #'     point-wise variance for two-dimensional inputs.
 #'     
@@ -81,7 +81,7 @@ plot.gp <- function(x, trace = NULL, predict = NULL, ...) {
       o <- order(x$x_new)
       plot(x$x_new[o], x$mean[o], type = 'l', xlab = 'X', ylab = 'Y', 
            ylim = c(min(q1), max(q3)),
-           col = 'blue', main = 'Posterior Mean and 95% PI')
+           col = 'blue', ...)
       if (!is.null(x$Sigma)) {
         matlines(x$x_new[o], y_samples[o,], col = 'grey', lty = 1)
         lines(x$x_new[o], x$mean[o], col = 'blue')
@@ -90,15 +90,15 @@ plot.gp <- function(x, trace = NULL, predict = NULL, ...) {
       lines(x$x_new[o], q3[o], col = 'blue', lty = 2)
       points(x$x, x$y, pch = 20)
     } else if (Dx == 2) {
-      if (!requireNamespace("akima", quietly = TRUE)) {
-        stop("Package \"akima\" needed for this plot. Please install it.",
+      if (!requireNamespace("interp", quietly = TRUE)) {
+        stop("Package \"interp\" needed for this plot. Please install it.",
              call. = FALSE)
       }
       cols <- heat.colors(128)
-      i1 <- akima::interp(x$x_new[, 1], x$x_new[, 2], x$mean)
+      i1 <- interp::interp(x$x_new[, 1], x$x_new[, 2], x$mean)
       if (is.null(x$Sigma)) {
-        i2 <- akima::interp(x$x_new[, 1], x$x_new[, 2], sqrt(x$s2))
-      } else i2 <- akima::interp(x$x_new[, 1], x$x_new[, 2], sqrt(diag(x$Sigma)))
+        i2 <- interp::interp(x$x_new[, 1], x$x_new[, 2], sqrt(x$s2))
+      } else i2 <- interp::interp(x$x_new[, 1], x$x_new[, 2], sqrt(diag(x$Sigma)))
       par(mfrow = c(1, 2), mar = c(4, 4, 3, 2))
       image(i1, col = cols, main = 'Posterior Mean', xlab = 'X1', ylab = 'X2')
       contour(i1, add = TRUE)
@@ -182,7 +182,7 @@ plot.dgp2 <- function(x, trace = NULL, hidden = NULL, predict = NULL, ...) {
       o <- order(x$x_new)
       plot(x$x_new[o], x$mean[o], type = 'l', xlab = 'X', ylab = 'Y', 
            ylim = c(min(q1), max(q3)),
-           col = 'blue', main = 'Posterior Mean and 95% PI')
+           col = 'blue', ...)
       if (!is.null(x$Sigma)) {
         matlines(x$x_new[o], y_samples[o,], col = 'grey', lty = 1)
         lines(x$x_new[o], x$mean[o], col = 'blue')
@@ -192,15 +192,15 @@ plot.dgp2 <- function(x, trace = NULL, hidden = NULL, predict = NULL, ...) {
       points(x$x, x$y, pch = 20)
       
     } else if (Dx == 2) {
-      if (!requireNamespace("akima", quietly = TRUE)) {
-        stop("Package \"akima\" needed for this plot. Please install it.",
+      if (!requireNamespace("interp", quietly = TRUE)) {
+        stop("Package \"interp\" needed for this plot. Please install it.",
              call. = FALSE)
       }
       cols <- heat.colors(128)
-      i1 <- akima::interp(x$x_new[, 1], x$x_new[, 2], x$mean)
+      i1 <- interp::interp(x$x_new[, 1], x$x_new[, 2], x$mean)
       if (is.null(x$Sigma)) {
-        i2 <- akima::interp(x$x_new[, 1], x$x_new[, 2], sqrt(x$s2))
-      } else i2 <- akima::interp(x$x_new[, 1], x$x_new[, 2], sqrt(diag(x$Sigma)))
+        i2 <- interp::interp(x$x_new[, 1], x$x_new[, 2], sqrt(x$s2))
+      } else i2 <- interp::interp(x$x_new[, 1], x$x_new[, 2], sqrt(diag(x$Sigma)))
       par(mfrow = c(1, 2), mar = c(4, 4, 3, 2))
       image(i1, col = cols, main = 'Posterior Mean', xlab = 'X1', ylab = 'X2')
       contour(i1, add = TRUE)
@@ -300,7 +300,7 @@ plot.dgp3 <- function(x, trace = NULL, hidden = NULL, predict = NULL, ...) {
       o <- order(x$x_new)
       plot(x$x_new[o], x$mean[o], type = 'l', xlab = 'X', ylab = 'Y', 
            ylim = c(min(q1), max(q3)),
-           col = 'blue', main = 'Posterior Mean and 95% PI')
+           col = 'blue', ...)
       if (!is.null(x$Sigma)) {
         matlines(x$x_new[o], y_samples[o,], col = 'grey', lty = 1)
         lines(x$x_new[o], x$mean[o], col = 'blue')
@@ -309,15 +309,15 @@ plot.dgp3 <- function(x, trace = NULL, hidden = NULL, predict = NULL, ...) {
       lines(x$x_new[o], q3[o], col = 'blue', lty = 2)
       points(x$x, x$y, pch = 20)
     } else if (Dx == 2) {
-      if (!requireNamespace("akima", quietly = TRUE)) {
-        stop("Package \"akima\" needed for this function to work. Please install it.",
+      if (!requireNamespace("interp", quietly = TRUE)) {
+        stop("Package \"interp\" needed for this function to work. Please install it.",
              call. = FALSE)
       }
       cols <- heat.colors(128)
-      i1 <- akima::interp(x$x_new[, 1], x$x_new[, 2], x$mean)
+      i1 <- interp::interp(x$x_new[, 1], x$x_new[, 2], x$mean)
       if (is.null(x$Sigma)) {
-        i2 <- akima::interp(x$x_new[, 1], x$x_new[, 2], sqrt(x$s2))
-      } else i2 <- akima::interp(x$x_new[, 1], x$x_new[, 2], sqrt(diag(x$Sigma)))
+        i2 <- interp::interp(x$x_new[, 1], x$x_new[, 2], sqrt(x$s2))
+      } else i2 <- interp::interp(x$x_new[, 1], x$x_new[, 2], sqrt(diag(x$Sigma)))
       par(mfrow = c(1, 2), mar = c(4, 4, 3, 2))
       image(i1, col = cols, main = 'Posterior Mean', xlab = 'X1', ylab = 'X2')
       contour(i1, add = TRUE)

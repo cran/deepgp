@@ -114,6 +114,13 @@ Maps inputs \code{x} through hidden layer \code{z} then hidden
     approximation with specified conditioning set size \code{m}.  Vecchia 
     approximation is only implemented for \code{cov = "matern"}.
     
+    NOTE on OpenMP: The Vecchia implementation relies on OpenMP parallelization
+    for efficient computation.  This function will produce a warning message 
+    if the package was installed without OpenMP (this is the default for 
+    CRAN packages installed on Apple machines).  To set up OpenMP 
+    parallelization, download the package source code and install 
+    using the gcc/g++ compiler.  
+    
     Proposals for \code{g}, 
     \code{theta_y}, \code{theta_w}, and \code{theta_z} follow a uniform 
     sliding window scheme, e.g.
@@ -142,8 +149,9 @@ Maps inputs \code{x} through hidden layer \code{z} then hidden
     
     When \code{w_0 = NULL} and/or \code{z_0 = NULL}, the hidden layers are 
     initialized at \code{x} (i.e. the identity mapping).  The default prior 
-    mean of the hidden layer is zero, but may be adjusted to \code{x} using 
-    \code{settings = list(w_prior_mean = x, z_prior_mean = x)}. 
+    mean of the inner hidden layer \code{z} is zero, but may be adjusted to \code{x} 
+    using \code{settings = list(z_prior_mean = x)}.  The prior mean of the
+    middle hidden layer \code{w} is set at zero is is not user adjustable.
     If \code{w_0} and/or \code{z_0} is of dimension \code{nrow(x) - 1} by 
     \code{D}, the final row is predicted using kriging. This is helpful in 
     sequential design when adding a new input location and starting the MCMC 
@@ -175,7 +183,7 @@ n_test <- 100
 xx <- matrix(runif(n_test * d), ncol = d)
 yy <- apply(xx, 1, f)
 
-i <- akima::interp(xx[, 1], xx[, 2], yy)
+i <- interp::interp(xx[, 1], xx[, 2], yy)
 image(i, col = heat.colors(128))
 contour(i, add = TRUE)
 points(x)
