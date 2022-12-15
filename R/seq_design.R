@@ -185,6 +185,7 @@ ALC.gp <- function(object, x_new = NULL, ref = NULL, cores = 1) {
     chunks <- list(iters)
   } else chunks <- split(iters, sort(cut(iters, cores, labels = FALSE)))
   if (cores > detectCores()) warning("cores is greater than available nodes")
+  
   cl <- makeCluster(cores)
   registerDoParallel(cl)
     
@@ -193,14 +194,14 @@ ALC.gp <- function(object, x_new = NULL, ref = NULL, cores = 1) {
     alc_sum <- rep(0, times = n_new)
       
     for (t in chunks[[thread]]) {
-      K <- Exp2Fun(dx, c(1, object$theta[t], object$g[t]))
+      K <- Exp2(dx, 1, object$theta[t], object$g[t])
       Ki <- invdet(K)$Mi
       alc_sum <- alc_sum + alc.C(object$x, Ki, object$theta[t], object$g[t], 
                                  x_new, ref, object$tau2[t])
     } # end of t for loop
     return(alc_sum)
   } # end of foreach statement
-    
+  
   stopCluster(cl)
   toc <- proc.time()[3]
   return(list(value = alc / object$nmcmc, time = toc - tic))
@@ -248,6 +249,7 @@ ALC.dgp2 <- function(object, x_new = NULL, ref = NULL, cores = 1) {
     chunks <- list(iters)
   } else chunks <- split(iters, sort(cut(iters, cores, labels = FALSE)))
   if (cores > detectCores()) warning("cores is greater than available nodes")
+  
   cl <- makeCluster(cores)
   registerDoParallel(cl)
   
@@ -269,14 +271,14 @@ ALC.dgp2 <- function(object, x_new = NULL, ref = NULL, cores = 1) {
       
       if (is.null(ref)) ref <- w_new
       
-      K <- Exp2Fun(sq_dist(w), c(1, object$theta_y[t], object$g[t]))
+      K <- Exp2(sq_dist(w), 1, object$theta_y[t], object$g[t])
       Ki <- invdet(K)$Mi
       alc_sum <- alc_sum + alc.C(w, Ki, object$theta_y[t], object$g[t], w_new, 
                                  ref, object$tau2[t])
     } # end of t for loop
     return(alc_sum)
   } # end of foreach statement
-
+  
   stopCluster(cl)
   toc <- proc.time()[3]
   return(list(value = alc / object$nmcmc, time = toc - tic))
@@ -324,9 +326,10 @@ ALC.dgp3 <- function(object, x_new = NULL, ref = NULL, cores = 1) {
     chunks <- list(iters)
   } else chunks <- split(iters, sort(cut(iters, cores, labels = FALSE)))
   if (cores > detectCores()) warning("cores is greater than available nodes")
+  
   cl <- makeCluster(cores)
   registerDoParallel(cl)
-    
+   
   thread <- NULL
   alc <- foreach(thread = 1:cores, .combine = '+') %dopar% {
     alc_sum <- rep(0, times = n_new)
@@ -350,14 +353,14 @@ ALC.dgp3 <- function(object, x_new = NULL, ref = NULL, cores = 1) {
       
       if (is.null(ref)) ref <- w_new
       
-      K <- Exp2Fun(sq_dist(w), c(1, object$theta_y[t], object$g[t]))
+      K <- Exp2(sq_dist(w), 1, object$theta_y[t], object$g[t])
       Ki <- invdet(K)$Mi
       alc_sum <- alc_sum + alc.C(w, Ki, object$theta_y[t], object$g[t], w_new, 
                                  ref, object$tau2[t])
     } # end of t for loop
     return(alc_sum)
   } # end of foreach statement
-    
+  
   stopCluster(cl)
   toc <- proc.time()[3]
   return(list(value = alc / object$nmcmc, time = toc - tic))
@@ -537,6 +540,7 @@ IMSE.gp <- function(object, x_new = NULL, cores = 1) {
     chunks <- list(iters)
   } else chunks <- split(iters, sort(cut(iters, cores, labels = FALSE)))
   if (cores > detectCores()) warning("cores is greater than available nodes")
+  
   cl <- makeCluster(cores)
   registerDoParallel(cl)
   
@@ -545,7 +549,7 @@ IMSE.gp <- function(object, x_new = NULL, cores = 1) {
     imse_sum <- rep(0, times = n_new)
      
     for (t in chunks[[thread]]) { 
-      Kn <- Exp2Fun(dx, c(1, object$theta[t], object$g[t]))
+      Kn <- Exp2(dx, 1, object$theta[t], object$g[t])
       Kn_inv <- invdet(Kn)$Mi
       kk <- 1 + object$g[t]
       
@@ -556,7 +560,7 @@ IMSE.gp <- function(object, x_new = NULL, cores = 1) {
         x_star <- matrix(x_new[i, ], nrow = 1)
         
         # Calculate new Ki matrix
-        k <- Exp2Fun(sq_dist(object$x, x_star), c(1, object$theta[t], eps))
+        k <- Exp2(sq_dist(object$x, x_star), 1, object$theta[t], eps)
         v <- c(kk - t(k) %*% Kn_inv %*% k)
         g <- (- 1 / v) * Kn_inv %*% k
         Knew_inv[1:n, 1:n] <- Kn_inv + g %*% t(g) * v
@@ -624,16 +628,17 @@ IMSE.dgp2 <- function(object, x_new = NULL, cores = 1) {
     chunks <- list(iters)
   } else chunks <- split(iters, sort(cut(iters, cores, labels = FALSE)))
   if (cores > detectCores()) warning("cores is greater than available nodes")
+  
   cl <- makeCluster(cores)
   registerDoParallel(cl)
-    
+   
   thread <- NULL
   imse <- foreach(thread = 1:cores, .combine = '+') %dopar% {
     imse_sum <- rep(0, times = n_new)
     
     for (t in chunks[[thread]]) {
       w <- object$w[[t]]
-      Kn <- Exp2Fun(sq_dist(w), c(1, object$theta_y[t], object$g[t]))
+      Kn <- Exp2(sq_dist(w), 1, object$theta_y[t], object$g[t])
       Kn_inv <- invdet(Kn)$Mi
       kk <- 1 + object$g[t]
       
@@ -657,7 +662,7 @@ IMSE.dgp2 <- function(object, x_new = NULL, cores = 1) {
         w_star <- matrix(w_new[i, ], nrow = 1)
         
         # Calculate new Ki matrix
-        k <- Exp2Fun(sq_dist(w, w_star), c(1, object$theta_y[t], eps))
+        k <- Exp2(sq_dist(w, w_star), 1, object$theta_y[t], eps)
         v <- c(kk - t(k) %*% Kn_inv %*% k)
         g <- (- 1 / v) * Kn_inv %*% k
         Knew_inv[1:n, 1:n] <- Kn_inv + g %*% t(g) * v
@@ -724,6 +729,7 @@ IMSE.dgp3 <- function(object, x_new = NULL, cores = 1) {
     chunks <- list(iters)
   } else chunks <- split(iters, sort(cut(iters, cores, labels = FALSE)))
   if (cores > detectCores()) warning("cores is greater than available nodes")
+  
   cl <- makeCluster(cores)
   registerDoParallel(cl)
     
@@ -733,7 +739,7 @@ IMSE.dgp3 <- function(object, x_new = NULL, cores = 1) {
     
     for (t in chunks[[thread]]) {
       w <- object$w[[t]]
-      Kn <- Exp2Fun(sq_dist(w), c(1, object$theta_y[t], object$g[t]))
+      Kn <- Exp2(sq_dist(w), 1, object$theta_y[t], object$g[t])
       Kn_inv <- invdet(Kn)$Mi
       kk <- 1 + object$g[t]
       
@@ -762,7 +768,7 @@ IMSE.dgp3 <- function(object, x_new = NULL, cores = 1) {
         w_star <- matrix(w_new[i, ], nrow = 1)
         
         # Calculate new Ki matrix
-        k <- Exp2Fun(sq_dist(w, w_star), c(1, object$theta_y[t], eps))
+        k <- Exp2(sq_dist(w, w_star), 1, object$theta_y[t], eps)
         v <- c(kk - t(k) %*% Kn_inv %*% k)
         g <- (- 1 / v) * Kn_inv %*% k
         Knew_inv[1:n, 1:n] <- Kn_inv + g %*% t(g) * v

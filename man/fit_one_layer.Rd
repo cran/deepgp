@@ -8,6 +8,7 @@ fit_one_layer(
   x,
   y,
   nmcmc = 10000,
+  sep = FALSE,
   verb = TRUE,
   g_0 = 0.01,
   theta_0 = 0.1,
@@ -25,6 +26,9 @@ fit_one_layer(
 \item{y}{vector of response values}
 
 \item{nmcmc}{number of MCMC iterations}
+
+\item{sep}{logical indicating whether to use separable (\code{sep = TRUE})
+or isotropic (\code{sep = FALSE}) lengthscales}
 
 \item{verb}{logical indicating whether to print iteration progress}
 

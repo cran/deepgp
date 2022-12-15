@@ -13,14 +13,36 @@ logl <- function(out_vec, in_dmat, g, theta, outer = TRUE, v, tau2 = FALSE) {
   
   n <- length(out_vec)
   if (v == 999) {
-    K <- Exp2Fun(in_dmat, c(1, theta, g))
-  } else K <- MaternFun(in_dmat, c(1, theta, g, v)) 
+    K <- Exp2(in_dmat, 1, theta, g)
+  } else K <- Matern(in_dmat, 1, theta, g, v) 
   id <- invdet(K)
   quadterm <- t(out_vec) %*% id$Mi %*% out_vec
   
   if (outer) { # use profile log likelihood (with tau2 integrated out)
     logl <- (- n * 0.5) * log(quadterm) - 0.5 * id$ldet
   } else logl <- (- 0.5) * id$ldet - 0.5 * quadterm
+  
+  if (tau2) {
+    tau2 <- c(quadterm) / n
+  } else tau2 <- NULL
+  
+  return(list(logl = c(logl), tau2 = tau2))
+}
+
+# Log Likelihood SEPARABLE ----------------------------------------------------
+# Only utilized in a one layer GP (i.e. outer = TRUE)
+
+logl_sep <- function(out_vec, in_mat, g, theta, v, tau2 = FALSE) {
+  
+  n <- length(out_vec)
+  if (v == 999) {
+    K <- Exp2Sep(in_mat, in_mat, 1, theta, g)
+  } else K <- MaternSep(in_mat, in_mat, 1, theta, g, v) 
+  id <- invdet(K)
+  quadterm <- t(out_vec) %*% id$Mi %*% out_vec
+  
+  # outer = TRUE, profile likelihood with tau2 integrated out
+  logl <- (- n * 0.5) * log(quadterm) - 0.5 * id$ldet
   
   if (tau2) {
     tau2 <- c(quadterm) / n
@@ -45,6 +67,33 @@ sample_g <- function(out_vec, in_dmat, g_t, theta, alpha, beta, l, u,
     log(ru) - log(g_t) + log(g_star)
   
   ll_new <- logl(out_vec, in_dmat, g_star, theta, outer = TRUE, v)$logl
+  
+  # Accept or reject (lower bound of eps)
+  new <- ll_new + dgamma(g_star - eps, alpha, beta, log = TRUE)
+  if (new > lpost_threshold) {
+    return(list(g = g_star, ll = ll_new))
+  } else {
+    return(list(g = g_t, ll = ll_prev))
+  }
+}
+
+# Sample G SEPARABLE ----------------------------------------------------------
+# Only used in one-layer GP (outer = TRUE, tau2 = FALSE only)
+
+sample_g_sep <- function(out_vec, in_mat, g_t, theta, alpha, beta, l, u, 
+                         ll_prev = NULL, v) {
+  
+  # Propose value
+  g_star <- runif(1, min = l * g_t / u, max = u * g_t / l)
+  
+  # Compute acceptance threshold
+  ru <- runif(1, min = 0, max = 1)
+  if (is.null(ll_prev)) 
+    ll_prev <- logl_sep(out_vec, in_mat, g_t, theta, v)$logl
+  lpost_threshold <-  ll_prev + dgamma(g_t - eps, alpha, beta, log = TRUE) + 
+    log(ru) - log(g_t) + log(g_star)
+  
+  ll_new <- logl_sep(out_vec, in_mat, g_star, theta, v)$logl
   
   # Accept or reject (lower bound of eps)
   new <- ll_new + dgamma(g_star - eps, alpha, beta, log = TRUE)
@@ -82,6 +131,37 @@ sample_theta <- function(out_vec, in_dmat, g, theta_t, alpha, beta, l, u,
   }
 }
 
+# Sample Theta SEPARABLE ------------------------------------------------------
+# Only used in one-layer GP (outer = TRUE only)
+
+sample_theta_sep <- function(out_vec, in_mat, g, theta_t, index = 1,
+                             alpha, beta, l, u, ll_prev = NULL, v, tau2 = FALSE) {
+  
+  # Propose value
+  theta_star <- runif(1, min = l * theta_t[index] / u, max = u * theta_t[index] / l)
+  theta_t_updated <- theta_t
+  theta_t_updated[index] <- theta_star
+  
+  # Compute acceptance threshold
+  ru <- runif(1, min = 0, max = 1)
+  if (is.null(ll_prev)) 
+    ll_prev <- logl_sep(out_vec, in_mat, g, theta_t, v)$logl
+  
+  lpost_threshold <- ll_prev + dgamma(theta_t[index] - eps, alpha, beta, log = TRUE) + 
+    log(ru) - log(theta_t[index]) + log(theta_star)
+  
+  ll_new <- logl_sep(out_vec, in_mat, g, theta_t_updated, v, tau2 = tau2)
+  
+  # Accept or reject (lower bound of eps)
+  new <- ll_new$logl + dgamma(theta_star - eps, alpha, beta, log = TRUE)
+  
+  if (new > lpost_threshold) {
+    return(list(theta = theta_star, ll = ll_new$logl, tau2 = ll_new$tau2))
+  } else {
+    return(list(theta = theta_t[index], ll = ll_prev, tau2 = NULL))
+  }
+}
+
 # Elliptical Slice W ----------------------------------------------------------
 
 sample_w <- function(out_vec, w_t, w_t_dmat, in_dmat, g, theta_y, theta_w,
@@ -98,9 +178,9 @@ sample_w <- function(out_vec, w_t, w_t_dmat, in_dmat, g, theta_y, theta_w,
     
     # Draw from prior distribution
     if (v == 999) {
-      w_prior <- mvtnorm::rmvnorm(1, sigma = Exp2Fun(in_dmat, c(1, theta_w[i], 0)))
+      w_prior <- mvtnorm::rmvnorm(1, sigma = Exp2(in_dmat, 1, theta_w[i], 0))
     } else {
-      w_prior <- mvtnorm::rmvnorm(1, sigma = MaternFun(in_dmat, c(1, theta_w[i], 0, v)))
+      w_prior <- mvtnorm::rmvnorm(1, sigma = Matern(in_dmat, 1, theta_w[i], 0, v))
     }
     
     # Initialize a and bounds on a
@@ -164,9 +244,9 @@ sample_z <- function(out_mat, z_t, z_t_dmat, in_dmat, g, theta_w, theta_z,
     
     # Draw from prior distribution
     if (v == 999) {
-      z_prior <- mvtnorm::rmvnorm(1, sigma = Exp2Fun(in_dmat, c(1, theta_z[i], 0)))
+      z_prior <- mvtnorm::rmvnorm(1, sigma = Exp2(in_dmat, 1, theta_z[i], 0))
     } else {
-      z_prior <- mvtnorm::rmvnorm(1, sigma = MaternFun(in_dmat, c(1, theta_z[i], 0, v)))
+      z_prior <- mvtnorm::rmvnorm(1, sigma = Matern(in_dmat, 1, theta_z[i], 0, v))
     }
     
     # Initialize a and bounds on a

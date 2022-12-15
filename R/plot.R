@@ -60,16 +60,25 @@ plot.gp <- function(x, trace = NULL, predict = NULL, ...) {
   }
   
   if (trace) {
-    par(mfrow = c(1, 2), mar = c(5, 4, 2, 2))
-    plot(x$g, type = 'l', ylab = 'g', xlab = 'Iteration',
-         main = 'Trace Plot of g')
-    plot(x$theta, type = 'l', ylab = 'theta_y', xlab = 'Iteration',
-         main = 'Trace Plot of theta')
+    if (is.matrix(x$theta)) { # separable lengthscale
+      par(mfrow = c(1, ncol(x$theta) + 1), mar = c(5, 4, 2, 2))
+      plot(x$g, type = 'l', ylab = 'g', xlab = 'Iteration',
+           main = 'Trace Plot of g')
+      for (i in 1:ncol(x$theta))
+        plot(x$theta[, i], type = 'l', ylab = 'theta_y', xlab = 'Iteration',
+             main = paste0('Trace Plot of theta[', i, ']'))
+    } else { # isotropic lengthscale
+      par(mfrow = c(1, 2), mar = c(5, 4, 2, 2))
+      plot(x$g, type = 'l', ylab = 'g', xlab = 'Iteration',
+           main = 'Trace Plot of g')
+      plot(x$theta, type = 'l', ylab = 'theta_y', xlab = 'Iteration',
+           main = 'Trace Plot of theta')
+    }
   }
   
   if (predict) {
     if (Dx == 1) {
-      par(mfrow = c(1, 1))
+      par(mfrow = c(1, 1), mar = c(4, 4, 2, 2))
       if (is.null(x$Sigma)) {
         q1 <- x$mean + qnorm(0.05, 0, sqrt(x$s2))
         q3 <- x$mean + qnorm(0.95, 0, sqrt(x$s2))
@@ -170,7 +179,7 @@ plot.dgp2 <- function(x, trace = NULL, hidden = NULL, predict = NULL, ...) {
   
   if (predict) {
     if (Dx == 1){
-      par(mfrow = c(1, 1), mar = c(5, 4, 2, 2))
+      par(mfrow = c(1, 1), mar = c(4, 4, 2, 2))
       if (is.null(x$Sigma)) {
         q1 <- x$mean + qnorm(0.05, 0, sqrt(x$s2))
         q3 <- x$mean + qnorm(0.95, 0, sqrt(x$s2))

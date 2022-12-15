@@ -8,12 +8,14 @@
 #   sample_z_vec: conducts Elliptical Slice Sampling for z layer
 
 # Vecchia Log Likelihood-------------------------------------------------------
+# Separable option is included directly, with input sep = TRUE
 
-logl_vec <- function(out_vec, approx, g, theta, outer = TRUE, v, tau2 = FALSE) {
+logl_vec <- function(out_vec, approx, g, theta, outer = TRUE, v, tau2 = FALSE,
+                     sep = FALSE) {
   
   n <- length(out_vec)
   out_vec_ord <- out_vec[approx$ord]
-  U_mat <- create_U(approx, g, theta, v)
+  U_mat <- create_U(approx, g, theta, v, sep = sep) # does either isotropic or separable
   Uty <- Matrix::crossprod(U_mat, out_vec_ord)
   ytUUty <- sum(Uty^2)
   logdet <- sum(log(Matrix::diag(U_mat)))
@@ -32,9 +34,10 @@ logl_vec <- function(out_vec, approx, g, theta, outer = TRUE, v, tau2 = FALSE) {
 }
 
 # Sample G Vecchia ------------------------------------------------------------
+# Handles both sep = FALSE and sep = TRUE
 
 sample_g_vec <- function(y, g_t, theta, alpha, beta, l, u, ll_prev = NULL, 
-                         approx, v) {
+                         approx, v, sep = FALSE) {
 
   # Propose value
   g_star <- runif(1, min = l * g_t / u, max = u * g_t / l)
@@ -42,11 +45,11 @@ sample_g_vec <- function(y, g_t, theta, alpha, beta, l, u, ll_prev = NULL,
   # Compute acceptance threshold
   ru <- runif(1, min = 0, max = 1)
   if (is.null(ll_prev)) 
-    ll_prev <- logl_vec(y, approx, g_t, theta, outer = TRUE, v)$logl
+    ll_prev <- logl_vec(y, approx, g_t, theta, outer = TRUE, v, sep = sep)$logl
   lpost_threshold <-  ll_prev + dgamma(g_t - eps, alpha, beta, log = TRUE) + 
                       log(ru) - log(g_t) + log(g_star)
  
-  ll_new <- logl_vec(y, approx, g_star, theta, outer = TRUE, v)$logl
+  ll_new <- logl_vec(y, approx, g_star, theta, outer = TRUE, v, sep = sep)$logl
   
   # Accept or reject (lower bound of eps)
   new <- ll_new + dgamma(g_star - eps, alpha, beta, log = TRUE)
@@ -60,7 +63,7 @@ sample_g_vec <- function(y, g_t, theta, alpha, beta, l, u, ll_prev = NULL,
 # Sample Theta Vecchia --------------------------------------------------------
 
 sample_theta_vec <- function(y, g, theta_t, alpha, beta, l, u, outer, 
-                              ll_prev = NULL, approx, v, tau2 = FALSE) {
+                             ll_prev = NULL, approx, v, tau2 = FALSE) {
 
   # Propose value
   theta_star <- runif(1, min = l * theta_t / u, max = u * theta_t / l)
@@ -80,6 +83,36 @@ sample_theta_vec <- function(y, g, theta_t, alpha, beta, l, u, outer,
     return(list(theta = theta_star, ll = ll_new$logl, tau2 = ll_new$tau2))
   } else{
     return(list(theta = theta_t, ll = ll_prev, tau2 = NULL))
+  }
+}
+
+# Sample Theta Vecchia SEPARABLE ----------------------------------------------
+# Only used in one-layer GP (outer = TRUE only)
+
+sample_theta_vec_sep <- function(y, g, theta_t, index = 1, alpha, beta, l, u,
+                                 ll_prev = NULL, approx, v, tau2 = FALSE) {
+  
+  # Propose value
+  theta_star <- runif(1, min = l * theta_t[index] / u, max = u * theta_t[index] / l)
+  theta_t_updated <- theta_t
+  theta_t_updated[index] <- theta_star
+  
+  # Compute acceptance threshold
+  ru <- runif(1, min = 0, max = 1)
+  if (is.null(ll_prev))
+    ll_prev <- logl_vec(y, approx, g, theta_t, outer = TRUE, v, sep = TRUE)$logl
+  
+  lpost_threshold <- ll_prev + dgamma(theta_t[index] - eps, alpha, beta, log = TRUE) + 
+    log(ru) - log(theta_t[index]) + log(theta_star)
+  
+  ll_new <- logl_vec(y, approx, g, theta_t_updated, outer = TRUE, v, tau2 = tau2, sep = TRUE)
+  
+  # Accept or reject (lower bound of eps)
+  new <- ll_new$logl + dgamma(theta_star - eps, alpha, beta, log = TRUE)
+  if (new > lpost_threshold) {
+    return(list(theta = theta_star, ll = ll_new$logl, tau2 = ll_new$tau2))
+  } else{
+    return(list(theta = theta_t[index], ll = ll_prev, tau2 = NULL))
   }
 }
 

@@ -1,8 +1,8 @@
 Package: deepgp
 Type: Package
 Title: Deep Gaussian Processes using MCMC
-Version: 1.0.1
-Date: 2022-6-20
+Version: 1.1.0
+Date: 2022-12-13
 Author: Annie Sauer <anniees@vt.edu>
 Maintainer: Annie Sauer <anniees@vt.edu>
 Depends: R (>= 3.6)
@@ -16,8 +16,7 @@ Description: Performs posterior inference for deep Gaussian processes following
     Gramacy, Sauer, and Wycoff, 2021 <arXiv:2112.07457>).  Models 
     extend up to three layers deep; a one layer model is equivalent to typical Gaussian 
     process regression.  Covariance kernel options are matern (default) and squared
-    exponential.  Applicable to both noisy and deterministic functions.  
-    Incorporates SNOW parallelization and utilizes C and C++ under the hood.
+    exponential.  Incorporates OpenMP and SNOW parallelization and utilizes C/C++ under the hood.
 License: LGPL
 Encoding: UTF-8
 NeedsCompilation: yes
@@ -25,7 +24,8 @@ Imports: grDevices, graphics, stats, doParallel, foreach, parallel,
         GpGp, Matrix, Rcpp, mvtnorm, FNN
 LinkingTo: Rcpp, RcppArmadillo,
 Suggests: interp, knitr, rmarkdown
+VignetteBuilder: knitr
 RoxygenNote: 7.1.2
-Packaged: 2022-06-20 19:21:17 UTC; anniesauer
+Packaged: 2022-12-15 01:44:50 UTC; anniesauer
 Repository: CRAN
-Date/Publication: 2022-06-20 19:40:05 UTC
+Date/Publication: 2022-12-15 08:40:09 UTC

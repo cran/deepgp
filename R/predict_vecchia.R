@@ -10,10 +10,11 @@
 #' @export
 
 predict.gpvec <- function(object, x_new, m = object$m, lite = TRUE,
-                          cores = detectCores() - 1, ...) {
+                          cores = 1, ...) {
   
   tic <- proc.time()[3]
   object <- clean_prediction(object) # remove previous predictions if present
+  sep <- (is.matrix(object$theta))
   if (is.numeric(x_new)) x_new <- as.matrix(x_new)
   object$x_new <- x_new
   n_new <- nrow(object$x_new)
@@ -33,6 +34,7 @@ predict.gpvec <- function(object, x_new, m = object$m, lite = TRUE,
     chunks <- list(iters)
   } else chunks <- split(iters, sort(cut(iters, cores, labels = FALSE)))
   if (cores > detectCores()) warning("cores is greater than available nodes")
+  
   cl <- makeCluster(cores)
   registerDoParallel(cl)
   
@@ -47,10 +49,11 @@ predict.gpvec <- function(object, x_new, m = object$m, lite = TRUE,
     # calculate predictions for each candidate MCMC iterations
     j <- 1
     for (t in chunks[[thread]]) {
-      k <- krig_vec(object$y, object$theta[t], object$g[t], object$tau2[t],
+      if (sep) theta <- object$theta[t, ] else theta <- object$theta[t]
+      k <- krig_vec(object$y, theta, object$g[t], object$tau2[t],
                     s2 = lite, sigma = !lite, v = object$v, m = m,
                     x = object$x, x_new = x_new, NNarray_pred = NN_x_new,
-                    approx = x_approx)
+                    approx = x_approx, sep = sep)
       out$mu_t[, j] <- k$mean
       if (lite) {
         out$s2_sum <- out$s2_sum + k$s2
@@ -92,7 +95,7 @@ predict.gpvec <- function(object, x_new, m = object$m, lite = TRUE,
 #' 
 predict.dgp2vec <- function(object, x_new, m = object$m, lite = TRUE, 
                             store_latent = FALSE, mean_map = TRUE, 
-                            cores = detectCores() - 1, ...) {
+                            cores = 1, ...) {
   
   tic <- proc.time()[3]
   object <- clean_prediction(object) # remove previous predictions if present
@@ -117,6 +120,7 @@ predict.dgp2vec <- function(object, x_new, m = object$m, lite = TRUE,
     chunks <- list(iters)
   } else chunks <- split(iters, sort(cut(iters, cores, labels = FALSE)))
   if (cores > detectCores()) warning('cores is greater than available nodes')
+  
   cl <- makeCluster(cores)
   registerDoParallel(cl)
   
@@ -198,7 +202,7 @@ predict.dgp2vec <- function(object, x_new, m = object$m, lite = TRUE,
 
 predict.dgp3vec <- function(object, x_new, m = object$m, lite = TRUE, 
                             store_latent = FALSE, mean_map = TRUE,
-                            cores = detectCores() - 1, ...) {
+                            cores = 1, ...) {
   
   tic <- proc.time()[3]
   object <- clean_prediction(object) # remove previous predictions if present
@@ -223,6 +227,7 @@ predict.dgp3vec <- function(object, x_new, m = object$m, lite = TRUE,
     chunks <- list(iters)
   } else chunks <- split(iters, sort(cut(iters, cores, labels = FALSE)))
   if (cores > detectCores()) warning('cores is greater than available nodes')
+  
   cl <- makeCluster(cores)
   registerDoParallel(cl)
   

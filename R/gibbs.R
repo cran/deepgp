@@ -45,6 +45,53 @@ gibbs_one_layer <- function(x, y, nmcmc, verb, initial, true_g, settings, v) {
   return(list(g = g, theta = theta, tau2 = tau2))
 }
 
+# One layer Gibbs SEPARABLE ---------------------------------------------------
+
+gibbs_one_layer_sep <- function(x, y, nmcmc, verb, initial, true_g, settings, v) {
+  
+  d <- ncol(x)
+  g <- vector(length = nmcmc)
+  if (is.null(true_g)) g[1] <- initial$g else g[1] <- true_g
+  theta <- matrix(nrow = nmcmc, ncol = d)
+  if (length(initial$theta) == 1) initial$theta <- rep(initial$theta, d)
+  theta[1, ] <- initial$theta
+  tau2 <- vector(length = nmcmc)
+  tau2[1] <- initial$tau2
+  ll <- NULL
+  
+  for (j in 2:nmcmc) {
+    
+    if(verb) if(j %% 500 == 0) cat(j, '\n')
+    
+    # Sample nugget (g)
+    if (is.null(true_g)) {
+      samp <- sample_g_sep(y, x, g[j - 1], theta[j - 1, ], alpha = settings$alpha$g, 
+                       beta = settings$beta$g, l = settings$l, u = settings$u, 
+                       ll_prev = ll, v = v)
+      g[j] <- samp$g
+      ll <- samp$ll
+    } else g[j] <- true_g
+    
+    # Sample length scale (theta)
+    for (i in 1:d) {
+      samp <- sample_theta_sep(y, x, g[j], theta[j - 1, ], index = i,
+                               alpha = settings$alpha$theta,
+                               beta = settings$beta$theta, l = settings$l, 
+                               u = settings$u, ll_prev = ll, v = v,
+                               tau2 = (i == d))
+      theta[j, i] <- samp$theta
+      ll <- samp$ll
+      if (i == 1) { # update tau2 (repeat original value if nothing was accepted)
+        if (is.null(samp$tau2)) tau2[j] <- tau2[j - 1] else tau2[j] <- samp$tau2
+      } else { # only update tau2 if there was an acceptance
+        if (!is.null(samp$tau2)) tau2[j] <- samp$tau2
+      }
+    }
+  } # end of j for loop
+  
+  return(list(g = g, theta = theta, tau2 = tau2))
+}
+
 # Two layer Gibbs -------------------------------------------------------------
 
 gibbs_two_layer <- function(x, y, nmcmc, D, verb, initial, true_g, 

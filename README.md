@@ -8,11 +8,19 @@ Run `help("deepgp-package")` or `help(package = "deepgp")` for more information.
 
 ## References
 
-Sauer, A., Gramacy, R.B., & Higdon, D. (2020). Active learning for deep Gaussian process surrogates. *Technometrics*, (just-accepted), 1-39.
+Sauer, A., Gramacy, R.B., & Higdon, D. (2020). Active learning for deep Gaussian process surrogates. *Technometrics*, (just-accepted), 1-39.  arXiv:2012.08015
 
-Sauer, A., Cooper, A., & Gramacy, R. B. (2022). Vecchia-approximated deep Gaussian processes for computer experiments. *pre-print on arXiv:2204.02904*
+Sauer, A., Cooper, A., & Gramacy, R. B. (2022). Vecchia-approximated deep Gaussian processes for computer experiments. *Journal of Computational and Graphical Statistics, to appear.*  arXiv:2204.02904
+
+Gramacy, R. B., Sauer, A. & Wycoff, N. (2022). Triangulation candidates for Bayesian optimization.  *Advances in Neural Information Processing Systems (NeurIPS), to appear.*  arXiv:2112.07457
 
 ## Version History
+
+What's new in version 1.1.0?
+
+* Package vignette
+* Option to specify `sep = TRUE` in `fit_one_layer` to fit a GP with separable/anisotropic lengthscales
+* Default cores in predict are now 1 (this avoids a conflict when running multiple sessions simultaneously on a single machine)
 
 What's new in version 1.0.1?
 

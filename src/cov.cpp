@@ -1,18 +1,7 @@
 
-#define ARMA_DONT_PRINT_ERRORS
-#define _USE_MATH_DEFINES
-
 // [[Rcpp::depends(RcppArmadillo)]]
-// [[Rcpp::plugins(openmp)]]
-
-/*
- * Code derived from GPvecchia package (Katzfuss et al.)
- */
 
 #include <iostream>
-#ifdef _OPENMP
-#include <omp.h>
-#endif
 #include <math.h>
 #include <RcppArmadillo.h>
 #include <Rcpp.h>
@@ -22,141 +11,134 @@ using namespace arma;
 using namespace std;
 
 // [[Rcpp::export]]
-arma::mat rev_matrix(arma::mat x) {
-  return reverse(x, 1);
-}
-
-double sqdist(rowvec l1, rowvec l2) { 
-  double ssq = 0.0;
-  for(arma::uword k = 0; k < l1.size(); ++k) {
-    ssq += (l1[k] - l2[k])*(l1[k] - l2[k]);
-  }
-  return ssq;
-}
-
-arma::mat calc_sqdist(arma::mat x) {
-  arma::uword outrows = x.n_rows;
-  arma::uword outcols = x.n_rows;
-  arma::mat out(outrows, outcols);
-  for (arma::uword arow = 0 ; arow < outrows ; arow++) {
-    for (arma::uword acol = 0 ; acol < outcols ; acol++) {
-      out(arow, acol) = sqdist(x.row(arow), x.row(acol));
-    }
-  }
-  return out;
-}
-
-// [[Rcpp::export]]
-arma::mat Exp2Fun(arma::mat distmat, arma::vec covparms) { 
+arma::mat Exp2(arma::mat distmat, const double tau2, const double theta,
+                  const double g) { 
   // distmat = matrix of SQUARED distances
-  // covparms = c(tau2, theta, g, v = NULL)
-  int d1 = distmat.n_rows;
-  int d2 = distmat.n_cols;
-  int j1, j2;
-  arma::mat covmat(d1, d2);
+  int n1 = distmat.n_rows;
+  int n2 = distmat.n_cols;
+  arma::mat covmat(n1, n2);
   double r;
-  for (j1 = 0; j1 < d1; j1++) {
-    for (j2 = 0; j2 < d2; j2++) {
-      r = distmat(j1, j2)/covparms(1);
-      covmat(j1, j2) = covparms(0)*exp(-r);
+  for (int i = 0; i < n1; i++) {
+    for (int j = 0; j < n2; j++) {
+      r = distmat(i, j) / theta;
+      covmat(i, j) = tau2 * exp(-r);
     }
   }
-  if (d1 == d2) {
-    for (j1 = 0; j1 < d1; j1++) 
-      covmat(j1, j1) += covparms(0) * covparms(2);
+  if (n1 == n2) {
+    for (int i = 0; i < n1; i++) 
+      covmat(i, i) += tau2 * g;
   }
   return covmat;
 }
 
 // [[Rcpp::export]]
-arma::mat MaternFun(arma::mat distmat, arma::vec covparms) { 
-  // distmat = matrix of SQUARED distances
-  // covparms = c(tau2, theta, g, v)
-  int d1 = distmat.n_rows;
-  int d2 = distmat.n_cols;
-  int j1, j2;
-  arma::mat covmat(d1, d2);
+arma::mat Exp2Sep(arma::mat x1, arma::mat x2, const double tau2, 
+                     const arma::vec theta, const double g) { 
+  int n1 = x1.n_rows;
+  int n2 = x2.n_rows;
+  int d = x1.n_cols;
+  if (x1.n_cols != x2.n_cols) 
+    stop("dimension of x1 and x2 do not match");
+  if (theta.n_elem != x1.n_cols)
+    stop("length of theta does not match dimension of x");
+  arma::mat covmat(n1, n2);
   double r;
-  if (covparms(3) == 0.5) { 
-    for (j1 = 0; j1 < d1; j1++) {
-      for (j2 = 0; j2 < d2; j2++) {
-        r = sqrt(distmat(j1, j2) / covparms(1));
-        covmat(j1, j2) = covparms(0) * exp(-r);
+  for (int i = 0; i < n1; i++) {
+    for (int j = 0; j < n2; j++) {
+      r = 0.0;
+      for (int k = 0; k < d; k++)
+        r += (x1(i, k) - x2(j, k)) * (x1(i, k) - x2(j, k)) / theta(k);
+      covmat(i, j) = tau2 * exp(-r);
+    }
+  }
+  if (n1 == n2) {
+    for (int i = 0; i < n1; i++) 
+      covmat(i, i) += tau2 * g;
+  }
+  return covmat;
+}
+
+// [[Rcpp::export]]
+arma::mat Matern(arma::mat distmat, const double tau2, const double theta,
+                    const double g, const double v) { 
+  // distmat = matrix of SQUARED distances
+  int n1 = distmat.n_rows;
+  int n2 = distmat.n_cols;
+  arma::mat covmat(n1, n2);
+  double r;
+  if (v == 0.5) { 
+    for (int i = 0; i < n1; i++) {
+      for (int j = 0; j < n2; j++) {
+        r = sqrt(distmat(i, j) / theta);
+        covmat(i, j) = tau2 * exp(-r);
       }
     }
-  } else if(covparms(3) == 1.5) {
-    for (j1 = 0; j1 < d1; j1++) {
-      for (j2 = 0; j2 < d2; j2++) {
-        r = sqrt(3 * distmat(j1, j2) / covparms(1));
-        covmat(j1, j2) = covparms(0) * (1 + r) * exp(-r);
+  } else if (v == 1.5) {
+    for (int i = 0; i < n1; i++) {
+      for (int j = 0; j < n2; j++) {
+        r = sqrt(3 * distmat(i, j) / theta);
+        covmat(i, j) = tau2 * (1 + r) * exp(-r);
       }
     }
-  } else if(covparms(3) == 2.5) {
-    for (j1 = 0; j1 < d1; j1++) {
-      for (j2 = 0; j2 < d2; j2++) {
-        r = sqrt(5 * distmat(j1, j2) / covparms(1));
-        covmat(j1, j2) = covparms(0) * (1 + r + pow(r, 2) / 3) * exp(-r);
+  } else if (v == 2.5) {
+    for (int i = 0; i < n1; i++) {
+      for (int j = 0; j < n2; j++) {
+        r = sqrt(5 * distmat(i, j) / theta);
+        covmat(i, j) = tau2 * (1 + r + pow(r, 2) / 3) * exp(-r);
       }
     }
   } 
-  if (d1 == d2) {
-    for (j1 = 0; j1 < d1; j1++) 
-      covmat(j1, j1) += covparms(0) * covparms(2);
+  if (n1 == n2) {
+    for (int i = 0; i < n1; i++) 
+      covmat(i, i) += tau2 * g;
   }
   return covmat;
 }
 
 // [[Rcpp::export]]
-arma::mat U_entries (const int Ncores, const arma::uword n, const arma::mat& locs, 
-                     const arma::umat& revNNarray, const arma::mat& revCondOnLatent, 
-                     const arma::vec covparms){
-  
-  const uword m = revNNarray.n_cols - 1;
-  const uword Nlocs = locs.n_rows;
-  arma::mat Lentries = zeros(Nlocs, m + 1);
-  
-  #ifdef _OPENMP
-  
-    #pragma omp parallel for num_threads(Ncores) shared(Lentries) schedule(static)
-    for (uword k = 0; k < Nlocs; k++) {
-      arma::uvec inds = revNNarray.row(k).t();
-      arma::vec revCon_row = revCondOnLatent.row(k).t();
-      arma::uvec inds00 = inds.elem(find(inds)) - 1;
-      uword n0 = inds00.n_elem;
-      arma::mat dist = calc_sqdist(locs.rows(inds00));
-      arma::mat covmat = MaternFun(dist, covparms);
-      arma::vec onevec = zeros(n0);
-      onevec[n0 - 1] = 1;
-      arma::vec M = solve(chol(covmat, "upper"), onevec);
-      Lentries(k, span(0, n0 - 1)) = M.t();
+arma::mat MaternSep(arma::mat x1, arma::mat x2, const double tau2, const arma::vec theta,
+                 const double g, const double v) { 
+  int n1 = x1.n_rows;
+  int n2 = x2.n_rows;
+  int d = x1.n_cols;
+  if (x1.n_cols != x2.n_cols) 
+    stop("dimension of x1 and x2 do not match");
+  if (theta.n_elem != x1.n_cols)
+    stop("length of theta does not match dimension of x");
+  arma::mat covmat(n1, n2);
+  double r;
+  if (v == 0.5) { 
+    for (int i = 0; i < n1; i++) {
+      for (int j = 0; j < n2; j++) {
+        r = 0.0;
+        for (int k = 0; k < d; k++)
+          r += (x1(i, k) - x2(j, k)) * (x1(i, k) - x2(j, k)) / theta(k);
+        covmat(i, j) = tau2 * exp(-sqrt(r));
+      }
     }
-  
-  #else
-  
-    for (uword k = 0; k < Nlocs; k++) {
-      arma::uvec inds = revNNarray.row(k).t();
-      arma::vec revCon_row = revCondOnLatent.row(k).t();
-      arma::uvec inds00 = inds.elem(find(inds)) - 1;
-      uword n0 = inds00.n_elem;
-      arma::mat dist = calc_sqdist(locs.rows(inds00));
-      arma::mat covmat = MaternFun(dist, covparms);
-      arma::vec onevec = zeros(n0);
-      onevec[n0 - 1] = 1;
-      arma::vec M = solve(chol(covmat, "upper"), onevec);
-      Lentries(k, span(0, n0 - 1)) = M.t();
+  } else if (v == 1.5) {
+    for (int i = 0; i < n1; i++) {
+      for (int j = 0; j < n2; j++) {
+        r = 0.0;
+        for (int k = 0; k < d; k++)
+          r += 3 * (x1(i, k) - x2(j, k)) * (x1(i, k) - x2(j, k)) / theta(k);
+        covmat(i, j) = tau2 * (1 + sqrt(r)) * exp(-sqrt(r));
+      }
     }
-  
-  #endif
-  
-  return Lentries;
-}
-
-// [[Rcpp::export]]
-void check_omp () {
-  #ifdef _OPENMP
-    // DO NOTHING
-  #else 
-    Rcout << "NOTE: OpenMP install suggested for best results; see ?fit_two_layer for details \n";
-  #endif
+  } else if (v == 2.5) {
+    for (int i = 0; i < n1; i++) {
+      for (int j = 0; j < n2; j++) {
+        r = 0.0;
+        for (int k = 0; k < d; k++)
+          r += 5 * (x1(i, k) - x2(j, k)) * (x1(i, k) - x2(j, k)) / theta(k);
+        covmat(i, j) = tau2 * (1 + sqrt(r) + r / 3) * exp(-sqrt(r));
+      }
+    }
+  } 
+  if (n1 == n2) {
+    for (int i = 0; i < n1; i++) 
+      covmat(i, i) += tau2 * g;
+  }
+  return covmat;
 }
   

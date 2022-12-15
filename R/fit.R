@@ -54,6 +54,8 @@
 #' @param x vector or matrix of input locations
 #' @param y vector of response values
 #' @param nmcmc number of MCMC iterations
+#' @param sep logical indicating whether to use separable (\code{sep = TRUE})
+#'        or isotropic (\code{sep = FALSE}) lengthscales
 #' @param verb logical indicating whether to print iteration progress
 #' @param g_0 initial value for \code{g}
 #' @param theta_0 initial value for \code{theta}
@@ -146,7 +148,7 @@
 #' 
 #' @export
 
-fit_one_layer <- function(x, y, nmcmc = 10000, verb = TRUE, g_0 = 0.01, 
+fit_one_layer <- function(x, y, nmcmc = 10000, sep = FALSE, verb = TRUE, g_0 = 0.01, 
                           theta_0 = 0.1, true_g = NULL, settings = NULL,
                           cov = c("matern", "exp2"), v = 2.5, 
                           vecchia = FALSE, m = min(25, length(y) - 1)) {
@@ -159,11 +161,12 @@ fit_one_layer <- function(x, y, nmcmc = 10000, verb = TRUE, g_0 = 0.01,
     cov <- "matern" 
   }
   if (cov == "exp2") v <- 999 # solely used as an indicator
-  if (!vecchia & length(y) > 500) 
-    message("We recommend setting 'vecchia = TRUE' for faster computation.")
+  if (!vecchia & length(y) > 300) 
+    message("'vecchia = TRUE' is recommended for faster computation.")
 
   # Check inputs
   if (is.numeric(x)) x <- as.matrix(x)
+  if (sep & ncol(x) == 1) sep <- FALSE # no need for separable theta in one dimension
   test <- check_inputs(x, y, true_g) # returns NULL if all checks pass
   settings <- check_settings(settings, layers = 1)
   initial <- list(theta = theta_0, g = g_0, tau2 = 1)
@@ -177,12 +180,22 @@ fit_one_layer <- function(x, y, nmcmc = 10000, verb = TRUE, g_0 = 0.01,
   if (vecchia) out$m <- m
 
   # Conduct MCMC
-  if (vecchia) {
-    samples <- gibbs_one_layer_vec(x, y, nmcmc, verb, initial, true_g, 
-                                   settings, v, m)
-  } else { 
-    samples <- gibbs_one_layer(x, y, nmcmc, verb, initial, true_g,
-                               settings, v)
+  if (sep) {
+    if (vecchia) {
+      samples <- gibbs_one_layer_vec_sep(x, y, nmcmc, verb, initial, true_g,
+                                         settings, v, m)
+    } else{
+      samples <- gibbs_one_layer_sep(x, y, nmcmc, verb, initial, true_g,
+                                     settings, v)
+    }
+  } else {
+    if (vecchia) {
+      samples <- gibbs_one_layer_vec(x, y, nmcmc, verb, initial, true_g, 
+                                     settings, v, m)
+    } else { 
+      samples <- gibbs_one_layer(x, y, nmcmc, verb, initial, true_g,
+                                 settings, v)
+    }
   }
   
   out <- c(out, samples)
@@ -372,8 +385,8 @@ fit_two_layer <- function(x, y, D = ifelse(is.matrix(x), ncol(x), 1),
     cov <- "matern" 
   }
   if (cov == "exp2") v <- 999 # solely used as an indicator
-  if (!vecchia & length(y) > 500) 
-    message("We recommend setting 'vecchia = TRUE' for faster computation.")
+  if (!vecchia & length(y) > 300) 
+    message("'vecchia = TRUE' is recommended for faster computation.")
 
   # Check inputs
   if (is.numeric(x)) x <- as.matrix(x)
@@ -598,8 +611,8 @@ fit_three_layer <- function(x, y, D = ifelse(is.matrix(x), ncol(x), 1),
     cov <- "matern" 
   }
   if (cov == "exp2") v <- 999 # solely used as an indicator
-  if (!vecchia & length(y) > 500) 
-    message("We recommend setting 'vecchia = TRUE' for faster computation.")
+  if (!vecchia & length(y) > 300) 
+    message("'vecchia = TRUE' is recommended for faster computation.")
 
   # Check inputs
   if (is.numeric(x)) x <- as.matrix(x)

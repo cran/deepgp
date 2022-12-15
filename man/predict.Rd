@@ -10,7 +10,7 @@
 \alias{predict.dgp3vec}
 \title{Predict posterior mean and variance/covariance}
 \usage{
-\method{predict}{gp}(object, x_new, lite = TRUE, EI = FALSE, cores = detectCores() - 1, ...)
+\method{predict}{gp}(object, x_new, lite = TRUE, EI = FALSE, cores = 1, ...)
 
 \method{predict}{dgp2}(
   object,
@@ -19,7 +19,7 @@
   store_latent = FALSE,
   mean_map = TRUE,
   EI = FALSE,
-  cores = detectCores() - 1,
+  cores = 1,
   ...
 )
 
@@ -30,18 +30,11 @@
   store_latent = FALSE,
   mean_map = TRUE,
   EI = FALSE,
-  cores = detectCores() - 1,
+  cores = 1,
   ...
 )
 
-\method{predict}{gpvec}(
-  object,
-  x_new,
-  m = object$m,
-  lite = TRUE,
-  cores = detectCores() - 1,
-  ...
-)
+\method{predict}{gpvec}(object, x_new, m = object$m, lite = TRUE, cores = 1, ...)
 
 \method{predict}{dgp2vec}(
   object,
@@ -50,7 +43,7 @@
   lite = TRUE,
   store_latent = FALSE,
   mean_map = TRUE,
-  cores = detectCores() - 1,
+  cores = 1,
   ...
 )
 
@@ -61,7 +54,7 @@
   lite = TRUE,
   store_latent = FALSE,
   mean_map = TRUE,
-  cores = detectCores() - 1,
+  cores = 1,
   ...
 )
 }

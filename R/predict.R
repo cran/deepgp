@@ -93,16 +93,19 @@ NULL
 #' @export
 
 predict.gp <- function(object, x_new, lite = TRUE, EI = FALSE, 
-                       cores = detectCores() - 1, ...) {
+                       cores = 1, ...) {
   
   tic <- proc.time()[3]
   object <- clean_prediction(object) # remove previous predictions if present
+  sep <- (is.matrix(object$theta))
   if (is.numeric(x_new)) x_new <- as.matrix(x_new)
   object$x_new <- x_new
   n_new <- nrow(object$x_new)
-  dx <- sq_dist(object$x)
-  d_new <- sq_dist(object$x_new)
-  d_cross <- sq_dist(object$x_new, object$x)
+  if (!sep) {
+    dx <- sq_dist(object$x)
+    d_new <- sq_dist(object$x_new)
+    d_cross <- sq_dist(object$x_new, object$x)
+  }
   
   # Prepare clusters
   iters <- 1:object$nmcmc
@@ -110,6 +113,7 @@ predict.gp <- function(object, x_new, lite = TRUE, EI = FALSE,
     chunks <- list(iters)
   } else chunks <- split(iters, sort(cut(iters, cores, labels = FALSE)))
   if (cores > detectCores()) warning('cores is greater than available nodes')
+
   cl <- makeCluster(cores)
   registerDoParallel(cl)
   
@@ -124,9 +128,15 @@ predict.gp <- function(object, x_new, lite = TRUE, EI = FALSE,
     
     j <- 1
     for(t in chunks[[thread]]) {
-      k <- krig(object$y, dx, d_new, d_cross, object$theta[t], object$g[t], 
-                object$tau2[t], s2 = lite, sigma = !lite, f_min = EI, 
-                v = object$v)
+      if (sep) {
+        k <- krig_sep(object$y, object$x, x_new, object$theta[t, ], object$g[t], 
+                  object$tau2[t], s2 = lite, sigma = !lite, f_min = EI, 
+                  v = object$v)
+      } else {
+        k <- krig(object$y, dx, d_new, d_cross, object$theta[t], object$g[t], 
+                  object$tau2[t], s2 = lite, sigma = !lite, f_min = EI, 
+                  v = object$v)
+      }
       out$mu_t[, j] <- k$mean
       if (lite) {
         out$s2_sum <- out$s2_sum + k$s2
@@ -175,8 +185,7 @@ predict.gp <- function(object, x_new, lite = TRUE, EI = FALSE,
 #' @export
 
 predict.dgp2 <- function(object, x_new, lite = TRUE, store_latent = FALSE, 
-                         mean_map = TRUE, EI = FALSE, 
-                         cores = detectCores() - 1, ...) {
+                         mean_map = TRUE, EI = FALSE, cores = 1, ...) {
   
   tic <- proc.time()[3]
   object <- clean_prediction(object) # remove previous predictions if present
@@ -194,6 +203,7 @@ predict.dgp2 <- function(object, x_new, lite = TRUE, store_latent = FALSE,
     chunks <- list(iters)
   } else chunks <- split(iters, sort(cut(iters, cores, labels = FALSE)))
   if (cores > detectCores()) warning('cores is greater than available nodes')
+  
   cl <- makeCluster(cores)
   registerDoParallel(cl)
   
@@ -245,7 +255,7 @@ predict.dgp2 <- function(object, x_new, lite = TRUE, store_latent = FALSE,
     } # end of t for loop
     return(out)
   } # end of foreach statement
-    
+  
   stopCluster(cl)
     
   # Group elements out of the list
@@ -282,8 +292,7 @@ predict.dgp2 <- function(object, x_new, lite = TRUE, store_latent = FALSE,
 #' @export
 
 predict.dgp3 <- function(object, x_new, lite = TRUE, store_latent = FALSE, 
-                         mean_map = TRUE, EI = FALSE, 
-                         cores = detectCores() - 1, ...) {
+                         mean_map = TRUE, EI = FALSE, cores = 1, ...) {
   
   tic <- proc.time()[3]
   object <- clean_prediction(object) # remove previous predictions if present
@@ -301,9 +310,10 @@ predict.dgp3 <- function(object, x_new, lite = TRUE, store_latent = FALSE,
     chunks <- list(iters)
   } else chunks <- split(iters, sort(cut(iters, cores, labels = FALSE)))
   if (cores > detectCores()) warning("cores is greater than available nodes")
+  
   cl <- makeCluster(cores)
   registerDoParallel(cl)
-  
+
   thread <- NULL
   result <- foreach(thread = 1:cores) %dopar% {
     out <- list()
@@ -371,9 +381,9 @@ predict.dgp3 <- function(object, x_new, lite = TRUE, store_latent = FALSE,
     } # end of t for loop
     return(out)
   } # end of foreach statement
-    
+  
   stopCluster(cl)
-    
+
   # Group elements out of the list
   mu_t <- do.call(cbind, lapply(result, with, eval(parse(text = "mu_t"))))
   if (lite) {

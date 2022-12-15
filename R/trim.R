@@ -56,7 +56,9 @@ trim.gp <- function(object, burn, thin = 1) {
   
   object$nmcmc <- length(indx)
   object$g <- object$g[indx, drop = FALSE]
-  object$theta <- object$theta[indx, drop = FALSE]
+  if (is.matrix(object$theta)) {
+    object$theta <- object$theta[indx, , drop = FALSE]
+  } else object$theta <- object$theta[indx, drop = FALSE]
   object$tau2 <- object$tau2[indx, drop = FALSE]
   
   toc <- proc.time()[3]

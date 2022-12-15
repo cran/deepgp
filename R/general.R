@@ -11,6 +11,7 @@
 #   sq_dist
 #   score
 #   rmse
+#   crps
 
 eps <- sqrt(.Machine$double.eps)
 
@@ -21,19 +22,19 @@ krig <- function(y, dx, d_new = NULL, d_cross = NULL, theta, g, tau2 = 1,
   
   out <- list()
   if (v == 999) {
-    C <- Exp2Fun(dx, c(1, theta, g))
-    C_cross <- Exp2Fun(d_cross, c(1, theta, 0)) # no g in rectangular matrix
+    C <- Exp2(dx, 1, theta, g)
+    C_cross <- Exp2(d_cross, 1, theta, 0) # no g in rectangular matrix
   } else {
-    C <- MaternFun(dx, c(1, theta, g, v)) 
-    C_cross <- MaternFun(d_cross, c(1, theta, 0, v))
+    C <- Matern(dx, 1, theta, g, v) 
+    C_cross <- Matern(d_cross, 1, theta, 0, v)
   }
   C_inv <- invdet(C)$Mi
   out$mean <- C_cross %*% C_inv %*% y
   
   if (f_min) { # predict at observed locations, return min expected value
     if (v == 999) {
-      C_cross_observed_only <- Exp2Fun(dx, c(1, theta, 0))
-    } else C_cross_observed_only <- MaternFun(dx, c(1, theta, 0, v))
+      C_cross_observed_only <- Exp2(dx, 1, theta, 0)
+    } else C_cross_observed_only <- Matern(dx, 1, theta, 0, v)
     out$f_min <- min(C_cross_observed_only %*% C_inv %*% y)
   }
   
@@ -46,8 +47,47 @@ krig <- function(y, dx, d_new = NULL, d_cross = NULL, theta, g, tau2 = 1,
   if (sigma) {
     quadterm <- C_cross %*% C_inv %*% t(C_cross)
     if (v == 999) {
-      C_new <- Exp2Fun(d_new, c(1, theta, g))
-    } else  C_new <- MaternFun(d_new, c(1, theta, g, v)) 
+      C_new <- Exp2(d_new, 1, theta, g)
+    } else  C_new <- Matern(d_new, 1, theta, g, v) 
+    out$sigma <- tau2 * (C_new - quadterm)
+  }
+  return(out)
+}
+
+# Krig SEPARABLE --------------------------------------------------------------
+
+krig_sep <- function(y, x, x_new, theta, g, tau2 = 1,
+                     s2 = FALSE, sigma = FALSE, f_min = FALSE, v = 2.5) {
+  
+  out <- list()
+  if (v == 999) {
+    C <- Exp2Sep(x, x, 1, theta, g)
+    C_cross <- Exp2Sep(x_new, x, 1, theta, 0) # no g in rectangular matrix
+  } else {
+    C <- MaternSep(x, x, 1, theta, g, v) 
+    C_cross <- MaternSep(x_new, x, 1, theta, 0, v)
+  }
+  C_inv <- invdet(C)$Mi
+  out$mean <- C_cross %*% C_inv %*% y
+  
+  if (f_min) { # predict at observed locations, return min expected value
+    if (v == 999) {
+      C_cross_observed_only <- Exp2Sep(x, x, 1, theta, 0)
+    } else C_cross_observed_only <- MaternSep(x, x, 1, theta, 0, v)
+    out$f_min <- min(C_cross_observed_only %*% C_inv %*% y)
+  }
+  
+  if (s2) {
+    quadterm <- C_cross %*% C_inv %*% t(C_cross)
+    C_new <- rep(1 + g, times = nrow(x_new))
+    out$s2 <- tau2 * (C_new - diag(quadterm))
+  }
+  
+  if (sigma) {
+    quadterm <- C_cross %*% C_inv %*% t(C_cross)
+    if (v == 999) {
+      C_new <- Exp2Sep(x_new, x_new, 1, theta, g)
+    } else  C_new <- MaternSep(x_new, x_new, 1, theta, g, v) 
     out$sigma <- tau2 * (C_new - quadterm)
   }
   return(out)
@@ -158,6 +198,27 @@ rmse <- function(y, mu) {
   return(sqrt(mean((y - mu) ^ 2)))
 }
 
+# CRPS ------------------------------------------------------------------------
+#' @title Calculates CRPS
+#' @description Calculates continuous ranked probability score (lower CRPS indicate
+#' better fits, better uncertainty quantification).
+#' 
+#' @param y response vector
+#' @param mu predicted mean
+#' @param s2 predicted point-wise variances
+#' 
+#' @references 
+#' Gneiting, T, and AE Raftery. 2007. Strictly Proper Scoring Rules, Prediction, 
+#'     and Estimation. \emph{Journal of the American Statistical Association 102} 
+#'     (477), 359-378.
+#' @export
+
+crps <- function(y, mu, s2) {
+  sigma <- sqrt(s2)
+  z <- (y - mu) / sigma
+  return(mean(sigma * (-(1 / sqrt(pi)) + 2 * dnorm(z) + z * (2 * pnorm(z) - 1))))
+}
+
 # Fill Final Row --------------------------------------------------------------
 
 fill_final_row <- function(x, w_0, D, theta_w_0, v) {
@@ -178,6 +239,7 @@ fill_final_row <- function(x, w_0, D, theta_w_0, v) {
 
 clean_prediction <- function(object) {
   
+  class_store <- class(object)
   if (!is.null(object$x_new)) 
     object <- object[-which(names(object) == "x_new")]
   if (!is.null(object$mean)) 
@@ -192,6 +254,7 @@ clean_prediction <- function(object) {
     object[-which(names(object) == "Sigma_smooth")]
   if (!is.null(object$EI)) 
     object[-which(names(object) == "EI")]
-  
+  class(object) <- class_store
   return(object)
 }
+
