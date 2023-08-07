@@ -11,6 +11,24 @@ using namespace arma;
 using namespace std;
 
 // [[Rcpp::export]]
+NumericVector diag_quad_mat(NumericMatrix A, NumericMatrix B) {
+  // Returns diag(A %*% B %*% t(A)) for s2 calculations
+  int Arow = A.nrow();
+  int Brow = B.nrow();
+  NumericVector s2(Arow);
+  for (int i = 0; i < Arow; i++) {
+    s2(i) = 0.0;
+    for (int j = 0; j < Brow; j++) {
+      double temp_sum = 0.0;
+      for (int n = 0; n < Brow; n++)
+        temp_sum += A(i, n) * B(n, j);
+      s2(i) += temp_sum * A(i, j);
+    }
+  }
+  return s2;
+}
+
+// [[Rcpp::export]]
 arma::mat Exp2(arma::mat distmat, const double tau2, const double theta,
                   const double g) { 
   // distmat = matrix of SQUARED distances

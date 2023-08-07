@@ -7,6 +7,8 @@
 #           (credit given to the "laGP package, R.B. Gramacy & Furong Sun)
 #   fill_final_row: uses kriging to fill final row of w_0/z_0
 #   clean_prediction: removes prediction elements from object
+#   exp_improv: calculates expected improvement
+#   calc_entropy: calculates entropy for two classes (pass/fail)
 # External (see documentation below):
 #   sq_dist
 #   score
@@ -18,7 +20,8 @@ eps <- sqrt(.Machine$double.eps)
 # Krig ------------------------------------------------------------------------
 
 krig <- function(y, dx, d_new = NULL, d_cross = NULL, theta, g, tau2 = 1,
-                 s2 = FALSE, sigma = FALSE, f_min = FALSE, v = 2.5) {
+                 s2 = FALSE, sigma = FALSE, f_min = FALSE, v = 2.5,
+                 prior_mean = 0, prior_mean_new = 0) {
   
   out <- list()
   if (v == 999) {
@@ -29,7 +32,7 @@ krig <- function(y, dx, d_new = NULL, d_cross = NULL, theta, g, tau2 = 1,
     C_cross <- Matern(d_cross, 1, theta, 0, v)
   }
   C_inv <- invdet(C)$Mi
-  out$mean <- C_cross %*% C_inv %*% y
+  out$mean <- prior_mean_new + C_cross %*% C_inv %*% (y - prior_mean)
   
   if (f_min) { # predict at observed locations, return min expected value
     if (v == 999) {
@@ -39,9 +42,8 @@ krig <- function(y, dx, d_new = NULL, d_cross = NULL, theta, g, tau2 = 1,
   }
   
   if (s2) {
-    quadterm <- C_cross %*% C_inv %*% t(C_cross)
     C_new <- rep(1 + g, times = nrow(d_new))
-    out$s2 <- tau2 * (C_new - diag(quadterm))
+    out$s2 <- tau2 * (C_new - diag_quad_mat(C_cross, C_inv))
   }
   
   if (sigma) {
@@ -102,7 +104,8 @@ invdet <- function(M) {
             n = as.integer(n),
             M = as.double(M),
             Mi = as.double(diag(n)),
-            ldet = double(1))
+            ldet = double(1),
+            PACKAGE = "deepgp")
 
   return(list(Mi = matrix(out$Mi, ncol=n), ldet = out$ldet))
 }
@@ -142,7 +145,8 @@ sq_dist <- function(X1, X2 = NULL) {
                X = as.double(t(X1)),
                n = as.integer(n1),
                m = as.integer(m),
-               D = double(n1 * n1))
+               D = double(n1 * n1),
+               PACKAGE = "deepgp")
     return(matrix(outD$D, ncol = n1, byrow = TRUE))
   } else {
     X2 <- as.matrix(X2)
@@ -154,7 +158,8 @@ sq_dist <- function(X1, X2 = NULL) {
                X2 = as.double(t(X2)),
                n2 = as.integer(n2),
                m = as.integer(m),
-               D = double(n1 * n2))
+               D = double(n1 * n2),
+               PACKAGE = "deepgp")
     return(matrix(outD$D, ncol = n2, byrow = TRUE))
   }
 }
@@ -258,3 +263,28 @@ clean_prediction <- function(object) {
   return(object)
 }
 
+# EI --------------------------------------------------------------------------
+
+exp_improv <- function(mu, sig2, f_min) {
+  
+  ei_store <- rep(0, times = length(mu))
+  i <- which(sig2 > eps)
+  mu_i <- mu[i]
+  sig_i <- sqrt(sig2[i])
+  ei <- (f_min - mu_i) * pnorm(f_min, mean = mu_i, sd = sig_i) + 
+    sig_i * dnorm(f_min, mean = mu_i, sd = sig_i)
+  ei_store[i] <- ei
+  
+  return(ei_store)
+}
+
+# Entropy ---------------------------------------------------------------------
+
+calc_entropy <- function(mu, sig2, limit) {
+  
+  fail_prob <- pnorm((mu - limit) / sqrt(sig2))
+  ent <- -(1 - fail_prob) * log(1 - fail_prob) - fail_prob * log(fail_prob)
+  ent[which(is.nan(ent))] <- 0
+  
+  return(ent)
+}

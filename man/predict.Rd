@@ -10,7 +10,16 @@
 \alias{predict.dgp3vec}
 \title{Predict posterior mean and variance/covariance}
 \usage{
-\method{predict}{gp}(object, x_new, lite = TRUE, EI = FALSE, cores = 1, ...)
+\method{predict}{gp}(
+  object,
+  x_new,
+  lite = TRUE,
+  return_all = FALSE,
+  EI = FALSE,
+  entropy_limit = NULL,
+  cores = 1,
+  ...
+)
 
 \method{predict}{dgp2}(
   object,
@@ -18,7 +27,9 @@
   lite = TRUE,
   store_latent = FALSE,
   mean_map = TRUE,
+  return_all = FALSE,
   EI = FALSE,
+  entropy_limit = NULL,
   cores = 1,
   ...
 )
@@ -29,12 +40,23 @@
   lite = TRUE,
   store_latent = FALSE,
   mean_map = TRUE,
+  return_all = FALSE,
   EI = FALSE,
+  entropy_limit = NULL,
   cores = 1,
   ...
 )
 
-\method{predict}{gpvec}(object, x_new, m = object$m, lite = TRUE, cores = 1, ...)
+\method{predict}{gpvec}(
+  object,
+  x_new,
+  m = object$m,
+  lite = TRUE,
+  return_all = FALSE,
+  entropy_limit = NULL,
+  cores = 1,
+  ...
+)
 
 \method{predict}{dgp2vec}(
   object,
@@ -43,6 +65,8 @@
   lite = TRUE,
   store_latent = FALSE,
   mean_map = TRUE,
+  return_all = FALSE,
+  entropy_limit = NULL,
   cores = 1,
   ...
 )
@@ -54,6 +78,8 @@
   lite = TRUE,
   store_latent = FALSE,
   mean_map = TRUE,
+  return_all = FALSE,
+  entropy_limit = NULL,
   cores = 1,
   ...
 )
@@ -68,11 +94,17 @@
 variances (\code{lite = TRUE}) or full covariance 
 (\code{lite = FALSE})}
 
+\item{return_all}{logical indicating whether to return mean and point-wise
+variance prediction for ALL samples (only available for \code{lite = TRUE})}
+
 \item{EI}{logical indicating whether to calculate expected improvement 
 (for minimizing the response)}
 
-\item{cores}{number of cores to utilize in parallel, defaults to available
-cores minus one}
+\item{entropy_limit}{optional limit state for entropy calculations (separating
+passes and failures), default value of \code{NULL} bypasses entropy
+calculations}
+
+\item{cores}{number of cores to utilize in parallel}
 
 \item{...}{N/A}
 
@@ -96,15 +128,17 @@ object of the same class with the following additional elements:
         \code{x_new} locations
   \item \code{s2}: predicted point-wise variances, indices correspond to 
         \code{x_new} locations (only returned when \code{lite = TRUE})
-  \item \code{s2_smooth}: predicted point-wise variances with \code{g} 
-        removed, indices correspond to \code{x_new} locations (only returned 
-        when \code{lite = TRUE})
+  \item \code{mean_all}: predicted posterior mean for each sample (column
+        indices), only returned when \code{return_all = TRUE}
+  \item \code{s2_all} predicted point-wise variances for each sample (column
+        indices), only returned when \code{return-all = TRUE}
   \item \code{Sigma}: predicted posterior covariance, indices correspond to 
         \code{x_new} locations (only returned when \code{lite = FALSE})
-  \item \code{Sigma_smooth}: predicted posterior covariance with \code{g} 
-        removed from the diagonal (only returned when \code{lite = FALSE})
   \item \code{EI}: vector of expected improvement values, indices correspond 
         to \code{x_new} locations (only returned when \code{EI = TRUE})
+  \item \code{entropy}: vector of entropy values, indices correspond to 
+        \code{x_new} locations (only returned when \code{entropy_limit} is
+        numeric)
   \item \code{w_new}: list of hidden layer mappings (only returned when 
         \code{store_latent = TRUE}), list index corresponds to iteration and 
         row index corresponds to \code{x_new} location (two or three layer 
@@ -118,8 +152,8 @@ Computation time is added to the computation time of the existing object.
 \description{
 Acts on a \code{gp}, \code{dgp2}, or \code{dgp3} object.
     Calculates posterior mean and variance/covariance over specified input 
-    locations.  Optionally calculates expected improvement (EI) over 
-    candidate inputs.  Optionally utilizes SNOW parallelization.
+    locations.  Optionally calculates expected improvement (EI) or entropy 
+    over candidate inputs.  Optionally utilizes SNOW parallelization.
 }
 \details{
 All iterations in the object are used for prediction, so samples 
@@ -129,7 +163,9 @@ All iterations in the object are used for prediction, so samples
     calculated.  Full covariance may be calculated using \code{lite = FALSE}. 
     
     Expected improvement is calculated with the goal of minimizing the 
-    response.  See Chapter 7 of Gramacy (2020) for details.
+    response.  See Chapter 7 of Gramacy (2020) for details.  Entropy is 
+    calculated based on two classes separated by the specified limit.  
+    See Sauer (2023, Chapter 3) for details.
     
     SNOW parallelization reduces computation time but requires 
     more memory storage.
@@ -140,6 +176,9 @@ All iterations in the object are used for prediction, so samples
 
 }
 \references{
+Sauer, A. (2023). Deep Gaussian process surrogates for computer experiments. 
+     *Ph.D. Dissertation, Department of Statistics, Virginia Polytechnic Institute and State University.*
+     \cr\cr
 Sauer, A, RB Gramacy, and D Higdon. 2020. "Active Learning for Deep Gaussian 
     Process Surrogates." \emph{Technometrics, to appear;} arXiv:2012.08015. 
     \cr\cr

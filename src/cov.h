@@ -8,6 +8,8 @@ using namespace Rcpp;
 using namespace arma;
 using namespace std;
 
+NumericVector diag_quad_mat(NumericMatrix A, NumericMatrix B);
+  
 arma::mat Exp2(arma::mat distmat, const double tau2, const double theta,
                   const double g);
 

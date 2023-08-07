@@ -65,6 +65,7 @@ a list of the S3 class \code{gp} or \code{gpvec} with elements:
   \item \code{theta}: vector of MCMC samples for \code{theta}
   \item \code{tau2}: vector of MLE estimates for \code{tau2} 
         (scale parameter)
+  \item \code{ll}: vector of MVN log likelihood for each Gibbs iteration
   \item \code{time}: computation time in seconds
 }
 }
@@ -166,12 +167,13 @@ plot(fit)
 
 }
 \references{
-Sauer, A, RB Gramacy, and D Higdon. 2020. "Active Learning for Deep Gaussian 
-    Process Surrogates." \emph{Technometrics, to appear;} arXiv:2012.08015. 
+Sauer, A. (2023). Deep Gaussian process surrogates for computer experiments. 
+    *Ph.D. Dissertation, Department of Statistics, Virginia Polytechnic Institute and State University.*
+     \cr\cr
+Sauer, A., Gramacy, R.B., & Higdon, D. (2023). Active learning for deep 
+    Gaussian process surrogates. *Technometrics, 65,* 4-18.  arXiv:2012.08015
     \cr\cr
-Sauer, A, A Cooper, and RB Gramacy. 2022. "Vecchia-approximated Deep Gaussian
-    Processes for Computer Experiments." \emph{pre-print on arXiv:2204.02904} 
-    \cr\cr
-Gramacy, RB. \emph{Surrogates: Gaussian Process Modeling, Design, and 
-    Optimization for the Applied Sciences}. Chapman Hall, 2020.
+Sauer, A., Cooper, A., & Gramacy, R. B. (2022). Vecchia-approximated deep 
+    Gaussian processes for computer experiments. 
+    *Journal of Computational and Graphical Statistics,* 1-14.  arXiv:2204.02904
 }

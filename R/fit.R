@@ -82,18 +82,20 @@
 #'   \item \code{theta}: vector of MCMC samples for \code{theta}
 #'   \item \code{tau2}: vector of MLE estimates for \code{tau2} 
 #'         (scale parameter)
+#'   \item \code{ll}: vector of MVN log likelihood for each Gibbs iteration
 #'   \item \code{time}: computation time in seconds
 #' }
 #' 
 #' @references 
-#' Sauer, A, RB Gramacy, and D Higdon. 2020. "Active Learning for Deep Gaussian 
-#'     Process Surrogates." \emph{Technometrics, to appear;} arXiv:2012.08015. 
+#' Sauer, A. (2023). Deep Gaussian process surrogates for computer experiments. 
+#'     *Ph.D. Dissertation, Department of Statistics, Virginia Polytechnic Institute and State University.*
+#'      \cr\cr
+#' Sauer, A., Gramacy, R.B., & Higdon, D. (2023). Active learning for deep 
+#'     Gaussian process surrogates. *Technometrics, 65,* 4-18.  arXiv:2012.08015
 #'     \cr\cr
-#' Sauer, A, A Cooper, and RB Gramacy. 2022. "Vecchia-approximated Deep Gaussian
-#'     Processes for Computer Experiments." \emph{pre-print on arXiv:2204.02904} 
-#'     \cr\cr
-#' Gramacy, RB. \emph{Surrogates: Gaussian Process Modeling, Design, and 
-#'     Optimization for the Applied Sciences}. Chapman Hall, 2020.
+#' Sauer, A., Cooper, A., & Gramacy, R. B. (2022). Vecchia-approximated deep 
+#'     Gaussian processes for computer experiments. 
+#'     *Journal of Computational and Graphical Statistics,* 1-14.  arXiv:2204.02904
 #' 
 #' @examples 
 #' # Examples of real-world implementations are available at: 
@@ -156,13 +158,10 @@ fit_one_layer <- function(x, y, nmcmc = 10000, sep = FALSE, verb = TRUE, g_0 = 0
   tic <- proc.time()[3]
   cov <- match.arg(cov)
   if (vecchia) check_omp()
-  if (vecchia & cov == "exp2") {
-    message("vecchia = TRUE requires Matern covariance, proceeding with cov = 'matern'")
-    cov <- "matern" 
-  }
   if (cov == "exp2") v <- 999 # solely used as an indicator
   if (!vecchia & length(y) > 300) 
     message("'vecchia = TRUE' is recommended for faster computation.")
+  if (nmcmc <= 1) stop("nmcmc must be greater than 1")
 
   # Check inputs
   if (is.numeric(x)) x <- as.matrix(x)
@@ -265,9 +264,15 @@ fit_one_layer <- function(x, y, nmcmc = 10000, sep = FALSE, verb = TRUE, g_0 = 0
 #'
 #' @param x vector or matrix of input locations
 #' @param y vector of response values
+#' @param nmcmc number of MCMC iterations
 #' @param D integer designating dimension of hidden layer, defaults to 
 #'        dimension of \code{x}
-#' @param nmcmc number of MCMC iterations
+#' @param pmx "prior mean X", logical indicating whether W should have prior
+#'        mean of X (\code{TRUE}, requires \code{D = ncol(X)}) or prior 
+#'        mean zero (\code{FALSE}).  \code{pmx = TRUE} is recommended for
+#'        higher dimensions.  May be numeric, in which case the specified
+#'        argument is used as the scale (\code{tau2}) in the latent \code{w}
+#'        layer (default is 1).  Small values encourage identity mappings.
 #' @param verb logical indicating whether to print iteration progress
 #' @param w_0 initial value for hidden layer \code{w} (must be matrix 
 #'        of dimension \code{nrow(x)} by \code{D} or  dimension 
@@ -304,18 +309,21 @@ fit_one_layer <- function(x, y, nmcmc = 10000, sep = FALSE, verb = TRUE, g_0 = 0
 #'   \item \code{tau2}: vector of MLE estimates for \code{tau2} (scale 
 #'         parameter of outer layer)
 #'   \item \code{w}: list of MCMC samples for hidden layer \code{w}
+#'   \item \code{ll}: vector of MVN log likelihood of the outer layer 
+#'         for reach Gibbs iteration
 #'   \item \code{time}: computation time in seconds
 #' }
 #' 
 #' @references 
-#' Sauer, A, RB Gramacy, and D Higdon. 2020. "Active Learning for Deep Gaussian 
-#'     Process Surrogates." \emph{Technometrics, to appear;} arXiv:2012.08015. 
+#' Sauer, A. (2023). Deep Gaussian process surrogates for computer experiments. 
+#'     *Ph.D. Dissertation, Department of Statistics, Virginia Polytechnic Institute and State University.*
+#'      \cr\cr
+#' Sauer, A., Gramacy, R.B., & Higdon, D. (2023). Active learning for deep 
+#'     Gaussian process surrogates. *Technometrics, 65,* 4-18.  arXiv:2012.08015
 #'     \cr\cr
-#' Sauer, A, A Cooper, and RB Gramacy. 2022. "Vecchia-approximated Deep Gaussian
-#'     Processes for Computer Experiments." \emph{pre-print on arXiv:2204.02904} 
-#'     \cr\cr
-#' Murray, I, RP Adams, and D MacKay. 2010. "Elliptical slice sampling." 
-#'     \emph{Journal of Machine Learning Research 9}, 541-548.
+#' Sauer, A., Cooper, A., & Gramacy, R. B. (2022). Vecchia-approximated deep 
+#'     Gaussian processes for computer experiments. 
+#'     *Journal of Computational and Graphical Statistics,* 1-14.  arXiv:2204.02904
 #' 
 #' @examples 
 #' # Examples of real-world implementations are available at: 
@@ -371,8 +379,8 @@ fit_one_layer <- function(x, y, nmcmc = 10000, sep = FALSE, verb = TRUE, g_0 = 0
 #' 
 #' @export
 
-fit_two_layer <- function(x, y, D = ifelse(is.matrix(x), ncol(x), 1), 
-                          nmcmc = 10000, verb = TRUE, w_0 = NULL, g_0 = 0.01,
+fit_two_layer <- function(x, y, nmcmc = 10000, D = ifelse(is.matrix(x), ncol(x), 1), 
+                          pmx = FALSE, verb = TRUE, w_0 = NULL, g_0 = 0.01,
                           theta_y_0 = 0.1, theta_w_0 = 0.1, true_g = NULL,
                           settings = NULL, cov = c("matern", "exp2"), v = 2.5,
                           vecchia = FALSE, m = min(25, length(y) - 1)) {
@@ -380,13 +388,10 @@ fit_two_layer <- function(x, y, D = ifelse(is.matrix(x), ncol(x), 1),
   tic <- proc.time()[3]
   cov <- match.arg(cov)
   if (vecchia) check_omp()
-  if (vecchia & cov == "exp2") {
-    message("vecchia = TRUE requires matern covariance, proceeding with cov = 'matern'")
-    cov <- "matern" 
-  }
   if (cov == "exp2") v <- 999 # solely used as an indicator
   if (!vecchia & length(y) > 300) 
     message("'vecchia = TRUE' is recommended for faster computation.")
+  if (nmcmc <= 1) stop("nmcmc must be greater than 1")
 
   # Check inputs
   if (is.numeric(x)) x <- as.matrix(x)
@@ -400,6 +405,17 @@ fit_two_layer <- function(x, y, D = ifelse(is.matrix(x), ncol(x), 1),
   if (cov == "matern")
     if(!(v %in% c(0.5, 1.5, 2.5))) 
       stop("v must be one of 0.5, 1.5, or 2.5")
+  
+  # Check prior mean setting
+  if (pmx == 0) pmx <- FALSE
+  if (is.numeric(pmx)) {
+    settings$inner_tau2 <- pmx
+    pmx <- TRUE
+  } else {
+    settings$inner_tau2 <- 1 # default value for pmx and prior mean zero
+  } 
+  if (pmx & (ncol(x) != D)) stop("pmx = TRUE requires D = ncol(x)")
+  settings$pmx <- pmx
   
   # Create output object
   out <- list(x = x, y = y, nmcmc = nmcmc, settings = settings, v = v)
@@ -431,7 +447,9 @@ fit_two_layer <- function(x, y, D = ifelse(is.matrix(x), ncol(x), 1),
 #'     Nugget parameter \code{g} governs noise on the outer layer.  In Matern 
 #'     covariance, \code{v} governs smoothness.
 #'
-#' @details Maps inputs \code{x} through hidden layer \code{z} then hidden
+#' @details \code{pmx = TRUE} option not yet implemented for three-layer DGP.
+#' 
+#'     Maps inputs \code{x} through hidden layer \code{z} then hidden
 #'     layer \code{w} to outputs \code{y}.  Conducts sampling of the hidden 
 #'     layers using Elliptical Slice sampling.  Utilizes Metropolis Hastings 
 #'     sampling of the length scale and nugget parameters with proposals and 
@@ -474,6 +492,9 @@ fit_two_layer <- function(x, y, D = ifelse(is.matrix(x), ncol(x), 1),
 #'     scaled to have mean 0 and variance 1.  These may be adjusted using the 
 #'     \code{settings} input.
 #'     
+#'     In the current version, the three-layer does not have any equivalent
+#'     setting for \code{pmx = TRUE} as in \code{fit_two_layer}.
+#'     
 #'     When \code{w_0 = NULL} and/or \code{z_0 = NULL}, the hidden layers are 
 #'     initialized at \code{x} (i.e. the identity mapping).  The default prior 
 #'     mean of the inner hidden layer \code{z} is zero, but may be adjusted to \code{x} 
@@ -489,9 +510,9 @@ fit_two_layer <- function(x, y, D = ifelse(is.matrix(x), ncol(x), 1),
 #'
 #' @param x vector or matrix of input locations
 #' @param y vector of response values
+#' @param nmcmc number of MCMC iterations
 #' @param D integer designating dimension of hidden layers, defaults to 
 #'        dimension of \code{x}
-#' @param nmcmc number of MCMC iterations
 #' @param verb logical indicating whether to print iteration progress
 #' @param w_0 initial value for hidden layer \code{w} (must be matrix 
 #'        of dimension \code{nrow(x)} by \code{D} or  dimension 
@@ -536,18 +557,21 @@ fit_two_layer <- function(x, y, D = ifelse(is.matrix(x), ncol(x), 1),
 #'         parameter of outer layer)
 #'   \item \code{w}: list of MCMC samples for middle hidden layer \code{w}
 #'   \item \code{z}: list of MCMC samples for inner hidden layer \code{z}
+#'   \item \code{ll}: vector of MVN log likelihood of the outer layer 
+#'         for reach Gibbs iteration
 #'   \item \code{time}: computation time in seconds
 #' }
 #' 
 #' @references 
-#' Sauer, A, RB Gramacy, and D Higdon. 2020. "Active Learning for Deep Gaussian 
-#'     Process Surrogates." \emph{Technometrics, to appear;} arXiv:2012.08015. 
+#' Sauer, A. (2023). Deep Gaussian process surrogates for computer experiments. 
+#'     *Ph.D. Dissertation, Department of Statistics, Virginia Polytechnic Institute and State University.*
+#'      \cr\cr
+#' Sauer, A., Gramacy, R.B., & Higdon, D. (2023). Active learning for deep 
+#'     Gaussian process surrogates. *Technometrics, 65,* 4-18.  arXiv:2012.08015
 #'     \cr\cr
-#' Sauer, A, A Cooper, and RB Gramacy. 2022. "Vecchia-approximated Deep Gaussian
-#'     Processes for Computer Experiments." \emph{pre-print on arXiv:2204.02904} 
-#'     \cr\cr
-#' Murray, I, RP Adams, and D MacKay. 2010. "Elliptical slice sampling."
-#'      \emph{Journal of Machine Learning Research 9}, 541-548.
+#' Sauer, A., Cooper, A., & Gramacy, R. B. (2022). Vecchia-approximated deep 
+#'     Gaussian processes for computer experiments. 
+#'     *Journal of Computational and Graphical Statistics,* 1-14.  arXiv:2204.02904
 #' 
 #' @examples 
 #' # Examples of real-world implementations are available at: 
@@ -596,8 +620,8 @@ fit_two_layer <- function(x, y, D = ifelse(is.matrix(x), ncol(x), 1),
 #' 
 #' @export
 
-fit_three_layer <- function(x, y, D = ifelse(is.matrix(x), ncol(x), 1), 
-                            nmcmc = 10000, verb = TRUE, w_0 = NULL, z_0 = NULL,
+fit_three_layer <- function(x, y, nmcmc = 10000, D = ifelse(is.matrix(x), ncol(x), 1), 
+                            verb = TRUE, w_0 = NULL, z_0 = NULL,
                             g_0 = 0.01, theta_y_0 = 0.1, theta_w_0 = 0.1, 
                             theta_z_0 = 0.1, true_g = NULL, settings = NULL,
                             cov = c("matern", "exp2"), v = 2.5, vecchia = FALSE, 
@@ -606,13 +630,10 @@ fit_three_layer <- function(x, y, D = ifelse(is.matrix(x), ncol(x), 1),
   tic <- proc.time()[3]
   cov <- match.arg(cov)
   if (vecchia) check_omp()
-  if (vecchia & cov == "exp2") {
-    message("vecchia = TRUE requires matern covariance, proceeding with cov = 'matern'")
-    cov <- "matern" 
-  }
   if (cov == "exp2") v <- 999 # solely used as an indicator
   if (!vecchia & length(y) > 300) 
     message("'vecchia = TRUE' is recommended for faster computation.")
+  if (nmcmc <= 1) stop("nmcmc must be greater than 1")
 
   # Check inputs
   if (is.numeric(x)) x <- as.matrix(x)

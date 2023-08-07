@@ -5,19 +5,21 @@
 \alias{deepgp-package}
 \title{Package deepgp}
 \description{
-Performs posterior inference for deep Gaussian processes 
-following Sauer, Gramacy, and Higdon (2020) <arXiv:2012.08015>.  Models are 
-trained through MCMC including elliptical slice sampling of latent Gaussian 
-layers and Metropolis-Hastings sampling of kernel hyperparameters.  
-Vecchia-approximation for faster computation is implemented following Sauer, 
-Cooper, and Gramacy (2022) <arXiv:2204.02904>.  Downstream tasks include
-sequential design through active learning Cohn/integrated mean squared error 
-(ALC/IMSE; Sauer, Gramacy, and Higdon, 2020) and optimization through expected 
-improvement (EI; Gramacy, Sauer, and Wycoff, 2021 <arXiv:2112.07457>).  Models 
-extend up to three layers deep; a one layer model is equivalent to typical Gaussian 
-process regression.  Covariance kernel options are matern (default) and squared
-exponential.  Applicable to both noisy and deterministic functions.  
-Incorporates SNOW parallelization and utilizes C and C++ under the hood.
+Performs Bayesian posterior inference for deep Gaussian processes following 
+Sauer, Gramacy, and Higdon (2023, <arXiv:2012.08015>).  See Sauer (2023, 
+<http://hdl.handle.net/10919/114845>) for comprehensive methodological details and 
+<https://bitbucket.org/gramacylab/deepgp-ex/> for a variety of coding examples. 
+Models are trained through MCMC including elliptical slice sampling of latent 
+Gaussian layers and Metropolis-Hastings sampling of kernel hyperparameters.  
+Vecchia-approximation for faster computation is implemented following 
+Sauer, Cooper, and Gramacy (2022, <arXiv:2204.02904>).  Downstream tasks 
+include sequential design through active learning Cohn/integrated mean squared 
+error (ALC/IMSE; Sauer, Gramacy, and Higdon, 2023), optimization through 
+expected improvement (EI; Gramacy, Sauer, and Wycoff, 2021 <arXiv:2112.07457>), 
+and contour location through entrop(Sauer, 2023).  Models extend up to three 
+layers deep; a one layer model is equivalent to typical Gaussian process 
+regression.  Incorporates OpenMP and SNOW parallelization and utilizes 
+C/C++ under the hood.
 }
 \section{Important Functions}{
 
@@ -32,9 +34,9 @@ Incorporates SNOW parallelization and utilizes C and C++ under the hood.
   \item \code{\link[deepgp]{trim}}: cuts off burn-in and optionally thins 
   samples
   \item \code{\link[deepgp]{predict}}: calculates posterior mean and 
-  variance over a set of input locations (optionally calculates EI)
+  variance over a set of input locations (optionally calculates EI or entropy)
   \item \code{\link[deepgp]{plot}}: produces trace plots, hidden layer 
-  plots, and posterior plots
+  plots, and posterior predictive plots
   \item \code{\link[deepgp]{ALC}}: calculates active learning Cohn over 
   set of input locations using reference grid
   \item \code{\link[deepgp]{IMSE}}: calculates integrated mean-squared error
@@ -50,29 +52,20 @@ Incorporates SNOW parallelization and utilizes C and C++ under the hood.
 
 }
 \references{
-Sauer, A, RB Gramacy, and D Higdon. 2021. "Active Learning for Deep Gaussian 
-    Process Surrogates." \emph{Technometrics}, (just-accepted), 1-39. \cr\cr
-Sauer, A, A Cooper, and RB Gramacy. 2022. "Vecchia-approximated Deep Gaussian
-    Processes for Computer Experiments." \emph{pre-print on arXiv:2204.02904} 
-    \cr\cr
-Katzfuss, M, J Guinness, W Gong, and D Zilber. 2020. "Vecchia aproximations
-    of Gaussian-process predictions." \emph{Journal of Agricultural,
-    Biological, and Environmental Statistics 25}, 383-414.\cr\cr
-Binois, M, J Huang, RB Gramacy, and M Ludkovski. 2019. Replication or 
-    Exploration? Sequential Design for Stochastic Simulation Experiments. 
-    \emph{Technometrics 61}, 7-23. Taylor & Francis. 
-    doi:10.1080/00401706.2018.1469433.\cr\cr
-Gramacy, RB. \emph{Surrogates: Gaussian Process Modeling, Design, and 
-    Optimization for the Applied Sciences}. Chapman Hall, 2020.\cr\cr
-Jones, DR, M Schonlau, and WJ Welch. 1998. "Efficient Global Optimization 
-    of Expensive Black-Box Functions." \emph{Journal of Global Optimization 
-    13}, 455-492. doi:10.1023/A:1008306431147.\cr\cr
-Murray, I, RP Adams, and D MacKay. 2010. "Elliptical slice sampling." 
-    \emph{Journal of Machine Learning Research 9}, 541-548.\cr\cr
-Seo, S, M Wallat, T Graepel, and K Obermayer. 2000. Gaussian Process 
-    Regression: Active Data Selection and Test Point Rejection. In 
-    Mustererkennung 2000, 27-34. New York, NY: Springer Verlag.
+Sauer, A. (2023). Deep Gaussian process surrogates for computer experiments. 
+     *Ph.D. Dissertation, Department of Statistics, Virginia Polytechnic Institute and State University.*
+     \cr\cr
+Sauer, A., Gramacy, R.B., & Higdon, D. (2023). Active learning for deep 
+     Gaussian process surrogates. *Technometrics, 65,* 4-18.  arXiv:2012.08015
+     \cr\cr
+Sauer, A., Cooper, A., & Gramacy, R. B. (2022). Vecchia-approximated deep Gaussian 
+     processes for computer experiments. 
+     *Journal of Computational and Graphical Statistics,* 1-14.  arXiv:2204.02904
+     \cr\cr
+Gramacy, R. B., Sauer, A. & Wycoff, N. (2022). Triangulation candidates for Bayesian 
+    optimization.  *Advances in Neural Information Processing Systems (NeurIPS), 35,* 
+    35933-35945.  arXiv:2112.07457
 }
 \author{
-Annie Sauer \email{anniees@vt.edu}
+Annie S. Booth \email{annie_booth@ncsu.edu}
 }

@@ -1,6 +1,6 @@
 ---
 title: "<tt>deepgp</tt>: an <sf>R</sf>-package for Bayesian Deep Gaussian Processes"
-author: "Annie Sauer (<anniees@vt.edu>)"
+author: "Annie Sauer Booth (<annie_booth@ncsu.edu>)"
 output: 
   rmarkdown::html_vignette:
     toc: true
@@ -32,18 +32,19 @@ library(deepgp)
 
 The `deepgp` package provides a fully-Bayesian implementation of deep Gaussian process (DGP) regression models via Markov Chain Monte Carlo (MCMC).  The package was designed with an eye towards surrogate modeling of computer experiments.  It supports several acquisition criteria for strategic sequential design and offers optional Vecchia-approximation for faster computations with larger data sizes.  Computations are performed in <tt>C/C++</tt>  under-the-hood, with optional parallelization through <tt>OpenMP</tt> and <tt>SNOW</tt>.  
 
-This vignette serves as an introduction to the package's main features.  Full methodological details are provided in the following manuscripts:
+This vignette serves as an introduction to the package's main features.  Full methodological details are provided in my Ph.D. Dissertation [@sauer2023deep] and in the following manuscripts:
 
-* @sauer2022active : Bayesian DGPs with sequential design targeting minimized posterior variance
+* @sauer2023active : Bayesian DGPs with sequential design targeting minimized posterior variance
 * @sauer2022vecchia : incorporation of the Vecchia approximation into the Bayesian DGP framework
 * @gramacy2021triangulation : optimization through expected improvement with strategic selection of candidates
 
-While I will showcase simple one-dimensional examples here, the simulated examples provided in these works span up to six dimensions, with training data sizes up to tens of thousands.  Real-world applications to computer experiments include a three-dimensional simulation of the Langley Glide Back Booster [LGBB, @pamadi2004aerodynamic] and the seven-dimensional Test Particle Monte Carlo Simulator (TPM) of a satellite in low earth orbit [@sun2019emulating], with training data sizes ranging from $n = 300$ to $n = 100,000$.  
+While I will showcase simple one-dimensional examples here, the simulated examples provided in these works span up to seven dimensions, with training data sizes up to tens of thousands.  Real-world applications to computer experiments include a three-dimensional simulation of the Langley Glide Back Booster [LGBB, @pamadi2004aerodynamic], the seven-dimensional Test Particle Monte Carlo Simulator (TPM) of a satellite in low earth orbit [@sun2019emulating], and a seven-dimensional simulation of an RAE-2822 transonic airfoil 
+[@economon2016su2], with training data sizes ranging from $n = 300$ to $n = 100,000$.  
 
 All exercises are supported by code in a public git repository: https://bitbucket.org/gramacylab/deepgp-ex/.
 Further details on function arguments and default settings (including prior distributions) are provided in the function documentation.  
 
-In the first section, I'll discuss model fitting (training through MCMC then generating posterior predictions).  I'll review a typical one-layer Gaussian process before introducing the DGP functionality.  I'll also discuss extensions to the original DGP framework, including the utilization of Vecchia approximation [@vecchia1988estimation] for faster computations.  In the second section, I'll introduce sequential design criteria for two different objectives: optimizing the response of minimizing posterior variance.
+In the first section, I'll discuss model fitting (training through MCMC then generating posterior predictions).  I'll review a typical one-layer Gaussian process before introducing the DGP functionality.  I'll also discuss extensions to the original DGP framework, including the utilization of Vecchia approximation [@vecchia1988estimation] for faster computations.  In the second section, I'll introduce sequential design criteria for three different objectives: optimizing the response, locating a contour, and minimizing posterior variance.
 
 To start, let's define a one-dimensional function that we can use for demonstration and visualization.  The following code defines the "Higdon function" [@higdon2002space], found on the pages of the Virtual Library of Simulation Experiments [@surjanovic2013virtual].
 
@@ -90,11 +91,11 @@ with
 $$
 \Sigma(X)^{ij} = \Sigma(x_i, x_j) = \tau^2\left(k\left(\frac{||x_i - x_j||^2}{\theta}\right) + g\mathbb{I}_{i=j}\right),
 $$
-where $k(\cdot)$ represents a stationary kernel function (`deepgp` offers both the squared exponential and Matérn kernels).  The package only supports mean-zero priors, but non-zero means may be addressed by pre-scaling the response appropriately.  In this canonical form, GPs suffer from the limitation of stationarity due to reliance on covariance kernels $k(\cdot)$ that are strictly functions of Euclidean distance.  
+where $k(\cdot)$ represents a stationary kernel function (`deepgp` offers both the squared exponential and Matérn kernels).  The package only supports mean-zero priors (aside from a special case in the two-layer DGP), but non-zero means may be addressed by pre-scaling the response appropriately.  In this canonical form, GPs suffer from the limitation of stationarity due to reliance on covariance kernels $k(\cdot)$ that are strictly functions of Euclidean distance.  
 
 This covariance depends on hyperparameters $\tau^2$, $\theta$, and $g$ controlling the scale, lengthscale, and noise respectively.  [Notice how $\theta$ operates on squared distances under this parameterization.]  Looking forward to our DGP implementation, we embrace an MCMC scheme utilizing Metropolis-Hastings sampling of these unknown hyperparameters (except $\tau^2$ which can be marginialized analytically under an inverse gamma reference prior, see @gramacy2020surrogates, Chapter 5).
 
-Ok, let's get to some code.  MCMC sampling of `theta` and `g` for a one-layer GP is built into the `fit_one_layer` function.  The following code collects 10,000 Metropolis Hastings samples (using the Matérn kernel by default and creating an S3 object of the `gp` class), then displays trace plots of the samples.  
+Ok, let's get to some code.  MCMC sampling of `theta` and `g` for a one-layer GP is built into the `fit_one_layer` function.  The following code collects 10,000 Metropolis Hastings samples (using the Matérn kernel by default and creating an S3 object of the `gp` class), then displays trace plots of the log likelihood and corresponding samples.  
 
 ```{r, fig.height = 3.5, fig.width = 6}
 fit1 <- fit_one_layer(x, y, nmcmc = 10000, verb = FALSE)
@@ -135,14 +136,14 @@ The GP provides a nice nonlinear fit with appropriate uncertainty estimates, but
 
 ## Two-layer DGP
 
-DGPs \citep{damianou2013deep} address this stationarity limitation through functional compositions of Gaussian layers.  Intermediate layers act as warped versions of the original inputs, allowing for non-stationary flexibility.  A "two-layer" DGP may be formulated as
+DGPs [@damianou2013deep] address this stationarity limitation through functional compositions of Gaussian layers.  Intermediate layers act as warped versions of the original inputs, allowing for non-stationary flexibility.  A "two-layer" DGP may be formulated as
 $$
 \begin{aligned}
 Y \mid W &\sim \mathcal{N}\left(0, \Sigma(W)\right) \\
 W_i &\sim \mathcal{N}\left(0, \Sigma_i(X)\right) \quad\textrm{for}\quad i = 1, \dots, D
 \end{aligned}
 $$
-where $\Sigma(\cdot)$ represents a stationary kernel function as defined in the previous subsection and where $W = [W_1, W_2, \dots, W_D]$ is the column-combined matrix of individual $W_i$ "nodes". Latent layers are noise-free with unit scale (i.e. $g = 0$ and $\tau^2 = 1$ for each $W_i$). The intermediate latent layer $W$ is unobserved and presents an inferential challenge (it can not be marginialized from the posterior analytically).  Many have embraced variational inference for fast, thrifty approximations [@salimbeni2017doubly,@marmin2022deep].  The `deepgp` package offers an alternative, fully-Bayesian sampling-based inferential scheme as detailed in @sauer2022active.  This sampling approach provides full uncertainty quantification (UQ), which is crucial for sequential design.
+where $\Sigma(\cdot)$ represents a stationary kernel function as defined in the previous subsection and where $W = [W_1, W_2, \dots, W_D]$ is the column-combined matrix of individual $W_i$ "nodes". Latent layers are noise-free with unit scale (i.e. $g = 0$ and $\tau^2 = 1$ for each $W_i$). The intermediate latent layer $W$ is unobserved and presents an inferential challenge (it can not be marginialized from the posterior analytically).  Many have embraced variational inference for fast, thrifty approximations [@salimbeni2017doubly,@marmin2022deep].  The `deepgp` package offers an alternative, fully-Bayesian sampling-based inferential scheme as detailed in @sauer2023active.  This sampling approach provides full uncertainty quantification (UQ), which is crucial for sequential design.
 
 Latent Gaussian layers are sampled through elliptical slice sampling [ESS, @murray2010elliptical].  Kernel hyperparameters are sampled through Metropolis Hastings.  All of these are iterated in a Gibbs scheme.  MCMC sampling for two-layer DGPs is wrapped in the `fit_two_layer` function.
 
@@ -164,14 +165,14 @@ There are now 10,000 total samples stored in `fit2`,
 fit2$nmcmc
 ```
 
-In one dimension we may visualise the ESS samples of W by specifying `hidden = TRUE` to the `plot` call.  
+In one dimension we may visualize the ESS samples of W by specifying `hidden = TRUE` to the `plot` call.  
 
 ```{r, fig.width = 6, fig.height = 4}
 plot(fit2, trace = FALSE, hidden = TRUE) 
 ```
 
 <br>
-Each line represents a single ESS sample of $W$.  Since 10,000 lines would be a lot to plot, an evenly spaced selection of samples is shown.  The samples are colored on a gradient -- red lines are the earliest iterations and yellow lines are the latest.  In this simple example these lines don't look all too interesting, but we see that they are "stretching" inputs in the left region (indicated by a steeper slope) and "squishing" inputs in the right region.  This accommodates the fact that there is more signal for `x < 0.6`.
+Each line represents a single ESS sample of $W$.  Since 10,000 lines would be a lot to plot, an evenly spaced selection of samples is shown.  The samples are colored on a gradient -- red lines are the earliest iterations and yellow lines are the latest.  In this simple example these lines don't look all too interesting, but we see that they are "stretching" inputs in the left region (indicated by a steeper slope) and "squishing" inputs in the right region (indicated by the flatter slope).  This accommodates the fact that there is more signal for `x < 0.6`.
 
 We may then trim/thin and predict using the same function calls.  Predictions follow the same structure of the one-layer GP, they just involve an additional mapping of $X^\star$ through $W$ before obtaining $\mu^\star$ and $\Sigma^\star$.  We utilize `lite = FALSE` here so that full posterior predictive covariances are returned (by default, only point-wise variances are returned).  
 
@@ -239,7 +240,7 @@ The three-layer outperforms the two-layer which in turn outperforms the one-laye
 The Bayesian DGP suffers from the computational bottlenecks that are endemic in typical GPs.  Inverses of dense covariance matrices experience $\mathcal{O}(n^3)$ costs.  The Vecchia approximation [@vecchia1988estimation] circumvents this bottleneck by inducing sparsity in the precision matrix [@katzfuss2020vecchia;@katzfuss2021general].  The sparse Cholesky decomposition of the precision matrix is easily populated in parallel (the package uses <tt>OpenMP</tt> for this), making for fast evaluation of Gaussian likelihoods and posterior predictive moments.  In addition to the original, un-approximated implementation, the `deepgp` package offers the option to utilize Vecchia approximation in all under-the-hood calculations.  Vecchia approximation is triggered by specifying `vecchia = TRUE` in any of the fit functions.
 
 ```{r, eval = FALSE}
-fit2_vec <- fit_two_layer(x, y, nmcmc = 10000, vecchia = TRUE, m = 25)
+fit2_vec <- fit_two_layer(x, y, nmcmc = 10000, vecchia = TRUE, m = 20)
 ```
 
 The `m` argument controls the fidelity of the approximation.  Details are provided in @sauer2022vecchia.  While the original implementation was only suitable for data sizes in the hundreds, the Vecchia option allows for feasible computations with data sizes up to a hundred thousand.  
@@ -274,24 +275,45 @@ Note, separable lengthscales are not an option for two- and three-layer models a
 
 # Active Learning
 
-Active learning  (also called "sequential design") is the process of sequentially selecting training locations using a statistical "surrogate" model to inform acquisitions.  Acquisitions may target specific objectives including optimizing the response or minimizing posterior variance.  The non-stationary flexibility of a DGP, combined with full UQ through Bayesian MCMC, is well-suited for sequential design tasks.  Where a typical stationary GP may end up space-filling, DGPs are able to target areas of high signal/high interest [@sauer2022active].  
+Active learning  (also called "sequential design") is the process of sequentially selecting training locations using a statistical "surrogate" model to inform acquisitions.  Acquisitions may target specific objectives including optimizing the response or minimizing posterior variance.  The non-stationary flexibility of a DGP, combined with full UQ through Bayesian MCMC, is well-suited for sequential design tasks.  Where a typical stationary GP may end up space-filling, DGPs are able to target areas of high signal/high interest [@sauer2023active].  
 
 ## Optimization through Expected Improvement
 
-If the sequential design objective is to minimize the response, the expected improvement criterion [EI, @jones1998efficient] is offered by specifying the argument `EI = TRUE` within the `predict` function.  For the Higdon function example this yields
+If the sequential design objective is to minimize the response, the expected improvement criterion [EI, @jones1998efficient] is offered by specifying the argument `EI = TRUE` within the `predict` function.  For the Higdon function example, we can calculate EI using the testing locations `xp` as candidates with
+
+```{r}
+fit2 <- predict(fit2, xp, EI = TRUE)
+```
+
+To visualize EI with the corresponding fit, the following code overlays EI (green line) atop the two-layer DGP fit.
 
 ```{r, fig.width = 5, fig.height = 4}
-fit2 <- predict(fit2, xp, EI = TRUE)
-plot(xp, fit2$EI, type = "l", ylab = "EI")
-points(xp[which.max(fit2$EI)], max(fit2$EI), pch = 17, cex = 1.5, col = 4)
+plot(fit2)
+par(new = TRUE)
+plot(xp, fit2$EI, type = "l", lwd = 2, col = 3, axes = FALSE, xlab = "", ylab = "")
+points(xp[which.max(fit2$EI)], max(fit2$EI), pch = 17, cex = 1.5, col = 3)
 ```
 
 <br>
-where the next acquisition is chosen as the candidate that maximized EI (highlighted by the blue triangle).  In this example, the EI criterion is accurately identifying the two local minimums in the response surface.  This implementation relies on optimization through candidate evaluation.  Strategically choosing candidates is crucial; see @gramacy2021triangulation for discussion on candidate optimization of EI with DGPs.
+The next acquisition is chosen as the candidate that maximized EI (highlighted by the green triangle).  In this example, the EI criterion is accurately identifying the two local minimums in the response surface.  This implementation relies on optimization through candidate evaluation.  Strategically choosing candidates is crucial; see @gramacy2021triangulation for discussion on candidate optimization of EI with DGPs.
+
+## Contour Location through Entropy
+
+If the sequential design objective is to locate an entire contour or level set in the response surface, the entropy criterion is offered by specification of an `entropy_limit` within the `predict` function.  The `entropy_limit` represents the value of the response that separates pass/fail regions.  For the Higdon function example, if we define a contour at `y = 0` and again use the testing grid as candidates, this yields
+
+```{r, fig.width = 5, fig.height = 4}
+fit2 <- predict(fit2, xp, entropy_limit = 0)
+plot(fit2)
+par(new = TRUE)
+plot(xp, fit2$entropy, type = "l", lwd = 2, col = 3, axes = FALSE, xlab = "", ylab = "")
+```
+
+<br>
+Notice entropy is highest where the predicted mean crosses the limit threshold.  The entropy criterion alone, with its extreme peakiness and limited incorporation of posterior uncertainty, is not an ideal acquisition criteria.  Instead, it is best combined with additional metrics that encourage exploration.  See @sauer2023deep, Chapter 3 for further discussion.  Again, this implementation relies on candidates, and strategic allocation of candidate locations is crucial.
 
 ## Minimizing Posterior Variance
 
-If instead of optimizing, we simply want to obtain the best surrogate fit we may choose to conduct sequential design targeting minimal posterior variance.
+If instead, we simply want to obtain the best surrogate fit we may choose to conduct sequential design targeting minimal posterior variance.
 
 For the sake of keeping things interesting, let's introduce a new one-dimensional example to use for visualization in this section (and to demonstrate a noise-free situation).  The following code defines a simple step function.
 
@@ -332,7 +354,7 @@ plot(fit2)
 ```
 
 <br>
-Notice, the DGP model is better able to fit the stepwise nature of the response surface due to its nonstationarity flexibility.
+Notice, the DGP model is better able to fit the stepwise nature of the response surface due to its non-stationarity flexibility.
 
 The `deepgp` package offers two acquisition criteria to target minimal posterior variance.  The Integrated Mean Squared Error (IMSE) acquisition criterion [@sacks1989design] is implemented in the `IMSE` function.  The following code evaluates this criterion for the one- and two-layer models above using the predictive grid as candidates and plots the resulting values.  The next acquisition is chosen as the candidate that produced the minimum IMSE (highlighted by the blue triangle).
 
@@ -362,7 +384,7 @@ When conducting a full sequential design, it is helpful to initialize the DGP ch
 
 Fully-Bayesian DGPs are hefty models that require a good bit of computation.  While I have integrated tools to assist with fast computations, there are still some relevant considerations.
 
-* If you are not using the Vecchia implementation, you may substantially speed-up under-the-hood matrix calculations by using a fast linear algebra library.  <tt>R</tt>'s default BLAS/LAPACK is not optimized for speedy matrix calculations.  I recommend [Intel's Math Kernel Library (MKL)](https://www.intel.com/content/www/us/en/developer/tools/oneapi/onemkl.html#gs.l2uo65) when possible.  Other options include [OpenBLAS](https://www.openblas.net/), the [Accelerate framework](https://developer.apple.com/documentation/accelerate) on OSX, or [Microsoft R Open](https://mran.microsoft.com/open).  Check out Appendix A in @gramacy2020surrogates for further discussion and illustration of linear algebra library alternatives.  Even with these, I recommend using `vecchia = TRUE` for data sizes above the low hundreds.
+* If you are not using the Vecchia implementation, you may substantially speed-up under-the-hood matrix calculations by using a fast linear algebra library.  <tt>R</tt>'s default BLAS/LAPACK is not optimized for speedy matrix calculations.  I recommend [Intel's Math Kernel Library (MKL)](https://www.intel.com/content/www/us/en/developer/tools/oneapi/onemkl.html#gs.l2uo65) when possible.  Other options include [OpenBLAS](https://www.openblas.net/) and the [Accelerate framework](https://developer.apple.com/documentation/accelerate) on OSX.  Check out Appendix A in @gramacy2020surrogates for further discussion and illustration of linear algebra library alternatives.  Even with these, I recommend using `vecchia = TRUE` for data sizes above the low hundreds.
 * If you are using the Vecchia implementation, computation speed is reliant on parallelizaton through <tt>OpenMP</tt>.  When packages are installed from CRAN on a Mac, they are not compiled with <tt>OpenMP</tt> by default. To set up <tt>OpenMP</tt> parallelization on a Mac, download the package source code and install using the <tt>gcc/g++</tt> compiler.  The fit functions will produce a warning message when `vecchia = TRUE` is called if <tt>OpenMP</tt> is not setup. 
 
 -------

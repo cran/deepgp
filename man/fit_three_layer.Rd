@@ -7,8 +7,8 @@
 fit_three_layer(
   x,
   y,
-  D = ifelse(is.matrix(x), ncol(x), 1),
   nmcmc = 10000,
+  D = ifelse(is.matrix(x), ncol(x), 1),
   verb = TRUE,
   w_0 = NULL,
   z_0 = NULL,
@@ -29,10 +29,10 @@ fit_three_layer(
 
 \item{y}{vector of response values}
 
+\item{nmcmc}{number of MCMC iterations}
+
 \item{D}{integer designating dimension of hidden layers, defaults to 
 dimension of \code{x}}
-
-\item{nmcmc}{number of MCMC iterations}
 
 \item{verb}{logical indicating whether to print iteration progress}
 
@@ -91,6 +91,8 @@ a list of the S3 class \code{dgp3} or \code{dgp3vec} with elements:
         parameter of outer layer)
   \item \code{w}: list of MCMC samples for middle hidden layer \code{w}
   \item \code{z}: list of MCMC samples for inner hidden layer \code{z}
+  \item \code{ll}: vector of MVN log likelihood of the outer layer 
+        for reach Gibbs iteration
   \item \code{time}: computation time in seconds
 }
 }
@@ -104,7 +106,9 @@ Conducts MCMC sampling of hyperparameters, hidden layer
     covariance, \code{v} governs smoothness.
 }
 \details{
-Maps inputs \code{x} through hidden layer \code{z} then hidden
+\code{pmx = TRUE} option not yet implemented for three-layer DGP.
+
+    Maps inputs \code{x} through hidden layer \code{z} then hidden
     layer \code{w} to outputs \code{y}.  Conducts sampling of the hidden 
     layers using Elliptical Slice sampling.  Utilizes Metropolis Hastings 
     sampling of the length scale and nugget parameters with proposals and 
@@ -146,6 +150,9 @@ Maps inputs \code{x} through hidden layer \code{z} then hidden
     These priors are designed for \code{x} scaled to [0, 1] and \code{y} 
     scaled to have mean 0 and variance 1.  These may be adjusted using the 
     \code{settings} input.
+    
+    In the current version, the three-layer does not have any equivalent
+    setting for \code{pmx = TRUE} as in \code{fit_two_layer}.
     
     When \code{w_0 = NULL} and/or \code{z_0 = NULL}, the hidden layers are 
     initialized at \code{x} (i.e. the identity mapping).  The default prior 
@@ -207,12 +214,13 @@ plot(fit)
 
 }
 \references{
-Sauer, A, RB Gramacy, and D Higdon. 2020. "Active Learning for Deep Gaussian 
-    Process Surrogates." \emph{Technometrics, to appear;} arXiv:2012.08015. 
+Sauer, A. (2023). Deep Gaussian process surrogates for computer experiments. 
+    *Ph.D. Dissertation, Department of Statistics, Virginia Polytechnic Institute and State University.*
+     \cr\cr
+Sauer, A., Gramacy, R.B., & Higdon, D. (2023). Active learning for deep 
+    Gaussian process surrogates. *Technometrics, 65,* 4-18.  arXiv:2012.08015
     \cr\cr
-Sauer, A, A Cooper, and RB Gramacy. 2022. "Vecchia-approximated Deep Gaussian
-    Processes for Computer Experiments." \emph{pre-print on arXiv:2204.02904} 
-    \cr\cr
-Murray, I, RP Adams, and D MacKay. 2010. "Elliptical slice sampling."
-     \emph{Journal of Machine Learning Research 9}, 541-548.
+Sauer, A., Cooper, A., & Gramacy, R. B. (2022). Vecchia-approximated deep 
+    Gaussian processes for computer experiments. 
+    *Journal of Computational and Graphical Statistics,* 1-14.  arXiv:2204.02904
 }

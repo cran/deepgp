@@ -84,7 +84,7 @@ rownames(metrics) <- c("One-layer GP", "Two-layer DGP", "Three-layer DGP")
 metrics
 
 ## ---- eval = FALSE------------------------------------------------------------
-#  fit2_vec <- fit_two_layer(x, y, nmcmc = 10000, vecchia = TRUE, m = 25)
+#  fit2_vec <- fit_two_layer(x, y, nmcmc = 10000, vecchia = TRUE, m = 20)
 
 ## ---- eval = FALSE------------------------------------------------------------
 #  fit2_no_g <- fit_two_layer(x, y, nmcmc = 10000, true_g = 1e-4)
@@ -92,10 +92,20 @@ metrics
 ## ---- eval = FALSE------------------------------------------------------------
 #  fit1_sep <- fit_one_layer(x, y, nmcmc = 10000, sep = TRUE)
 
-## ---- fig.width = 5, fig.height = 4-------------------------------------------
+## -----------------------------------------------------------------------------
 fit2 <- predict(fit2, xp, EI = TRUE)
-plot(xp, fit2$EI, type = "l", ylab = "EI")
-points(xp[which.max(fit2$EI)], max(fit2$EI), pch = 17, cex = 1.5, col = 4)
+
+## ---- fig.width = 5, fig.height = 4-------------------------------------------
+plot(fit2)
+par(new = TRUE)
+plot(xp, fit2$EI, type = "l", lwd = 2, col = 3, axes = FALSE, xlab = "", ylab = "")
+points(xp[which.max(fit2$EI)], max(fit2$EI), pch = 17, cex = 1.5, col = 3)
+
+## ---- fig.width = 5, fig.height = 4-------------------------------------------
+fit2 <- predict(fit2, xp, entropy_limit = 0)
+plot(fit2)
+par(new = TRUE)
+plot(xp, fit2$entropy, type = "l", lwd = 2, col = 3, axes = FALSE, xlab = "", ylab = "")
 
 ## ---- echo = FALSE------------------------------------------------------------
 set.seed(0)

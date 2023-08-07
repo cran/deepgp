@@ -1,22 +1,25 @@
 Package: deepgp
 Type: Package
-Title: Deep Gaussian Processes using MCMC
-Version: 1.1.0
-Date: 2022-12-13
-Author: Annie Sauer <anniees@vt.edu>
-Maintainer: Annie Sauer <anniees@vt.edu>
+Title: Bayesian Deep Gaussian Processes using MCMC
+Version: 1.1.1
+Date: 2023-08-04
+Author: Annie S. Booth <annie_booth@ncsu.edu>
+Maintainer: Annie S. Booth <annie_booth@ncsu.edu>
 Depends: R (>= 3.6)
-Description: Performs posterior inference for deep Gaussian processes following 
-    Sauer, Gramacy, and Higdon (2020) <arXiv:2012.08015>.  Models are trained through
+Description: Performs Bayesian posterior inference for deep Gaussian processes following 
+    Sauer, Gramacy, and Higdon (2023, <arXiv:2012.08015>).  See Sauer (2023,
+    <http://hdl.handle.net/10919/114845>) for comprehensive methodological details and
+    <https://bitbucket.org/gramacylab/deepgp-ex/> for a variety of coding examples. 
+    Models are trained through
     MCMC including elliptical slice sampling of latent Gaussian layers and Metropolis-Hastings
     sampling of kernel hyperparameters.  Vecchia-approximation for faster computation is implemented
-    following Sauer, Cooper, and Gramacy (2022) <arXiv:2204.02904>.  Downstream tasks include
+    following Sauer, Cooper, and Gramacy (2022, <arXiv:2204.02904>).  Downstream tasks include
     sequential design through active learning Cohn/integrated mean squared error (ALC/IMSE; Sauer, 
-    Gramacy, and Higdon, 2020) and optimization through expected improvement (EI; 
-    Gramacy, Sauer, and Wycoff, 2021 <arXiv:2112.07457>).  Models 
-    extend up to three layers deep; a one layer model is equivalent to typical Gaussian 
-    process regression.  Covariance kernel options are matern (default) and squared
-    exponential.  Incorporates OpenMP and SNOW parallelization and utilizes C/C++ under the hood.
+    Gramacy, and Higdon, 2023), optimization through expected improvement (EI; 
+    Gramacy, Sauer, and Wycoff, 2021 <arXiv:2112.07457>), and contour location through entropy
+    (Sauer, 2023).  Models extend up to three layers deep; a one layer model is equivalent to 
+    typical Gaussian process regression.  Incorporates OpenMP and SNOW parallelization and 
+    utilizes C/C++ under the hood.
 License: LGPL
 Encoding: UTF-8
 NeedsCompilation: yes
@@ -26,6 +29,6 @@ LinkingTo: Rcpp, RcppArmadillo,
 Suggests: interp, knitr, rmarkdown
 VignetteBuilder: knitr
 RoxygenNote: 7.1.2
-Packaged: 2022-12-15 01:44:50 UTC; anniesauer
+Packaged: 2023-08-07 19:18:44 UTC; anniesauer
 Repository: CRAN
-Date/Publication: 2022-12-15 08:40:09 UTC
+Date/Publication: 2023-08-07 20:50:05 UTC

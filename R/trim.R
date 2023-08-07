@@ -60,6 +60,7 @@ trim.gp <- function(object, burn, thin = 1) {
     object$theta <- object$theta[indx, , drop = FALSE]
   } else object$theta <- object$theta[indx, drop = FALSE]
   object$tau2 <- object$tau2[indx, drop = FALSE]
+  object$ll <- object$ll[indx, drop = FALSE]
   
   toc <- proc.time()[3]
   object$time <- object$time + (toc - tic)
@@ -93,6 +94,7 @@ trim.dgp2 <- function(object, burn, thin = 1) {
   object$theta_w <- object$theta_w[indx, , drop = FALSE]
   object$w <- as.list(object$w[indx])
   object$tau2 <- object$tau2[indx, drop = FALSE]
+  object$ll <- object$ll[indx, drop = FALSE]
   
   toc <- proc.time()[3]
   object$time <- object$time + (toc - tic)
@@ -128,6 +130,7 @@ trim.dgp3 <- function(object, burn, thin = 1) {
   object$w <- as.list(object$w[indx])
   object$z <- as.list(object$z[indx])
   object$tau2 <- object$tau2[indx, drop = FALSE]
+  object$ll <- object$ll[indx, drop = FALSE]
   
   toc <- proc.time()[3]
   object$time <- object$time + (toc - tic)

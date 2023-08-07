@@ -9,14 +9,15 @@
 
 # Log Likelihood --------------------------------------------------------------
 
-logl <- function(out_vec, in_dmat, g, theta, outer = TRUE, v, tau2 = FALSE) {
+logl <- function(out_vec, in_dmat, g, theta, outer = TRUE, v, tau2 = FALSE,
+                 mu = 0, scale = 1) {
   
   n <- length(out_vec)
   if (v == 999) {
-    K <- Exp2(in_dmat, 1, theta, g)
-  } else K <- Matern(in_dmat, 1, theta, g, v) 
+    K <- scale * Exp2(in_dmat, 1, theta, g)
+  } else K <- scale * Matern(in_dmat, 1, theta, g, v) 
   id <- invdet(K)
-  quadterm <- t(out_vec) %*% id$Mi %*% out_vec
+  quadterm <- t(out_vec - mu) %*% id$Mi %*% (out_vec - mu)
   
   if (outer) { # use profile log likelihood (with tau2 integrated out)
     logl <- (- n * 0.5) * log(quadterm) - 0.5 * id$ldet
@@ -107,7 +108,8 @@ sample_g_sep <- function(out_vec, in_mat, g_t, theta, alpha, beta, l, u,
 # Sample Theta ----------------------------------------------------------------
 
 sample_theta <- function(out_vec, in_dmat, g, theta_t, alpha, beta, l, u, 
-                         outer, ll_prev = NULL, v, tau2 = FALSE) {
+                         outer, ll_prev = NULL, v, tau2 = FALSE,
+                         prior_mean = 0, scale = 1) {
   
   # Propose value
   theta_star <- runif(1, min = l * theta_t / u, max = u * theta_t / l)
@@ -115,12 +117,14 @@ sample_theta <- function(out_vec, in_dmat, g, theta_t, alpha, beta, l, u,
   # Compute acceptance threshold
   ru <- runif(1, min = 0, max = 1)
   if (is.null(ll_prev)) 
-    ll_prev <- logl(out_vec, in_dmat, g, theta_t, outer, v)$logl
+    ll_prev <- logl(out_vec, in_dmat, g, theta_t, outer, v, mu = prior_mean,
+                    scale = scale)$logl
   
   lpost_threshold <- ll_prev + dgamma(theta_t - eps, alpha, beta, log = TRUE) + 
     log(ru) - log(theta_t) + log(theta_star)
   
-  ll_new <- logl(out_vec, in_dmat, g, theta_star, outer, v, tau2 = tau2)
+  ll_new <- logl(out_vec, in_dmat, g, theta_star, outer, v, tau2 = tau2,
+                 mu = prior_mean, scale = scale)
 
   # Accept or reject (lower bound of eps)
   new <- ll_new$logl + dgamma(theta_star - eps, alpha, beta, log = TRUE)
@@ -165,7 +169,9 @@ sample_theta_sep <- function(out_vec, in_mat, g, theta_t, index = 1,
 # Elliptical Slice W ----------------------------------------------------------
 
 sample_w <- function(out_vec, w_t, w_t_dmat, in_dmat, g, theta_y, theta_w,
-                     ll_prev = NULL, v) {
+                     ll_prev = NULL, v, 
+                     prior_mean = matrix(0, nrow = nrow(w_t), ncol = ncol(w_t)),
+                     scale = 1) {
   
   D <- ncol(w_t) # dimension of hidden layer
 
@@ -178,9 +184,11 @@ sample_w <- function(out_vec, w_t, w_t_dmat, in_dmat, g, theta_y, theta_w,
     
     # Draw from prior distribution
     if (v == 999) {
-      w_prior <- mvtnorm::rmvnorm(1, sigma = Exp2(in_dmat, 1, theta_w[i], 0))
+      w_prior <- mvtnorm::rmvnorm(1, mean = prior_mean[, i], 
+                                  sigma = scale * Exp2(in_dmat, 1, theta_w[i], 0))
     } else {
-      w_prior <- mvtnorm::rmvnorm(1, sigma = Matern(in_dmat, 1, theta_w[i], 0, v))
+      w_prior <- mvtnorm::rmvnorm(1, mean = prior_mean[, i], 
+                                  sigma = scale * Matern(in_dmat, 1, theta_w[i], 0, v))
     }
     
     # Initialize a and bounds on a

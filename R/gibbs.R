@@ -16,6 +16,8 @@ gibbs_one_layer <- function(x, y, nmcmc, verb, initial, true_g, settings, v) {
   theta[1] <- initial$theta
   tau2 <- vector(length = nmcmc)
   tau2[1] <- initial$tau2
+  ll_store <- vector(length = nmcmc)
+  ll_store[1] <- NA
   ll <- NULL
   
   for (j in 2:nmcmc) {
@@ -39,10 +41,11 @@ gibbs_one_layer <- function(x, y, nmcmc, verb, initial, true_g, settings, v) {
                          tau2 = TRUE)
     theta[j] <- samp$theta
     ll <- samp$ll
+    ll_store[j] <- ll
     if (is.null(samp$tau2)) tau2[j] <- tau2[j - 1] else tau2[j] <- samp$tau2
   } # end of j for loop
   
-  return(list(g = g, theta = theta, tau2 = tau2))
+  return(list(g = g, theta = theta, tau2 = tau2, ll = ll_store))
 }
 
 # One layer Gibbs SEPARABLE ---------------------------------------------------
@@ -57,6 +60,8 @@ gibbs_one_layer_sep <- function(x, y, nmcmc, verb, initial, true_g, settings, v)
   theta[1, ] <- initial$theta
   tau2 <- vector(length = nmcmc)
   tau2[1] <- initial$tau2
+  ll_store <- vector(length = nmcmc)
+  ll_store[1] <- NA
   ll <- NULL
   
   for (j in 2:nmcmc) {
@@ -81,6 +86,7 @@ gibbs_one_layer_sep <- function(x, y, nmcmc, verb, initial, true_g, settings, v)
                                tau2 = (i == d))
       theta[j, i] <- samp$theta
       ll <- samp$ll
+      ll_store[j] <- ll
       if (i == 1) { # update tau2 (repeat original value if nothing was accepted)
         if (is.null(samp$tau2)) tau2[j] <- tau2[j - 1] else tau2[j] <- samp$tau2
       } else { # only update tau2 if there was an acceptance
@@ -89,7 +95,7 @@ gibbs_one_layer_sep <- function(x, y, nmcmc, verb, initial, true_g, settings, v)
     }
   } # end of j for loop
   
-  return(list(g = g, theta = theta, tau2 = tau2))
+  return(list(g = g, theta = theta, tau2 = tau2, ll = ll_store))
 }
 
 # Two layer Gibbs -------------------------------------------------------------
@@ -110,6 +116,8 @@ gibbs_two_layer <- function(x, y, nmcmc, D, verb, initial, true_g,
   w[[1]] <- initial$w
   tau2 <- vector(length = nmcmc)
   tau2[1] <- initial$tau2
+  ll_store <- vector(length = nmcmc)
+  ll_store[1] <- NA
   ll_outer <- NULL
   
   for (j in 2:nmcmc) {
@@ -138,22 +146,29 @@ gibbs_two_layer <- function(x, y, nmcmc, D, verb, initial, true_g,
     
     # Sample inner length scale (theta_w) - separately for each dimension
     for (i in 1:D) {
+      if (settings$pmx) prior_mean <- x[, i] else prior_mean <- 0
       samp <- sample_theta(w[[j - 1]][, i], dx, g = eps, theta_w[j - 1, i],
                            alpha = settings$alpha$theta_w, 
                            beta = settings$beta$theta_w, l = settings$l, 
-                           u = settings$u, outer = FALSE, v = v)
+                           u = settings$u, outer = FALSE, v = v,
+                           prior_mean = prior_mean,
+                           scale = settings$inner_tau2)
       theta_w[j, i] <- samp$theta
     }
     
     # Sample hidden Gaussian layer (w)
+    if (settings$pmx) prior_mean <- x else prior_mean <- matrix(0, nrow(x), D)
     samp <- sample_w(y, w[[j - 1]], dw, dx, g[j], theta_y[j], theta_w[j, ], 
-                     ll_prev = ll_outer, v = v)
+                     ll_prev = ll_outer, v = v, prior_mean = prior_mean,
+                     scale = settings$inner_tau2)
     w[[j]] <- samp$w
     ll_outer <- samp$ll
+    ll_store[j] <- ll_outer
     dw <- samp$dw
   } # end of j for loop
   
-  return(list(g = g, theta_y = theta_y, theta_w = theta_w, w = w, tau2 = tau2))
+  return(list(g = g, theta_y = theta_y, theta_w = theta_w, w = w, tau2 = tau2,
+              ll = ll_store))
 }
 
 # Three layer Gibbs -----------------------------------------------------------
@@ -179,6 +194,8 @@ gibbs_three_layer <- function(x, y, nmcmc, D, verb, initial, true_g,
   z[[1]] <- initial$z
   tau2 <- vector(length = nmcmc)
   tau2[1] <- initial$tau2
+  ll_store <- vector(length = nmcmc)
+  ll_store[1] <- NA
   ll_outer <- NULL
   
   for (j in 2:nmcmc) {
@@ -236,9 +253,10 @@ gibbs_three_layer <- function(x, y, nmcmc, D, verb, initial, true_g,
                      ll_prev = ll_outer, v = v)
     w[[j]] <- samp$w
     ll_outer <- samp$ll
+    ll_store[j] <- ll_outer
     dw <- samp$dw
   } # end of j for loop
   
   return(list(g = g, theta_y = theta_y, theta_w = theta_w, theta_z = theta_z,
-              w = w, z = z, tau2 = tau2))
+              w = w, z = z, tau2 = tau2, ll = ll_store))
 }

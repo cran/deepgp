@@ -7,6 +7,35 @@ Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
 Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
+// forward_solve
+NumericVector forward_solve_raw(NumericMatrix U, NumericVector z,
+                            NumericMatrix NNarray);
+RcppExport SEXP _deepgp_forward_solve_raw(SEXP USEXP, SEXP zSEXP,
+                                      SEXP NNarraySEXP) {
+    BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type U(USEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type z(zSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type NNarray(NNarraySEXP);
+    rcpp_result_gen = Rcpp::wrap(forward_solve_raw(U, z, NNarray));
+    return rcpp_result_gen;
+    END_RCPP
+}
+
+// diag_quad_mat
+NumericVector diag_quad_mat(NumericMatrix A, NumericMatrix B);
+RcppExport SEXP _deepgp_diag_quad_mat(SEXP ASEXP, SEXP BSEXP) {
+    BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type A(ASEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type B(BSEXP);
+    rcpp_result_gen = Rcpp::wrap(diag_quad_mat(A, B));
+    return rcpp_result_gen;
+    END_RCPP
+}
+
 // rev_matrix
 arma::mat rev_matrix(const arma::mat x);
 RcppExport SEXP _deepgp_rev_matrix(SEXP xSEXP) {
@@ -92,50 +121,42 @@ RcppExport SEXP _deepgp_MaternSep(SEXP x1SEXP, SEXP x2SEXP, SEXP tau2SEXP, SEXP 
 }
 
 // U_entries
-arma::mat U_entries(const int Ncores, const arma::mat& x, 
-                    const arma::umat& revNNarray, const arma::mat& revCondOnLatent, 
+arma::mat U_entries(const int Ncores, const arma::mat& x, const arma::umat& revNNarray,
                     const double tau2, const double theta, const double g, const double v);
-RcppExport SEXP _deepgp_U_entries(SEXP NcoresSEXP, SEXP xSEXP, SEXP 
-                                      revNNarraySEXP, SEXP revCondOnLatentSEXP, SEXP tau2SEXP,
-                                      SEXP thetaSEXP, SEXP gSEXP, SEXP vSEXP) {
+RcppExport SEXP _deepgp_U_entries(SEXP NcoresSEXP, SEXP xSEXP, SEXP revNNarraySEXP, 
+                                  SEXP tau2SEXP, SEXP thetaSEXP, SEXP gSEXP, SEXP vSEXP) {
     BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< const int >::type Ncores(NcoresSEXP);
     Rcpp::traits::input_parameter< const arma::mat& >::type x(xSEXP);
     Rcpp::traits::input_parameter< const arma::umat& >::type revNNarray(revNNarraySEXP);
-    Rcpp::traits::input_parameter< const arma::mat& >::type revCondOnLatent(revCondOnLatentSEXP);
     Rcpp::traits::input_parameter< const double >::type tau2(tau2SEXP);
     Rcpp::traits::input_parameter< const double >::type theta(thetaSEXP);
     Rcpp::traits::input_parameter< const double >::type g(gSEXP);
     Rcpp::traits::input_parameter< const double >::type v(vSEXP);    
-    rcpp_result_gen = Rcpp::wrap(U_entries(Ncores, x, revNNarray, revCondOnLatent, tau2, 
-                                           theta, g, v));
+    rcpp_result_gen = Rcpp::wrap(U_entries(Ncores, x, revNNarray, tau2, theta, g, v));
     return rcpp_result_gen;
     END_RCPP
 }
 
-
 // U_entries_sep
-arma::mat U_entries_sep(const int Ncores, const arma::mat& x, 
-                    const arma::umat& revNNarray, const arma::mat& revCondOnLatent, 
+arma::mat U_entries_sep(const int Ncores, const arma::mat& x, const arma::umat& revNNarray, 
                     const double tau2, const arma::vec theta, const double g, const double v);
-RcppExport SEXP _deepgp_U_entries_sep(SEXP NcoresSEXP, SEXP xSEXP, SEXP 
-                                      revNNarraySEXP, SEXP revCondOnLatentSEXP, SEXP tau2SEXP,
-                                      SEXP thetaSEXP, SEXP gSEXP, SEXP vSEXP) {
+RcppExport SEXP _deepgp_U_entries_sep(SEXP NcoresSEXP, SEXP xSEXP, SEXP revNNarraySEXP, 
+                                      SEXP tau2SEXP, SEXP thetaSEXP, SEXP gSEXP, SEXP vSEXP) {
     BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< const int >::type Ncores(NcoresSEXP);
     Rcpp::traits::input_parameter< const arma::mat& >::type x(xSEXP);
     Rcpp::traits::input_parameter< const arma::umat& >::type revNNarray(revNNarraySEXP);
-    Rcpp::traits::input_parameter< const arma::mat& >::type revCondOnLatent(revCondOnLatentSEXP);
     Rcpp::traits::input_parameter< const double >::type tau2(tau2SEXP);
     Rcpp::traits::input_parameter< const arma::vec >::type theta(thetaSEXP);
     Rcpp::traits::input_parameter< const double >::type g(gSEXP);
     Rcpp::traits::input_parameter< const double >::type v(vSEXP);    
-    rcpp_result_gen = Rcpp::wrap(U_entries_sep(Ncores, x, revNNarray, revCondOnLatent, tau2, 
-                                           theta, g, v));
+    rcpp_result_gen = Rcpp::wrap(U_entries_sep(Ncores, x, revNNarray, tau2, 
+                                               theta, g, v));
     return rcpp_result_gen;
     END_RCPP
 }
@@ -147,6 +168,18 @@ RcppExport SEXP _deepgp_check_omp() {
     Rcpp::RNGScope rcpp_rngScope_gen;
     check_omp();
     return R_NilValue;
+    END_RCPP
+}
+
+// row_col_pointers
+arma::mat row_col_pointers(const arma::umat& NNarray);
+RcppExport SEXP _deepgp_row_col_pointers(SEXP NNarraySEXP) {
+    BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::umat& >::type NNarray(NNarraySEXP);
+    rcpp_result_gen = Rcpp::wrap(row_col_pointers(NNarray));
+    return rcpp_result_gen;
     END_RCPP
 }
 
@@ -172,14 +205,17 @@ extern "C" {
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_deepgp_rev_matrix",     (DL_FUNC) &_deepgp_rev_matrix,     1},
-    {"_deepgp_Exp2",           (DL_FUNC) &_deepgp_Exp2,           4},
-    {"_deepgp_Exp2Sep",        (DL_FUNC) &_deepgp_Exp2Sep,        5},
-    {"_deepgp_Matern",         (DL_FUNC) &_deepgp_Matern,         5},
-    {"_deepgp_MaternSep",      (DL_FUNC) &_deepgp_MaternSep,      6},
-    {"_deepgp_U_entries",      (DL_FUNC) &_deepgp_U_entries,      8},
-    {"_deepgp_U_entries_sep",  (DL_FUNC) &_deepgp_U_entries_sep,  8},
-    {"_deepgp_check_omp",      (DL_FUNC) &_deepgp_check_omp,      0},
+    {"_deepgp_forward_solve_raw",  (DL_FUNC) &_deepgp_forward_solve_raw,  3},
+    {"_deepgp_diag_quad_mat",      (DL_FUNC) &_deepgp_diag_quad_mat,      2},
+    {"_deepgp_rev_matrix",         (DL_FUNC) &_deepgp_rev_matrix,         1},
+    {"_deepgp_Exp2",               (DL_FUNC) &_deepgp_Exp2,               4},
+    {"_deepgp_Exp2Sep",            (DL_FUNC) &_deepgp_Exp2Sep,            5},
+    {"_deepgp_Matern",             (DL_FUNC) &_deepgp_Matern,             5},
+    {"_deepgp_MaternSep",          (DL_FUNC) &_deepgp_MaternSep,          6},
+    {"_deepgp_U_entries",          (DL_FUNC) &_deepgp_U_entries,          7},
+    {"_deepgp_U_entries_sep",      (DL_FUNC) &_deepgp_U_entries_sep,      7},
+    {"_deepgp_check_omp",          (DL_FUNC) &_deepgp_check_omp,          0},
+    {"_deepgp_row_col_pointers",   (DL_FUNC) &_deepgp_row_col_pointers,   1},
     {NULL, NULL, 0}
 };
 

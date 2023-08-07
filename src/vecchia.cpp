@@ -20,6 +20,29 @@ using namespace arma;
 using namespace std;
 
 // [[Rcpp::export]]
+NumericVector forward_solve_raw(NumericMatrix U, NumericVector z,
+                            NumericMatrix NNarray) {
+  // Solves U * y = z for y
+  // Uses raw form of U (in create_U use raw_form = TRUE)
+  
+  int n = U.nrow();
+  NumericVector y(n);
+  int mp1 = NNarray.ncol(); // m plus 1
+
+  y(0) = z(0) / U(0, 0);
+  
+  for (int i = 1; i < n; i++) {
+    int B = min(i + 1, mp1);
+    y(i) = z(i);
+    for (int j = 1; j < B; j++) {
+      y(i) -= U(i, j) * y(NNarray(i, j) - 1);
+    }
+    y(i) = y(i) / U(i, 0);
+  }
+  return y;
+}
+
+// [[Rcpp::export]]
 arma::mat rev_matrix(arma::mat x) {
   return reverse(x, 1);
 }
@@ -46,93 +69,106 @@ arma::mat d2_matrix(arma::mat x) {
 }
 
 // [[Rcpp::export]]
-arma::mat U_entries (const int Ncores, const arma::mat& x, 
-                     const arma::umat& revNNarray, const arma::mat& revCondOnLatent, 
+arma::mat U_entries (const int Ncores, const arma::mat& x, const arma::umat& revNNarray,
                      const double tau2, const double theta, const double g, const double v){
   
   const int m = revNNarray.n_cols - 1;
   const int n = x.n_rows;
   arma::mat Lentries = zeros(n, m + 1);
+  arma::mat covmat;
   
-#ifdef _OPENMP
-  
-#pragma omp parallel for num_threads(Ncores) shared(Lentries) schedule(static)
-  for (int k = 0; k < n; k++) {
-    arma::uvec inds = revNNarray.row(k).t();
-    arma::vec revCon_row = revCondOnLatent.row(k).t();
-    arma::uvec inds00 = inds.elem(find(inds)) - 1;
-    uword n0 = inds00.n_elem;
-    arma::mat dist = d2_matrix(x.rows(inds00));
-    arma::mat covmat = Matern(dist, tau2, theta, g, v);
-    arma::vec onevec = zeros(n0);
-    onevec[n0 - 1] = 1;
-    arma::vec M = solve(chol(covmat, "upper"), onevec);
-    Lentries(k, span(0, n0 - 1)) = M.t();
-  }
-  
-#else
-  
-  for (int k = 0; k < n; k++) {
-    arma::uvec inds = revNNarray.row(k).t();
-    arma::vec revCon_row = revCondOnLatent.row(k).t();
-    arma::uvec inds00 = inds.elem(find(inds)) - 1;
-    uword n0 = inds00.n_elem;
-    arma::mat dist = d2_matrix(x.rows(inds00));
-    arma::mat covmat = Matern(dist, tau2, theta, g, v);
-    arma::vec onevec = zeros(n0);
-    onevec[n0 - 1] = 1;
-    arma::vec M = solve(chol(covmat, "upper"), onevec);
-    Lentries(k, span(0, n0 - 1)) = M.t();
-  }
-  
-#endif
+  #ifdef _OPENMP
+    
+  #pragma omp parallel for num_threads(Ncores) shared(Lentries) schedule(static)
+    for (int k = 0; k < n; k++) {
+      arma::uvec inds = revNNarray.row(k).t();
+      arma::uvec inds00 = inds.elem(find(inds)) - 1;
+      uword n0 = inds00.n_elem;
+      arma::mat dist = d2_matrix(x.rows(inds00));
+      arma::mat covmat(n0, n0);
+      if (v == 999) {
+        covmat = Exp2(dist, tau2, theta, g);
+      } else {
+        covmat = Matern(dist, tau2, theta, g, v);
+      }
+      arma::vec onevec = zeros(n0);
+      onevec[n0 - 1] = 1;
+      arma::vec M = solve(chol(covmat, "upper"), onevec);
+      Lentries(k, span(0, n0 - 1)) = M.t();
+    }
+    
+  #else
+    
+    for (int k = 0; k < n; k++) {
+      arma::uvec inds = revNNarray.row(k).t();
+      arma::uvec inds00 = inds.elem(find(inds)) - 1;
+      uword n0 = inds00.n_elem;
+      arma::mat dist = d2_matrix(x.rows(inds00));
+      arma::mat covmat(n0, n0);
+      if (v == 999) {
+        covmat = Exp2(dist, tau2, theta, g);
+      } else {
+        covmat = Matern(dist, tau2, theta, g, v);
+      }
+      arma::vec onevec = zeros(n0);
+      onevec[n0 - 1] = 1;
+      arma::vec M = solve(chol(covmat, "upper"), onevec);
+      Lentries(k, span(0, n0 - 1)) = M.t();
+    }
+    
+  #endif
   
   return Lentries;
 }
 
 // [[Rcpp::export]]
-arma::mat U_entries_sep (const int Ncores, const arma::mat& x, 
-                     const arma::umat& revNNarray, const arma::mat& revCondOnLatent, 
+arma::mat U_entries_sep (const int Ncores, const arma::mat& x, const arma::umat& revNNarray, 
                      const double tau2, const arma::vec theta, const double g, const double v){
   
   const int m = revNNarray.n_cols - 1;
   const int n = x.n_rows;
   arma::mat Lentries = zeros(n, m + 1);
+  arma::mat covmat;
   
-#ifdef _OPENMP
-  
-#pragma omp parallel for num_threads(Ncores) shared(Lentries) schedule(static)
-  for (int k = 0; k < n; k++) {
-    arma::uvec inds = revNNarray.row(k).t();
-    arma::vec revCon_row = revCondOnLatent.row(k).t();
-    arma::uvec inds00 = inds.elem(find(inds)) - 1;
-    uword n0 = inds00.n_elem;
-    arma::mat covmat = MaternSep(x.rows(inds00), x.rows(inds00), tau2, theta, g, v);
-    arma::vec onevec = zeros(n0);
-    onevec[n0 - 1] = 1;
-    arma::vec M = solve(chol(covmat, "upper"), onevec);
-    Lentries(k, span(0, n0 - 1)) = M.t();
-  }
-  
-#else
-  
-  for (int k = 0; k < n; k++) {
-    arma::uvec inds = revNNarray.row(k).t();
-    arma::vec revCon_row = revCondOnLatent.row(k).t();
-    arma::uvec inds00 = inds.elem(find(inds)) - 1;
-    uword n0 = inds00.n_elem;
-    arma::mat covmat = MaternSep(x.rows(inds00), x.rows(inds00), tau2, theta, g, v);
-    arma::vec onevec = zeros(n0);
-    onevec[n0 - 1] = 1;
-    arma::vec M = solve(chol(covmat, "upper"), onevec);
-    Lentries(k, span(0, n0 - 1)) = M.t();
-  }
-  
-#endif
+  #ifdef _OPENMP
+    
+  #pragma omp parallel for num_threads(Ncores) shared(Lentries) schedule(static)
+    for (int k = 0; k < n; k++) {
+      arma::uvec inds = revNNarray.row(k).t();
+      arma::uvec inds00 = inds.elem(find(inds)) - 1;
+      uword n0 = inds00.n_elem;
+      if (v == 999) {
+        arma::mat covmat = Exp2Sep(x.rows(inds00), x.rows(inds00), tau2, theta, g);
+      } else {
+        arma::mat covmat = MaternSep(x.rows(inds00), x.rows(inds00), tau2, theta, g, v);
+      }
+      arma::vec onevec = zeros(n0);
+      onevec[n0 - 1] = 1;
+      arma::vec M = solve(chol(covmat, "upper"), onevec);
+      Lentries(k, span(0, n0 - 1)) = M.t();
+    }
+    
+  #else
+    
+    for (int k = 0; k < n; k++) {
+      arma::uvec inds = revNNarray.row(k).t();
+      arma::uvec inds00 = inds.elem(find(inds)) - 1;
+      uword n0 = inds00.n_elem;
+      if (v == 999) {
+        arma::mat covmat = Exp2Sep(x.rows(inds00), x.rows(inds00), tau2, theta, g);
+      } else {
+        arma::mat covmat = MaternSep(x.rows(inds00), x.rows(inds00), tau2, theta, g, v);
+      }
+      arma::vec onevec = zeros(n0);
+      onevec[n0 - 1] = 1;
+      arma::vec M = solve(chol(covmat, "upper"), onevec);
+      Lentries(k, span(0, n0 - 1)) = M.t();
+    }
+    
+  #endif
   
   return Lentries;
 }
-
 
 // [[Rcpp::export]]
 void check_omp () {
@@ -143,3 +179,39 @@ void check_omp () {
   #endif
 }
   
+// [[Rcpp::export]]
+arma::mat row_col_pointers(const arma::umat& NNarray) {
+    
+  const int m = NNarray.n_cols- 1;
+  const int n = NNarray.n_rows;
+  int start, col_count;
+    
+  int length = (n - m) * (m + 1);
+  for (int i = 1; i <= m; i ++)
+    length += i;
+    
+  arma::mat pointers = zeros(length, 2);
+    
+  start = 0;
+  for (int i = 1; i <= n; i++) {
+    if (i <= m) {
+      col_count = i - 1;
+      for (int j = start; j < start + i; j++) {
+        pointers(j, 0) = i;
+        pointers(j, 1) = NNarray(i - 1, col_count);
+        col_count -= 1;
+      }
+      start += i;
+    } else {
+      col_count = m;
+      for (int j = start; j < start + m + 1; j++) {
+        pointers(j, 0) = i;
+        pointers(j, 1) = NNarray(i - 1, col_count);
+        col_count -= 1;
+      }
+      start += m + 1;
+    }
+  }
+  return pointers;
+}
+

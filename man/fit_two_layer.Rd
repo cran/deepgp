@@ -7,8 +7,9 @@
 fit_two_layer(
   x,
   y,
-  D = ifelse(is.matrix(x), ncol(x), 1),
   nmcmc = 10000,
+  D = ifelse(is.matrix(x), ncol(x), 1),
+  pmx = FALSE,
   verb = TRUE,
   w_0 = NULL,
   g_0 = 0.01,
@@ -27,10 +28,17 @@ fit_two_layer(
 
 \item{y}{vector of response values}
 
+\item{nmcmc}{number of MCMC iterations}
+
 \item{D}{integer designating dimension of hidden layer, defaults to 
 dimension of \code{x}}
 
-\item{nmcmc}{number of MCMC iterations}
+\item{pmx}{"prior mean X", logical indicating whether W should have prior
+mean of X (\code{TRUE}, requires \code{D = ncol(X)}) or prior 
+mean zero (\code{FALSE}).  \code{pmx = TRUE} is recommended for
+higher dimensions.  May be numeric, in which case the specified
+argument is used as the scale (\code{tau2}) in the latent \code{w}
+layer (default is 1).  Small values encourage identity mappings.}
 
 \item{verb}{logical indicating whether to print iteration progress}
 
@@ -79,6 +87,8 @@ a list of the S3 class \code{dgp2} or \code{dgp2vec} with elements:
   \item \code{tau2}: vector of MLE estimates for \code{tau2} (scale 
         parameter of outer layer)
   \item \code{w}: list of MCMC samples for hidden layer \code{w}
+  \item \code{ll}: vector of MVN log likelihood of the outer layer 
+        for reach Gibbs iteration
   \item \code{time}: computation time in seconds
 }
 }
@@ -194,12 +204,13 @@ plot(fit, hidden = TRUE)
 
 }
 \references{
-Sauer, A, RB Gramacy, and D Higdon. 2020. "Active Learning for Deep Gaussian 
-    Process Surrogates." \emph{Technometrics, to appear;} arXiv:2012.08015. 
+Sauer, A. (2023). Deep Gaussian process surrogates for computer experiments. 
+    *Ph.D. Dissertation, Department of Statistics, Virginia Polytechnic Institute and State University.*
+     \cr\cr
+Sauer, A., Gramacy, R.B., & Higdon, D. (2023). Active learning for deep 
+    Gaussian process surrogates. *Technometrics, 65,* 4-18.  arXiv:2012.08015
     \cr\cr
-Sauer, A, A Cooper, and RB Gramacy. 2022. "Vecchia-approximated Deep Gaussian
-    Processes for Computer Experiments." \emph{pre-print on arXiv:2204.02904} 
-    \cr\cr
-Murray, I, RP Adams, and D MacKay. 2010. "Elliptical slice sampling." 
-    \emph{Journal of Machine Learning Research 9}, 541-548.
+Sauer, A., Cooper, A., & Gramacy, R. B. (2022). Vecchia-approximated deep 
+    Gaussian processes for computer experiments. 
+    *Journal of Computational and Graphical Statistics,* 1-14.  arXiv:2204.02904
 }

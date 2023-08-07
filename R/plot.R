@@ -11,7 +11,8 @@
 #' 
 #' @description Acts on a \code{gp}, \code{gpvec}, \code{dgp2}, \code{dgp2vec},
 #'     \code{dgp3}, or \code{dgp3vec} object.  
-#'     Generates trace plots for length scale and nugget hyperparameters.
+#'     Generates trace plots for outer log likelihood, length scale,
+#'    and nugget hyperparameters.
 #'     Generates plots of hidden layers for one-dimensional inputs.  Generates
 #'     plots of the posterior mean and estimated 90\% prediction intervals for 
 #'     one-dimensional inputs; generates heat maps of the posterior mean and 
@@ -60,19 +61,42 @@ plot.gp <- function(x, trace = NULL, predict = NULL, ...) {
   }
   
   if (trace) {
+    fixed_g <- (length(unique(x$g)) == 1)
     if (is.matrix(x$theta)) { # separable lengthscale
-      par(mfrow = c(1, ncol(x$theta) + 1), mar = c(5, 4, 2, 2))
-      plot(x$g, type = 'l', ylab = 'g', xlab = 'Iteration',
-           main = 'Trace Plot of g')
-      for (i in 1:ncol(x$theta))
-        plot(x$theta[, i], type = 'l', ylab = 'theta_y', xlab = 'Iteration',
-             main = paste0('Trace Plot of theta[', i, ']'))
+      if (fixed_g) {
+        par(mfrow = c(1, ncol(x$theta) + 1), mar = c(5, 4, 2, 2))
+        plot(x$ll, type = 'l', ylab = 'logl', xlab = 'Iteration',
+             main = 'Trace Plot of logl')
+        for (i in 1:ncol(x$theta))
+          plot(x$theta[, i], type = 'l', ylab = 'theta_y', xlab = 'Iteration',
+               main = paste0('Trace Plot of theta[', i, ']'))
+        
+      } else {
+        par(mfrow = c(1, ncol(x$theta) + 2), mar = c(5, 4, 2, 2))
+        plot(x$ll, type = 'l', ylab = 'logl', xlab = 'Iteration',
+             main = 'Trace Plot of logl')
+        plot(x$g, type = 'l', ylab = 'g', xlab = 'Iteration',
+             main = 'Trace Plot of g')
+        for (i in 1:ncol(x$theta))
+          plot(x$theta[, i], type = 'l', ylab = 'theta_y', xlab = 'Iteration',
+               main = paste0('Trace Plot of theta[', i, ']'))
+      }
     } else { # isotropic lengthscale
-      par(mfrow = c(1, 2), mar = c(5, 4, 2, 2))
-      plot(x$g, type = 'l', ylab = 'g', xlab = 'Iteration',
-           main = 'Trace Plot of g')
-      plot(x$theta, type = 'l', ylab = 'theta_y', xlab = 'Iteration',
-           main = 'Trace Plot of theta')
+      if (fixed_g) {
+        par(mfrow = c(1, 2), mar = c(5, 4, 2, 2))
+        plot(x$ll, type = 'l', ylab = 'logl', xlab = 'Iteration',
+             main = 'Trace Plot of logl')
+        plot(x$theta, type = 'l', ylab = 'theta_y', xlab = 'Iteration',
+             main = 'Trace Plot of theta')
+      } else {
+        par(mfrow = c(1, 3), mar = c(5, 4, 2, 2))
+        plot(x$ll, type = 'l', ylab = 'logl', xlab = 'Iteration',
+             main = 'Trace Plot of logl')
+        plot(x$g, type = 'l', ylab = 'g', xlab = 'Iteration',
+             main = 'Trace Plot of g')
+        plot(x$theta, type = 'l', ylab = 'theta_y', xlab = 'Iteration',
+             main = 'Trace Plot of theta')
+      }
     }
   }
   
@@ -83,7 +107,8 @@ plot.gp <- function(x, trace = NULL, predict = NULL, ...) {
         q1 <- x$mean + qnorm(0.05, 0, sqrt(x$s2))
         q3 <- x$mean + qnorm(0.95, 0, sqrt(x$s2))
       } else {
-        y_samples <- t(mvtnorm::rmvnorm(50, x$mean, x$Sigma_smooth))
+        Sigma_smooth <- x$Sigma - diag(mean(x$g * x$tau2), nrow(x$x_new))
+        y_samples <- t(mvtnorm::rmvnorm(50, x$mean, Sigma_smooth))
         q1 <- x$mean + qnorm(0.05, 0, sqrt(diag(x$Sigma)))
         q3 <- x$mean + qnorm(0.95, 0, sqrt(diag(x$Sigma)))
       }
@@ -148,14 +173,28 @@ plot.dgp2 <- function(x, trace = NULL, hidden = NULL, predict = NULL, ...) {
   if (is.null(hidden)) hidden <- FALSE
   
   if (trace) {
-    par(mfrow = c(1, D + 2), mar = c(5, 4, 2, 2))
-    plot(x$g, type = 'l', ylab = 'g', xlab = 'Iteration',
-         main = 'Trace Plot of g')
-    plot(x$theta_y, type = 'l', ylab = 'theta_y', xlab = 'Iteration',
-         main = 'Trace Plot of theta_y')
-    for (i in 1:D)
-      plot(x$theta_w[, i], type = 'l', ylab = 'theta_w', xlab = 'Iteration',
-           main = paste0('Trace Plot of theta_w [', i, ']'))
+    fixed_g <- (length(unique(x$g)) == 1)
+    if (fixed_g) {
+      par(mfrow = c(1, D + 2), mar = c(5, 4, 2, 2))
+      plot(x$ll, type = 'l', ylab = 'outer logl', xlab = 'Iteration',
+           main = 'Trace Plot of outer logl')
+      plot(x$theta_y, type = 'l', ylab = 'theta_y', xlab = 'Iteration',
+           main = 'Trace Plot of theta_y')
+      for (i in 1:D)
+        plot(x$theta_w[, i], type = 'l', ylab = 'theta_w', xlab = 'Iteration',
+             main = paste0('Trace Plot of theta_w [', i, ']'))
+    } else {
+      par(mfrow = c(1, D + 3), mar = c(5, 4, 2, 2))
+      plot(x$ll, type = 'l', ylab = 'outer logl', xlab = 'Iteration',
+           main = 'Trace Plot of outer logl')
+      plot(x$g, type = 'l', ylab = 'g', xlab = 'Iteration',
+           main = 'Trace Plot of g')
+      plot(x$theta_y, type = 'l', ylab = 'theta_y', xlab = 'Iteration',
+           main = 'Trace Plot of theta_y')
+      for (i in 1:D)
+        plot(x$theta_w[, i], type = 'l', ylab = 'theta_w', xlab = 'Iteration',
+             main = paste0('Trace Plot of theta_w [', i, ']'))
+    }
   }
   
   if (hidden) {
@@ -184,7 +223,8 @@ plot.dgp2 <- function(x, trace = NULL, hidden = NULL, predict = NULL, ...) {
         q1 <- x$mean + qnorm(0.05, 0, sqrt(x$s2))
         q3 <- x$mean + qnorm(0.95, 0, sqrt(x$s2))
       } else {
-        y_samples <- t(mvtnorm::rmvnorm(50, x$mean, x$Sigma_smooth))
+        Sigma_smooth <- x$Sigma - diag(mean(x$g * x$tau2), nrow(x$x_new))
+        y_samples <- t(mvtnorm::rmvnorm(50, x$mean, Sigma_smooth))
         q1 <- x$mean + qnorm(0.05, 0, sqrt(diag(x$Sigma)))
         q3 <- x$mean + qnorm(0.95, 0, sqrt(diag(x$Sigma)))
       }
@@ -249,17 +289,34 @@ plot.dgp3 <- function(x, trace = NULL, hidden = NULL, predict = NULL, ...) {
   if (is.null(hidden)) hidden <- FALSE
   
   if (trace) {
-    par(mfrow = c(2, D + 1), mar = c(5, 4, 2, 2))
-    plot(x$g, type = 'l', ylab = 'g', xlab = 'Iteration',
-         main = 'Trace Plot of g')
-    plot(x$theta_y, type = 'l', ylab = 'theta_y', xlab = 'Iteration',
-         main = 'Trace Plot of theta_y')
-    for (i in 1:D)
-      plot(x$theta_w[,i], type = 'l', ylab = 'theta_w', xlab = 'Iteration',
-           main = paste0('Trace Plot of theta_w [', i, ']'))
-    for (i in 1:D)
-      plot(x$theta_z[,i], type = 'l', ylab = 'theta_z', xlab = 'Iteration',
-           main = paste0('Trace Plot of theta_z [', i, ']'))
+    fixed_g <- (length(unique(x$g)) == 1)
+    if (fixed_g) {
+      par(mfrow = c(2, D + 1), mar = c(5, 4, 2, 2))
+      plot(x$ll, type = 'l', ylab = 'outer logl', xlab = 'Iteration',
+           main = 'Trace Plot of outer logl')
+      plot(x$theta_y, type = 'l', ylab = 'theta_y', xlab = 'Iteration',
+           main = 'Trace Plot of theta_y')
+      for (i in 1:D)
+        plot(x$theta_w[,i], type = 'l', ylab = 'theta_w', xlab = 'Iteration',
+             main = paste0('Trace Plot of theta_w [', i, ']'))
+      for (i in 1:D)
+        plot(x$theta_z[,i], type = 'l', ylab = 'theta_z', xlab = 'Iteration',
+             main = paste0('Trace Plot of theta_z [', i, ']'))
+    } else {
+      par(mfrow = c(2, D + 2), mar = c(5, 4, 2, 2))
+      plot(x$ll, type = 'l', ylab = 'outer logl', xlab = 'Iteration',
+           main = 'Trace Plot of outer logl')
+      plot(x$g, type = 'l', ylab = 'g', xlab = 'Iteration',
+           main = 'Trace Plot of g')
+      plot(x$theta_y, type = 'l', ylab = 'theta_y', xlab = 'Iteration',
+           main = 'Trace Plot of theta_y')
+      for (i in 1:D)
+        plot(x$theta_w[,i], type = 'l', ylab = 'theta_w', xlab = 'Iteration',
+             main = paste0('Trace Plot of theta_w [', i, ']'))
+      for (i in 1:D)
+        plot(x$theta_z[,i], type = 'l', ylab = 'theta_z', xlab = 'Iteration',
+             main = paste0('Trace Plot of theta_z [', i, ']'))
+    }
   }
   
   if (hidden) {
@@ -302,7 +359,8 @@ plot.dgp3 <- function(x, trace = NULL, hidden = NULL, predict = NULL, ...) {
         q1 <- x$mean + qnorm(0.05, 0, sqrt(x$s2))
         q3 <- x$mean + qnorm(0.95, 0, sqrt(x$s2))
       } else {
-        y_samples <- t(mvtnorm::rmvnorm(50, x$mean, x$Sigma_smooth))
+        Sigma_smooth <- x$Sigma - diag(mean(x$g * x$tau2), nrow(x$x_new))
+        y_samples <- t(mvtnorm::rmvnorm(50, x$mean, Sigma_smooth))
         q1 <- x$mean + qnorm(0.05, 0, sqrt(diag(x$Sigma)))
         q3 <- x$mean + qnorm(0.95, 0, sqrt(diag(x$Sigma)))
       }

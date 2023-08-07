@@ -11,11 +11,12 @@
 # Separable option is included directly, with input sep = TRUE
 
 logl_vec <- function(out_vec, approx, g, theta, outer = TRUE, v, tau2 = FALSE,
-                     sep = FALSE) {
+                     sep = FALSE, mu = 0, scale = 1) {
   
   n <- length(out_vec)
-  out_vec_ord <- out_vec[approx$ord]
-  U_mat <- create_U(approx, g, theta, v, sep = sep) # does either isotropic or separable
+  if (length(mu) > 1) mu_ordered <- mu[approx$ord] else mu_ordered <- mu
+  out_vec_ord <- out_vec[approx$ord] - mu_ordered
+  U_mat <- create_U(approx, g, theta, v, sep = sep) / sqrt(scale) # does either isotropic or separable
   Uty <- Matrix::crossprod(U_mat, out_vec_ord)
   ytUUty <- sum(Uty^2)
   logdet <- sum(log(Matrix::diag(U_mat)))
@@ -63,7 +64,8 @@ sample_g_vec <- function(y, g_t, theta, alpha, beta, l, u, ll_prev = NULL,
 # Sample Theta Vecchia --------------------------------------------------------
 
 sample_theta_vec <- function(y, g, theta_t, alpha, beta, l, u, outer, 
-                             ll_prev = NULL, approx, v, tau2 = FALSE) {
+                             ll_prev = NULL, approx, v, tau2 = FALSE,
+                             prior_mean = 0, scale = 1) {
 
   # Propose value
   theta_star <- runif(1, min = l * theta_t / u, max = u * theta_t / l)
@@ -71,11 +73,13 @@ sample_theta_vec <- function(y, g, theta_t, alpha, beta, l, u, outer,
   # Compute acceptance threshold
   ru <- runif(1, min = 0, max = 1)
   if (is.null(ll_prev))
-    ll_prev <- logl_vec(y, approx, g, theta_t, outer, v)$logl
+    ll_prev <- logl_vec(y, approx, g, theta_t, outer, v, mu = prior_mean, 
+                        scale = scale)$logl
   lpost_threshold <- ll_prev + dgamma(theta_t - eps, alpha, beta, log = TRUE) + 
                       log(ru) - log(theta_t) + log(theta_star)
   
-  ll_new <- logl_vec(y, approx, g, theta_star, outer, v, tau2 = tau2)
+  ll_new <- logl_vec(y, approx, g, theta_star, outer, v, tau2 = tau2,
+                     mu = prior_mean, scale = scale)
 
   # Accept or reject (lower bound of eps)
   new <- ll_new$logl + dgamma(theta_star - eps, alpha, beta, log = TRUE)
@@ -119,7 +123,10 @@ sample_theta_vec_sep <- function(y, g, theta_t, index = 1, alpha, beta, l, u,
 # Elliptical Slice W Vecchia --------------------------------------------------
 
 sample_w_vec <- function(y, w_approx, x_approx, g, theta_y, theta_w, 
-                         ll_prev = NULL, v) {
+                         ll_prev = NULL, v,
+                         prior_mean = matrix(0, nrow = nrow(w_approx$x_ord),
+                                             ncol = ncol(w_approx$x_ord)),
+                         scale = 1) {
 
   D <- ncol(w_approx$x_ord) # dimension of hidden layer
 
@@ -128,7 +135,8 @@ sample_w_vec <- function(y, w_approx, x_approx, g, theta_y, theta_w,
 
   for (i in 1:D) { # separate sampling for each dimension of hidden layer
 
-    w_prior <- rand_mvn_vec(x_approx, theta_w[i], v)
+    w_prior <- rand_mvn_vec(x_approx, theta_w[i], v, mean = prior_mean[, i],
+                            scale = scale)
     
     # Initialize a and bounds on a
     a <- runif(1, min = 0, max = 2 * pi)
