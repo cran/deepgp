@@ -36,7 +36,7 @@ alc.C <- function(X, Ki, theta, g, Xcand, Xref, tau2, verb = 0) {
 #'    SNOW parallelization.  User should 
 #'    select the point with the highest ALC to add to the design.   
 #'    
-#' @details Not yet implemented for Vecchia-approximated fits.
+#' @details Not yet implemented for Vecchia-approximated fits or Matern kernels.
 #' 
 #'     All iterations in the object are used in the calculation, so samples 
 #'     should be burned-in.  Thinning the samples using \code{trim} will
@@ -158,12 +158,12 @@ ALC <- function(object, x_new, ref, cores)
 
 ALC.gp <- function(object, x_new = NULL, ref = NULL, cores = 1) {
   
-  tic <- proc.time()[3]
+  tic <- proc.time()[[3]]
   
-  if (object$v != 999) stop("Currently, ALC is only implemented for the
-                             un-approximated squared exponential kernel.  
-                             Re-fit model with 'vecchia = FALSE' and  
-                             cov = 'exp2' in order to use ALC.")
+  if (object$v != 999) 
+    stop("ALC is only implemented for the un-approximated squared exponential 
+          kernel.  Re-fit model with 'vecchia = FALSE' and 'cov = 'exp2' in 
+          order to use ALC.")
   
   if (is.null(x_new)) {
     if (is.null(object$x_new)) {
@@ -213,8 +213,8 @@ ALC.gp <- function(object, x_new = NULL, ref = NULL, cores = 1) {
     
   } # end of else statement
   
-  toc <- proc.time()[3]
-  return(list(value = alc / object$nmcmc, time = toc - tic))
+  toc <- proc.time()[[3]]
+  return(list(value = alc / object$nmcmc, time = unname(toc - tic)))
 }
 
 # ALC Two Layer Function ------------------------------------------------------
@@ -223,12 +223,12 @@ ALC.gp <- function(object, x_new = NULL, ref = NULL, cores = 1) {
 
 ALC.dgp2 <- function(object, x_new = NULL, ref = NULL, cores = 1) {
   
-  tic <- proc.time()[3]
+  tic <- proc.time()[[3]]
   
-  if (object$v != 999) stop("Currently, ALC is only implemented for the
-                             un-approximated squared exponential kernel.  
-                             Re-fit model with 'vecchia = FALSE' and  
-                             cov = 'exp2' in order to use ALC.")
+  if (object$v != 999) 
+    stop("ALC is only implemented for the un-approximated squared exponential 
+          kernel.  Re-fit model with 'vecchia = FALSE' and 'cov = 'exp2' in 
+          order to use ALC.")
   
   if (is.null(x_new)) {
     if (is.null(object$x_new)) {
@@ -317,8 +317,8 @@ ALC.dgp2 <- function(object, x_new = NULL, ref = NULL, cores = 1) {
     
   } # end of else statement
   
-  toc <- proc.time()[3]
-  return(list(value = alc / object$nmcmc, time = toc - tic))
+  toc <- proc.time()[[3]]
+  return(list(value = alc / object$nmcmc, time = unname(toc - tic)))
 }
 
 # ALC Three Layer Function ----------------------------------------------------
@@ -327,12 +327,12 @@ ALC.dgp2 <- function(object, x_new = NULL, ref = NULL, cores = 1) {
 
 ALC.dgp3 <- function(object, x_new = NULL, ref = NULL, cores = 1) {
   
-  tic <- proc.time()[3]
+  tic <- proc.time()[[3]]
   
-  if (object$v != 999) stop("Currently, ALC is only implemented for the
-                             un-approximated squared exponential kernel.  
-                             Re-fit model with 'vecchia = FALSE' and  
-                             cov = 'exp2' in order to use ALC.")
+  if (object$v != 999) 
+    stop("ALC is only implemented for the un-approximated squared exponential 
+          kernel.  Re-fit model with 'vecchia = FALSE' and 'cov = 'exp2' in 
+          order to use ALC.")
   
   if (is.null(x_new)) {
     if (is.null(object$x_new)) {
@@ -431,6 +431,6 @@ ALC.dgp3 <- function(object, x_new = NULL, ref = NULL, cores = 1) {
   
   } # end of else statement
   
-  toc <- proc.time()[3]
-  return(list(value = alc / object$nmcmc, time = toc - tic))
+  toc <- proc.time()[[3]]
+  return(list(value = alc / object$nmcmc, time = unname(toc - tic)))
 }

@@ -4,6 +4,8 @@
 #   predict.gp
 #   predict.dgp2
 #   predict.dgp3
+# Internal:
+#   predict_nonvec (used in all three of the above)
 
 # Define Predict for S3 Objects -----------------------------------------------
 #' @name predict
@@ -50,6 +52,9 @@
 #' @param cores number of cores to utilize in parallel
 #' @param m size of Vecchia conditioning sets (only for fits with 
 #'        \code{vecchia = TRUE}), defaults to the \code{m} used for MCMC
+#' @param ordering_new optional ordering for Vecchia approximation, must correspond
+#'        to rows of \code{x_new}, defaults to random, is applied to all layers
+#'        in deeper models
 #' @param ... N/A
 #' @return object of the same class with the following additional elements:
 #' \itemize{
@@ -83,14 +88,12 @@
 #' Sauer, A. (2023). Deep Gaussian process surrogates for computer experiments. 
 #'      *Ph.D. Dissertation, Department of Statistics, Virginia Polytechnic Institute and State University.*
 #'      \cr\cr
-#' Sauer, A, RB Gramacy, and D Higdon. 2020. "Active Learning for Deep Gaussian 
-#'     Process Surrogates." \emph{Technometrics, to appear;} arXiv:2012.08015. 
-#'     \cr\cr
-#' Sauer, A, A Cooper, and RB Gramacy. 2022. "Vecchia-approximated Deep Gaussian
-#'     Processes for Computer Experiments." \emph{pre-print on arXiv:2204.02904} 
-#'     \cr\cr   
-#' Gramacy, RB. \emph{Surrogates: Gaussian Process Modeling, Design, and 
-#'     Optimization for the Applied Sciences}. Chapman Hall, 2020.
+#' Sauer, A., Gramacy, R.B., & Higdon, D. (2023). Active learning for deep 
+#'      Gaussian process surrogates. *Technometrics, 65,* 4-18.  arXiv:2012.08015
+#'      \cr\cr
+#' Sauer, A., Cooper, A., & Gramacy, R. B. (2023). Vecchia-approximated deep Gaussian 
+#'      processes for computer experiments. 
+#'      *Journal of Computational and Graphical Statistics,* 1-14.  arXiv:2204.02904
 #' 
 #' @examples 
 #' # See "fit_one_layer", "fit_two_layer", or "fit_three_layer"
@@ -103,146 +106,12 @@ NULL
 #' @rdname predict
 #' @export
 
-predict.gp <- function(object, x_new, lite = TRUE, return_all = FALSE, EI = FALSE, 
-                       entropy_limit = NULL, cores = 1, ...) {
+predict.gp <- function(object, x_new, lite = TRUE, return_all = FALSE, 
+                       EI = FALSE, entropy_limit = NULL, cores = 1, ...) {
   
-  tic <- proc.time()[3]
-  object <- clean_prediction(object) # remove previous predictions if present
-  sep <- (is.matrix(object$theta))
-  if (is.numeric(x_new)) x_new <- as.matrix(x_new)
-  object$x_new <- x_new
-  n_new <- nrow(object$x_new)
-  if (!sep) {
-    dx <- sq_dist(object$x)
-    d_new <- sq_dist(object$x_new)
-    d_cross <- sq_dist(object$x_new, object$x)
-  }
-  if (return_all & !lite) stop("return_all only offered when lite = TRUE")
-  if (!is.null(entropy_limit) & !is.numeric(entropy_limit))
-    stop("entropy_limit must be numeric")
-
-  if (cores == 1) { # run serial for loop
-    
-    mu_t <- matrix(nrow = n_new, ncol = object$nmcmc)
-    if (lite) {
-      s2_sum <- rep(0, times = n_new)
-      if (return_all) s2_t <- matrix(nrow = n_new, ncol = object$nmcmc)
-    } else sigma_sum <- matrix(0, nrow = n_new, ncol = n_new)
-    if (EI) ei_sum <- rep(0, times = n_new)
-    if (!is.null(entropy_limit)) ent_sum <- rep(0, times = n_new)
-    
-    for (t in 1:object$nmcmc) {
-      if (sep) {
-        k <- krig_sep(object$y, object$x, x_new, object$theta[t, ], object$g[t], 
-                      object$tau2[t], s2 = lite, sigma = !lite, f_min = EI, 
-                      v = object$v)
-      } else {
-        k <- krig(object$y, dx, d_new, d_cross, object$theta[t], object$g[t], 
-                  object$tau2[t], s2 = lite, sigma = !lite, f_min = EI, 
-                  v = object$v)
-      }
-      mu_t[, t] <- k$mean
-      if (lite) {
-        s2_sum <- s2_sum + k$s2
-        if (return_all) s2_t[, t] <- k$s2
-      } else sigma_sum <- sigma_sum + k$sigma
-      if (EI) {
-        if (lite) {
-          sig2 <- k$s2 - (object$tau2[t] * object$g[t]) 
-        } else sig2 <- diag(k$sigma) - (object$tau2[t] * object$g[t])
-        ei_sum <- ei_sum + exp_improv(k$mean, sig2, k$f_min)
-      }
-      if (!is.null(entropy_limit)) {
-        if (lite) {
-          sig2 <- k$s2 - (object$tau2[t] * object$g[t]) 
-        } else sig2 <- diag(k$sigma) - (object$tau2[t] * object$g[t])
-        ent_sum <- ent_sum + calc_entropy(k$mean, sig2, entropy_limit)
-      }
-    } # end of t for loop
-
-  } else { # run in parallel using foreach
-    
-    iters <- 1:object$nmcmc
-    chunks <- split(iters, sort(cut(iters, cores, labels = FALSE)))
-    if (cores > detectCores()) warning('cores is greater than available nodes')
-
-    cl <- makeCluster(cores)
-    registerDoParallel(cl)
-  
-    thread <- NULL
-    result <- foreach(thread = 1:cores) %dopar% {
-      out <- list()
-      out$mu_t <- matrix(nrow = n_new, ncol = length(chunks[[thread]]))
-      if (lite) {
-        out$s2_sum <- rep(0, times = n_new)
-        if (return_all) out$s2_t <- matrix(nrow = n_new, ncol = length(chunks[[thread]]))
-      } else out$sigma_sum <- matrix(0, nrow = n_new, ncol = n_new)
-      if (EI) out$ei_sum <- rep(0, times = n_new)
-      if (!is.null(entropy_limit)) out$ent_sum <- rep(0, times = n_new)
-    
-      j <- 1
-      for(t in chunks[[thread]]) {
-        if (sep) {
-          k <- krig_sep(object$y, object$x, x_new, object$theta[t, ], object$g[t], 
-                    object$tau2[t], s2 = lite, sigma = !lite, f_min = EI, 
-                    v = object$v)
-        } else {
-          k <- krig(object$y, dx, d_new, d_cross, object$theta[t], object$g[t], 
-                    object$tau2[t], s2 = lite, sigma = !lite, f_min = EI, 
-                    v = object$v)
-        }
-        out$mu_t[, j] <- k$mean
-        if (lite) {
-          out$s2_sum <- out$s2_sum + k$s2
-          if (return_all) out$s2_t[, j] <- k$s2
-        } else out$sigma_sum <- out$sigma_sum + k$sigma
-        if (EI) {
-          if (lite) {
-            sig2 <- k$s2 - (object$tau2[t] * object$g[t]) 
-          } else sig2 <- diag(k$sigma) - (object$tau2[t] * object$g[t])
-          out$ei_sum <- out$ei_sum + exp_improv(k$mean, sig2, k$f_min)
-        }
-        if (!is.null(entropy_limit)) {
-          if (lite) {
-            sig2 <- k$s2 - (object$tau2[t] * object$g[t]) 
-          } else sig2 <- diag(k$sigma) - (object$tau2[t] * object$g[t])
-          out$ent_sum <- out$ent_sum + calc_entropy(k$mean, sig2, entropy_limit)
-        }
-        j <- j + 1
-      } # end of t for loop
-      return(out)
-    } # end of foreach loop
-  
-    stopCluster(cl)
-    
-    # Group elements out of list
-    mu_t <- do.call(cbind, lapply(result, with, eval(parse(text = "mu_t"))))
-    if (lite) {
-      s2_sum <- Reduce("+", lapply(result, with, eval(parse(text = "s2_sum"))))
-      if (return_all) s2_t <- do.call(cbind, lapply(result, with, eval(parse(text = "s2_t"))))
-    } else {
-      sigma_sum <- Reduce("+", lapply(result, with, eval(parse(text = "sigma_sum"))))
-    }
-    if (EI) ei_sum <- Reduce("+", lapply(result, with, eval(parse(text = "ei_sum"))))
-    if (!is.null(entropy_limit)) ent_sum <- Reduce("+", lapply(result, with, 
-                                                               eval(parse(text = "ent_sum"))))
-  } # end of else statement
-  
-  # Add variables to the output list
-  mu_cov <- cov(t(mu_t))
-  object$mean <- rowMeans(mu_t)
-  if (lite) { 
-    object$s2 <- s2_sum / object$nmcmc + diag(mu_cov)
-    if (return_all) {
-      object$mean_all <- mu_t
-      object$s2_all <- s2_t
-    }
-  } else object$Sigma <- sigma_sum / object$nmcmc + mu_cov
-  if (EI) object$EI <- ei_sum / object$nmcmc
-  if (!is.null(entropy_limit)) object$entropy <- ent_sum / object$nmcmc
-  toc <- proc.time()[3]
-  object$time <- object$time + (toc - tic)
-  
+  settings <- list(lite = lite, return_all = return_all, EI = EI, 
+                   entropy_limit = entropy_limit, cores = cores)
+  object <- predict_nonvec(object, x_new, settings, layers = 1)
   return(object)
 }
 
@@ -254,192 +123,13 @@ predict.dgp2 <- function(object, x_new, lite = TRUE, store_latent = FALSE,
                          mean_map = TRUE, return_all = FALSE, EI = FALSE, 
                          entropy_limit = NULL, cores = 1, ...) {
   
-  tic <- proc.time()[3]
-  object <- clean_prediction(object) # remove previous predictions if present
-  if (is.numeric(x_new)) x_new <- as.matrix(x_new)
-  object$x_new <- x_new
-  n_new <- nrow(object$x_new)
-  D <- ncol(object$w[[1]])
-  dx <- sq_dist(object$x)
-  d_new <- sq_dist(object$x_new)
-  d_cross <- sq_dist(object$x_new, object$x)
-  if (return_all & !lite) stop("return_all only offered when lite = TRUE")
-  if (!is.null(entropy_limit) & !is.numeric(entropy_limit))
-    stop("entropy_limit must be numeric")
-  
-  if (cores == 1) { # run serial for loop
-    
-    if (store_latent) w_new_list <- list()
-    mu_t <- matrix(nrow = n_new, ncol = object$nmcmc)
-    if (lite) {
-      s2_sum <- rep(0, times = n_new)
-      if (return_all) s2_t <- matrix(nrow = n_new, ncol = object$nmcmc)
-    } else sigma_sum <- matrix(0, nrow = n_new, ncol = n_new)
-    if (EI) ei_sum <- rep(0, times = n_new)
-    if (!is.null(entropy_limit)) ent_sum <- rep(0, times = n_new)
-      
-    for(t in 1:object$nmcmc) {
-      w_t <- object$w[[t]]
-      
-      # Map x_new to w_new (separately for each dimension)
-      w_new <- matrix(nrow = n_new, ncol = D)
-      for (i in 1:D) {
-        if (object$settings$pmx) {
-          prior_mean_new <- x_new[, i] 
-          prior_mean <- object$x[, i]
-        } else {
-          prior_mean_new <- 0
-          prior_mean <- 0
-        }
-        if (mean_map) {
-          k <- krig(w_t[, i], dx, NULL, d_cross, object$theta_w[t, i], 
-                    g = eps, v = object$v, prior_mean = prior_mean,
-                    prior_mean_new = prior_mean_new,
-                    tau2 = object$settings$inner_tau2)
-          w_new[, i] <- k$mean
-        } else {
-          k <- krig(w_t[, i], dx, d_new, d_cross, object$theta_w[t, i], 
-                    g = eps, sigma = TRUE, v = object$v,
-                    prior_mean = prior_mean,
-                    prior_mean_new = prior_mean_new,
-                    tau2 = object$settings$inner_tau2)
-          w_new[, i] <- mvtnorm::rmvnorm(1, k$mean, k$sigma)
-        } 
-      } # end of i for loop
-      if (store_latent) w_new_list[[t]] <- w_new
-      
-      # Map w_new to y
-      k <- krig(object$y, sq_dist(w_t), sq_dist(w_new), 
-                sq_dist(w_new, w_t), object$theta_y[t], object$g[t], 
-                object$tau2[t], s2 = lite, sigma = !lite, f_min = EI,
-                v = object$v)
-      mu_t[, t] <- k$mean
-      if (lite) {
-        s2_sum <- s2_sum + k$s2
-        if (return_all) s2_t[, t] <- k$s2
-      } else sigma_sum <- sigma_sum + k$sigma
-      if (EI) {
-        if (lite) {
-          sig2 <- k$s2 - (object$tau2[t] * object$g[t]) 
-        } else sig2 <- diag(k$sigma) - (object$tau2[t] * object$g[t])
-        ei_sum <- ei_sum + exp_improv(k$mean, sig2, k$f_min)
-      }
-      if (!is.null(entropy_limit)) {
-        if (lite) {
-          sig2 <- k$s2 - (object$tau2[t] * object$g[t]) 
-        } else sig2 <- diag(k$sigma) - (object$tau2[t] * object$g[t])
-        ent_sum <- ent_sum + calc_entropy(k$mean, sig2, entropy_limit)
-      }
-    } # end of t for loop
-    
-  } else { # run in parallel using foreach
-  
-    iters <- 1:object$nmcmc
-    chunks <- split(iters, sort(cut(iters, cores, labels = FALSE)))
-    if (cores > detectCores()) warning('cores is greater than available nodes')
-    
-    cl <- makeCluster(cores)
-    registerDoParallel(cl)
-    
-    thread <- NULL
-    result <- foreach(thread = 1:cores) %dopar% {
-      out <- list()
-      if (store_latent) out$w_new <- list()
-      out$mu_t <- matrix(nrow = n_new, ncol = length(chunks[[thread]]))
-      if (lite) {
-        out$s2_sum <- rep(0, times = n_new)
-        if (return_all) out$s2_t <- matrix(nrow = n_new, ncol = length(chunks[[thread]]))
-      } else out$sigma_sum <- matrix(0, nrow = n_new, ncol = n_new)
-      if (EI) out$ei_sum <- rep(0, times = n_new)
-      if (!is.null(entropy_limit)) out$ent_sum <- rep(0, times = n_new)
-    
-      j <- 1
-      for(t in chunks[[thread]]) {
-        w_t <- object$w[[t]]
-        
-        # Map x_new to w_new (separately for each dimension)
-        w_new <- matrix(nrow = n_new, ncol = D)
-        for (i in 1:D) {
-          if (object$settings$pmx) prior_mean <- object$x[, i] else prior_mean <- 0
-          if (mean_map) {
-            k <- krig(w_t[, i], dx, NULL, d_cross, object$theta_w[t, i], 
-                      g = eps, v = object$v, prior_mean = prior_mean,
-                      tau2 = object$settings$inner_tau2)
-            w_new[, i] <- k$mean
-          } else {
-            k <- krig(w_t[, i], dx, d_new, d_cross, object$theta_w[t, i], 
-                      g = eps, sigma = TRUE, v = object$v,
-                      prior_mean = prior_mean,
-                      tau2 = object$settings$inner_tau2)
-            w_new[, i] <- mvtnorm::rmvnorm(1, k$mean, k$sigma)
-          } 
-        } # end of i for loop
-        if (store_latent) out$w_new[[j]] <- w_new
-        
-        # Map w_new to y
-        k <- krig(object$y, sq_dist(w_t), sq_dist(w_new), 
-                  sq_dist(w_new, w_t), object$theta_y[t], object$g[t], 
-                  object$tau2[t], s2 = lite, sigma = !lite, f_min = EI,
-                  v = object$v)
-        out$mu_t[, j] <- k$mean
-        if (lite) {
-          out$s2_sum <- out$s2_sum + k$s2
-          if (return_all) out$s2_t[, j] <- k$s2
-        } else out$sigma_sum <- out$sigma_sum + k$sigma
-        if (EI) {
-          if (lite) {
-            sig2 <- k$s2 - (object$tau2[t] * object$g[t]) 
-          } else sig2 <- diag(k$sigma) - (object$tau2[t] * object$g[t])
-          out$ei_sum <- out$ei_sum + exp_improv(k$mean, sig2, k$f_min)
-        }
-        if (!is.null(entropy_limit)) {
-          if (lite) {
-            sig2 <- k$s2 - (object$tau2[t] * object$g[t]) 
-          } else sig2 <- diag(k$sigma) - (object$tau2[t] * object$g[t])
-          out$ent_sum <- out$ent_sum + calc_entropy(k$mean, sig2, entropy_limit)
-        }
-        j <- j + 1
-      } # end of t for loop
-      return(out)
-    } # end of foreach statement
-    
-    stopCluster(cl)
-      
-    # Group elements out of the list
-    mu_t <- do.call(cbind, lapply(result, with, eval(parse(text = "mu_t"))))
-    if (lite) {
-      s2_sum <- Reduce("+", lapply(result, with, eval(parse(text = "s2_sum"))))
-      if (return_all) s2_t <- do.call(cbind, lapply(result, with, eval(parse(text = "s2_t"))))
-    } else {
-      sigma_sum <- Reduce("+", lapply(result, with, eval(parse(text = "sigma_sum"))))
-    }
-    if (store_latent) w_new_list <- unlist(lapply(result, with, eval(parse(text = "w_new"))), 
-                                                  recursive = FALSE)
-    if (EI) ei_sum <- Reduce("+", lapply(result, with, eval(parse(text = "ei_sum"))))
-    if (!is.null(entropy_limit)) ent_sum <- Reduce("+", lapply(result, with, 
-                                                               eval(parse(text = "ent_sum"))))
-    
-  } # end of else statement
-  
-  # Add variables to the output list
-  mu_cov <- cov(t(mu_t))
-  object$mean <- rowMeans(mu_t)
-  if (store_latent) object$w_new <- w_new_list
-  if (lite) {
-    object$s2 <- s2_sum / object$nmcmc + diag(mu_cov)
-    if (return_all) {
-      out$mean_all <- mu_t
-      out$s2_all <- s2_t
-    }
-  } else object$Sigma <- sigma_sum / object$nmcmc + mu_cov
-  if (EI) object$EI <- ei_sum / object$nmcmc
-  if (!is.null(entropy_limit)) object$entropy <- ent_sum / object$nmcmc
-  toc <- proc.time()[3]
-  object$time <- object$time + (toc - tic)
-  
+  settings <- list(lite = lite, store_latent = store_latent, mean_map = mean_map,
+                   return_all = return_all, EI = EI, 
+                   entropy_limit = entropy_limit, cores = cores)
+  object <- predict_nonvec(object, x_new, settings, layers = 2)
   return(object)
 }
-
+  
 # Predict Three Layer ---------------------------------------------------------
 #' @rdname predict
 #' @export
@@ -448,215 +138,307 @@ predict.dgp3 <- function(object, x_new, lite = TRUE, store_latent = FALSE,
                          mean_map = TRUE, return_all = FALSE, EI = FALSE, 
                          entropy_limit = NULL, cores = 1, ...) {
   
-  tic <- proc.time()[3]
-  object <- clean_prediction(object) # remove previous predictions if present
+  settings <- list(lite = lite, store_latent = store_latent, mean_map = mean_map,
+                   return_all = return_all, EI = EI, 
+                   entropy_limit = entropy_limit, cores = cores)
+  object <- predict_nonvec(object, x_new, settings, layers = 3)
+  return(object)
+}
+
+# Predict Non-Vecchia ---------------------------------------------------------
+  
+predict_nonvec <- function(object, x_new, settings, layers) {
+  
+  tic <- proc.time()[[3]]
   if (is.numeric(x_new)) x_new <- as.matrix(x_new)
   object$x_new <- x_new
   n_new <- nrow(object$x_new)
-  D <- ncol(object$z[[1]])
-  dx <- sq_dist(object$x)
-  d_new <- sq_dist(object$x_new)
-  d_cross <- sq_dist(object$x_new, object$x)
-  if (return_all & !lite) stop("return_all only offered when lite = TRUE")
-  if (!is.null(entropy_limit) & !is.numeric(entropy_limit))
+  if (layers >= 2) {
+    D <- ncol(object$w[[1]]) # dimension of latent layer(s)
+    if (settings$lite & !settings$mean_map)
+      stop("mean_map = FALSE requires lite = FALSE")
+    if (!settings$mean_map) 
+      message("mean_map = FALSE may cause numerical instability in latent layer mapping")
+  }
+  if (layers == 1) {
+    sep <- is.matrix(object$theta)
+  } else sep <- FALSE # two and three layers never use separable lengthscales
+  if (!sep) {
+    dx <- sq_dist(object$x)
+    dx_cross <- sq_dist(object$x_new, object$x)
+    if (!settings$lite) dx_new <- sq_dist(object$x_new) else dx_new <- NULL
+  }
+  if (settings$return_all & !settings$lite) 
+    stop("return_all only offered when lite = TRUE")
+  if (!is.null(settings$entropy_limit) & !is.numeric(settings$entropy_limit))
     stop("entropy_limit must be numeric")
+  if (settings$EI) { # if no noise, use smallest observed value, else estimate f_min
+    if (all(object$g <= 1e-6)) {
+      f_min <- FALSE 
+      y_min <- min(object$y)
+    } else f_min <- TRUE
+  } else f_min <- FALSE
   
-  if (cores == 1) { # run serial for loop
+  # Initialize prior mean of 0 (these will only be changed if object$settings$pmx = TRUE)
+  prior_mean_new <- 0
+  prior_mean <- rep(0, length(object$y))
+  prior_tau2 <- 1
+  
+  if (settings$cores == 1) { # run serial for loop
     
-    if (store_latent) {
-      z_new_list <- list()
-      w_new_list <- list()
-    }
     mu_t <- matrix(nrow = n_new, ncol = object$nmcmc)
-    if (lite) {
+    if (settings$lite) {
       s2_sum <- rep(0, times = n_new)
-      if (return_all) s2_t <- matrix(nrow = n_new, ncol = object$nmcmc)
+      if (settings$return_all) s2_t <- matrix(nrow = n_new, ncol = object$nmcmc)
     } else sigma_sum <- matrix(0, nrow = n_new, ncol = n_new)
-    if (EI) ei_sum <- rep(0, times = n_new)
-    if (!is.null(entropy_limit)) ent_sum <- rep(0, times = n_new)
-
-    for (t in 1:object$nmcmc) {
-      z_t <- object$z[[t]]
-      w_t <- object$w[[t]]
-      
-      # Map x_new to z_new (separately for each dimension)
-      z_new <- matrix(nrow = n_new, ncol = D)
-      for (i in 1:D) {
-        if (mean_map) {
-          k <- krig(z_t[, i], dx, NULL, d_cross, object$theta_z[t, i], 
-                    g = eps, v = object$v)
-          z_new[, i] <- k$mean
-        } else {
-          k <- krig(z_t[, i], dx, d_new, d_cross, object$theta_z[t, i], 
-                    g = eps, sigma = TRUE, v = object$v)
-          z_new[, i] <- mvtnorm::rmvnorm(1, k$mean, k$sigma)
-        } 
-      } # end of i for loop
-      if (store_latent) z_new_list[[t]] <- z_new
-      
-      # Map z_new to w_new (separately for each dimension)
-      w_new <- matrix(nrow = n_new, ncol = D)
-      for (i in 1:D) {
-        if (mean_map) { 
-          k <- krig(w_t[, i], sq_dist(z_t), NULL, sq_dist(z_new, z_t),
-                    object$theta_w[t, i], g = eps, v = object$v)
-          w_new[, i] <- k$mean
-        } else {
-          k <- krig(w_t[, i], sq_dist(z_t), sq_dist(z_new), sq_dist(z_new, z_t),
-                    object$theta_w[t, i], g = eps, sigma = TRUE,
-                    v = object$v)
-          w_new[, i] <- mvtnorm::rmvnorm(1, k$mean, k$sigma)
-        } 
-      } # end of i for loop
-      if (store_latent) w_new_list[[t]] <- w_new
-      
-      # Map w_new to y
-      k <- krig(object$y, sq_dist(w_t), sq_dist(w_new), sq_dist(w_new, w_t),
-                object$theta_y[t], object$g[t], object$tau2[t], s2 = lite, sigma = !lite,
-                f_min = EI, v = object$v)
-      mu_t[, t] <- k$mean
-      if (lite) {
-        s2_sum <- s2_sum + k$s2
-        if (return_all) s2_t[, t] <- k$s2
-      } else sigma_sum <- sigma_sum + k$sigma
-      if (EI) {
-        if (lite) {
-          sig2 <- k$s2 - (object$tau2[t] * object$g[t]) 
-        } else sig2 <- diag(k$sigma) - (object$tau2[t] * object$g[t])
-        ei_sum <- ei_sum + exp_improv(k$mean, sig2, k$f_min)
+    if (settings$EI) ei_sum <- rep(0, times = n_new)
+    if (!is.null(settings$entropy_limit)) ent_sum <- rep(0, times = n_new)
+    if (layers >= 2) {
+      if (settings$store_latent) {
+        w_new_list <- list()
+        if (layers == 3) z_new_list <- list()
       }
-      if (!is.null(entropy_limit)) {
-        if (lite) {
+    }
+    
+    for (t in 1:object$nmcmc) {
+      
+      if (layers == 3) { 
+        # 3 layers: map x_new to z_new (separately for each dimension)
+        z_t <- object$z[[t]]
+        z_new <- matrix(nrow = n_new, ncol = D)
+        for (i in 1:D) {
+          k <- krig(z_t[, i], dx, dx_new, dx_cross, object$theta_z[t, i], 
+                    g = eps, sigma = !settings$mean_map, v = object$v)
+          if (settings$mean_map) {
+            z_new[, i] <- k$mean
+          } else z_new[, i] <- mvtnorm::rmvnorm(1, k$mean, k$sigma)
+        } # end of i for loop
+        if (settings$store_latent) z_new_list[[t]] <- z_new
+        dz <- sq_dist(z_t)
+        dz_cross <- sq_dist(z_new, z_t)
+        if (!settings$mean_map) dz_new <- sq_dist(z_new) else dz_new <- NULL
+      }
+      
+      if (layers >= 2) {
+        # 2 layers: map x_new to w_new (separately for each dimension)
+        # 3 layers: map z_new to w_new (separately for each dimension)
+        w_t <- object$w[[t]]
+        w_new <- matrix(nrow = n_new, ncol = D)
+        for (i in 1:D) {
+          if (layers == 2) {
+            if (object$settings$pmx) { # Optional prior mean of x
+              prior_mean_new <- x_new[, i]
+              prior_mean <- object$x[, i]
+              prior_tau2 <- object$settings$inner_tau2
+            }
+          } 
+          k <- krig(w_t[, i], ifel(layers == 2, dx, dz), 
+                    ifel(layers == 2, dx_new, dz_new),
+                    ifel(layers == 2, dx_cross, dz_cross),
+                    object$theta_w[t, i], g = eps, tau2 = prior_tau2,
+                    sigma = !settings$mean_map,
+                    v = object$v, prior_mean = prior_mean,
+                    prior_mean_new = prior_mean_new)
+          if (settings$mean_map) {
+            w_new[, i] <- k$mean
+          } else w_new[, i] <- mvtnorm::rmvnorm(1, k$mean, k$sigma)
+        } # end of i for loop
+        if (settings$store_latent) w_new_list[[t]] <- w_new
+        dw <- sq_dist(w_t)
+        dw_cross <- sq_dist(w_new, w_t)
+        if (!settings$lite) dw_new <- sq_dist(w_new) else dw_new <- NULL
+      }
+      
+      # 1 layer: map x_new to y
+      # 2 and 3 layers: map w_new to y
+      if (sep) { # only occurs in one layer
+        k <- krig_sep(object$y, object$x, x_new, object$theta[t, ], object$g[t], 
+                      object$tau2[t], s2 = settings$lite, 
+                      sigma = !settings$lite, f_min = f_min, 
+                      v = object$v)
+      } else { 
+        k <- krig(object$y, ifel(layers == 1, dx, dw), 
+                  ifel(layers == 1, dx_new, dw_new), 
+                  ifel(layers == 1, dx_cross, dw_cross),
+                  ifel(layers == 1, object$theta[t], object$theta_y[t]), 
+                  object$g[t], object$tau2[t], s2 = settings$lite, 
+                  sigma = !settings$lite, f_min = f_min, v = object$v)
+      }
+      mu_t[, t] <- k$mean
+      if (settings$lite) {
+        s2_sum <- s2_sum + k$s2
+        if (settings$return_all) s2_t[, t] <- k$s2
+      } else sigma_sum <- sigma_sum + k$sigma
+      if (settings$EI) {
+        if (settings$lite) {
           sig2 <- k$s2 - (object$tau2[t] * object$g[t]) 
         } else sig2 <- diag(k$sigma) - (object$tau2[t] * object$g[t])
-        ent_sum <- ent_sum + calc_entropy(k$mean, sig2, entropy_limit)
+        ei_sum <- ei_sum + exp_improv(k$mean, sig2, ifel(f_min, k$f_min, y_min))
+      }
+      if (!is.null(settings$entropy_limit)) {
+        if (settings$lite) {
+          sig2 <- k$s2 - (object$tau2[t] * object$g[t]) 
+        } else sig2 <- diag(k$sigma) - (object$tau2[t] * object$g[t])
+        ent_sum <- ent_sum + calc_entropy(k$mean, sig2, settings$entropy_limit)
       }
     } # end of t for loop
     
   } else { # run in parallel using foreach
-  
-    iters <- 1:object$nmcmc
-    chunks <- split(iters, sort(cut(iters, cores, labels = FALSE)))
-    if (cores > detectCores()) warning("cores is greater than available nodes")
     
-    cl <- makeCluster(cores)
+    iters <- 1:object$nmcmc
+    chunks <- split(iters, sort(cut(iters, settings$cores, labels = FALSE)))
+    if (settings$cores > detectCores()) 
+      warning("cores is greater than available nodes")
+    
+    cl <- makeCluster(settings$cores)
     registerDoParallel(cl)
-  
+    
     thread <- NULL
-    result <- foreach(thread = 1:cores) %dopar% {
+    result <- foreach(thread = 1:settings$cores) %dopar% {
       out <- list()
-      if (store_latent) {
-        out$z_new <- list()
-        out$w_new <- list()
-      }
       out$mu_t <- matrix(nrow = n_new, ncol = length(chunks[[thread]]))
-      if (lite) {
+      if (settings$lite) {
         out$s2_sum <- rep(0, times = n_new)
-        if (return_all) out$s2_t <- matrix(nrow = n_new, ncol = length(chunks[[thread]]))
+        if (settings$return_all) out$s2_t <- matrix(nrow = n_new, ncol = length(chunks[[thread]]))
       } else out$sigma_sum <- matrix(0, nrow = n_new, ncol = n_new)
-      if (EI) out$ei_sum <- rep(0, times = n_new)
-      if (!is.null(entropy_limit)) out$ent_sum <- rep(0, times = n_new)
+      if (settings$EI) out$ei_sum <- rep(0, times = n_new)
+      if (!is.null(settings$entropy_limit)) out$ent_sum <- rep(0, times = n_new)
+      if (layers >= 2) {
+        if (settings$store_latent) {
+          out$w_new <- list()
+          if (layers == 3) out$z_new <- list()
+        }
+      }
       
       j <- 1
       for (t in chunks[[thread]]) {
-        z_t <- object$z[[t]]
-        w_t <- object$w[[t]]
+
+        if (layers == 3) { 
+          # 3 layers: map x_new to z_new (separately for each dimension)
+          z_t <- object$z[[t]]
+          z_new <- matrix(nrow = n_new, ncol = D)
+          for (i in 1:D) {
+            k <- krig(z_t[, i], dx, dx_new, dx_cross, object$theta_z[t, i], 
+                      g = eps, sigma = !settings$mean_map, v = object$v)
+            if (settings$mean_map) {
+              z_new[, i] <- k$mean
+            } else z_new[, i] <- mvtnorm::rmvnorm(1, k$mean, k$sigma)
+          } # end of i for loop
+          if (settings$store_latent) out$z_new[[j]] <- z_new
+          dz <- sq_dist(z_t)
+          dz_cross <- sq_dist(z_new, z_t)
+          if (!settings$mean_map) dz_new <- sq_dist(z_new) else dz_new <- NULL
+        }
         
-        # Map x_new to z_new (separately for each dimension)
-        z_new <- matrix(nrow = n_new, ncol = D)
-        for (i in 1:D) {
-          if (mean_map) {
-            k <- krig(z_t[, i], dx, NULL, d_cross, object$theta_z[t, i], 
-                      g = eps, v = object$v)
-            z_new[, i] <- k$mean
-          } else {
-            k <- krig(z_t[, i], dx, d_new, d_cross, object$theta_z[t, i], 
-                      g = eps, sigma = TRUE, v = object$v)
-            z_new[, i] <- mvtnorm::rmvnorm(1, k$mean, k$sigma)
-          } 
-        } # end of i for loop
-        if (store_latent) out$z_new[[j]] <- z_new
+        if (layers >= 2) {
+          # 2 layers: map x_new to w_new (separately for each dimension)
+          # 3 layers: map z_new to w_new (separately for each dimension)
+          w_t <- object$w[[t]]
+          w_new <- matrix(nrow = n_new, ncol = D)
+          for (i in 1:D) {
+            if (layers == 2) {
+              if (object$settings$pmx) { # Optional prior mean of x
+                prior_mean_new <- x_new[, i]
+                prior_mean <- object$x[, i]
+                prior_tau2 <- object$settings$inner_tau2
+              }
+            } 
+            k <- krig(w_t[, i], ifel(layers == 2, dx, dz), 
+                      ifel(layers == 2, dx_new, dz_new),
+                      ifel(layers == 2, dx_cross, dz_cross),
+                      object$theta_w[t, i], g = eps, tau2 = prior_tau2,
+                      sigma = !settings$mean_map,
+                      v = object$v, prior_mean = prior_mean,
+                      prior_mean_new = prior_mean_new)
+            if (settings$mean_map) {
+              w_new[, i] <- k$mean
+            } else w_new[, i] <- mvtnorm::rmvnorm(1, k$mean, k$sigma)
+          } # end of i for loop
+          if (settings$store_latent) out$w_new[[t]] <- w_new
+          dw <- sq_dist(w_t)
+          dw_cross <- sq_dist(w_new, w_t)
+          if (!settings$lite) dw_new <- sq_dist(w_new) else dw_new <- NULL
+        }
         
-        # Map z_new to w_new (separately for each dimension)
-        w_new <- matrix(nrow = n_new, ncol = D)
-        for (i in 1:D) {
-          if (mean_map) { 
-            k <- krig(w_t[, i], sq_dist(z_t), NULL, sq_dist(z_new, z_t),
-                      object$theta_w[t, i], g = eps, v = object$v)
-            w_new[, i] <- k$mean
-          } else {
-            k <- krig(w_t[, i], sq_dist(z_t), sq_dist(z_new), sq_dist(z_new, z_t),
-                      object$theta_w[t, i], g = eps, sigma = TRUE,
-                      v = object$v)
-            w_new[, i] <- mvtnorm::rmvnorm(1, k$mean, k$sigma)
-          } 
-        } # end of i for loop
-        if (store_latent) out$w_new[[j]] <- w_new
-        
-        # Map w_new to y
-        k <- krig(object$y, sq_dist(w_t), sq_dist(w_new), sq_dist(w_new, w_t),
-                  object$theta_y[t], object$g[t], object$tau2[t], s2 = lite, sigma = !lite,
-                  f_min = EI, v = object$v)
+        # 1 layer: map x_new to y
+        # 2 and 3 layers: map w_new to y
+        if (sep) { # only occurs in one layer
+          k <- krig_sep(object$y, object$x, x_new, object$theta[t, ], object$g[t], 
+                        object$tau2[t], s2 = settings$lite, 
+                        sigma = !settings$lite, f_min = f_min, 
+                        v = object$v)
+        } else { 
+          k <- krig(object$y, ifel(layers == 1, dx, dw), 
+                    ifel(layers == 1, dx_new, dw_new), 
+                    ifel(layers == 1, dx_cross, dw_cross),
+                    ifel(layers == 1, object$theta[t], object$theta_y[t]), 
+                    object$g[t], object$tau2[t], s2 = settings$lite, 
+                    sigma = !settings$lite, f_min = f_min, v = object$v)
+        }
         out$mu_t[, j] <- k$mean
-        if (lite) {
+        if (settings$lite) {
           out$s2_sum <- out$s2_sum + k$s2
-          if (return_all) out$s2_t[, j] <- k$s2
+          if (settings$return_all) out$s2_t[, j] <- k$s2
         } else out$sigma_sum <- out$sigma_sum + k$sigma
-        if (EI) {
-          if (lite) {
+        if (settings$EI) {
+          if (settings$lite) {
             sig2 <- k$s2 - (object$tau2[t] * object$g[t]) 
           } else sig2 <- diag(k$sigma) - (object$tau2[t] * object$g[t])
-          out$ei_sum <- out$ei_sum + exp_improv(k$mean, sig2, k$f_min)
+          out$ei_sum <- out$ei_sum + exp_improv(k$mean, sig2, ifel(f_min, k$f_min, y_min))
         }
-        if (!is.null(entropy_limit)) {
-          if (lite) {
+        if (!is.null(settings$entropy_limit)) {
+          if (settings$lite) {
             sig2 <- k$s2 - (object$tau2[t] * object$g[t]) 
           } else sig2 <- diag(k$sigma) - (object$tau2[t] * object$g[t])
-          out$ent_sum <- out$ent_sum + calc_entropy(k$mean, sig2, entropy_limit)
+          out$ent_sum <- out$ent_sum + calc_entropy(k$mean, sig2, settings$entropy_limit)
         }
+
         j <- j + 1
       } # end of t for loop
       return(out)
     } # end of foreach statement
     
     stopCluster(cl)
-  
+    
     # Group elements out of the list
     mu_t <- do.call(cbind, lapply(result, with, eval(parse(text = "mu_t"))))
-    if (lite) {
+    if (settings$lite) {
       s2_sum <- Reduce("+", lapply(result, with, eval(parse(text = "s2_sum"))))
-      if (return_all) s2_t <- do.call(cbind, lapply(result, with, eval(parse(text = "s2_t"))))
+      if (settings$return_all) s2_t <- do.call(cbind, lapply(result, with, eval(parse(text = "s2_t"))))
     } else {
       sigma_sum <- Reduce("+", lapply(result, with, eval(parse(text = "sigma_sum"))))
     }
-    if (store_latent) {
-      z_new_list <- unlist(lapply(result, with, eval(parse(text = "z_new"))), recursive = FALSE)
-      w_new_list <- unlist(lapply(result, with, eval(parse(text = "w_new"))), recursive = FALSE)
+    if (layers >= 2) {
+      if (settings$store_latent) {
+        w_new_list <- unlist(lapply(result, with, eval(parse(text = "w_new"))), recursive = FALSE)
+        if (layers == 3)  z_new_list <- unlist(lapply(result, with, eval(parse(text = "z_new"))), recursive = FALSE)
+      }
     }
-    if (EI) ei_sum <- Reduce("+", lapply(result, with, eval(parse(text = "ei_sum"))))
-    if (!is.null(entropy_limit)) ent_sum <- Reduce("+", lapply(result, with, 
+    if (settings$EI) ei_sum <- Reduce("+", lapply(result, with, eval(parse(text = "ei_sum"))))
+    if (!is.null(settings$entropy_limit)) ent_sum <- Reduce("+", lapply(result, with, 
                                                                eval(parse(text = "ent_sum"))))
     
   } # end of else statement
   
   # Add variables to the output list
-  mu_cov <- cov(t(mu_t))
   object$mean <- rowMeans(mu_t)
-  if (store_latent) {
-    object$z_new <- z_new_list
-    object$w_new <- w_new_list
+  if (layers >= 2) {
+    if (settings$store_latent) {
+      object$w_new <- w_new_list
+      if (layers == 3) object$z_new <- z_new_list
+    }
   }
-  if (lite) {
-    object$s2 <- s2_sum / object$nmcmc + diag(mu_cov)
-    if (return_all) {
+  if (settings$lite) {
+    object$s2 <- s2_sum / object$nmcmc + apply(mu_t, 1, var)
+    if (settings$return_all) {
       object$mean_all <- mu_t
       object$s2_all <- s2_t
     }
-  } else object$Sigma <- sigma_sum / object$nmcmc + mu_cov
-  if (EI) object$EI <- ei_sum / object$nmcmc
-  if (!is.null(entropy_limit)) object$entropy <- ent_sum / object$nmcmc
-  toc <- proc.time()[3]
-  object$time <- object$time + (toc - tic)
+  } else object$Sigma <- sigma_sum / object$nmcmc + cov(t(mu_t))
+  if (settings$EI) object$EI <- ei_sum / object$nmcmc
+  if (!is.null(settings$entropy_limit)) object$entropy <- drop(ent_sum / object$nmcmc)
+  toc <- proc.time()[[3]]
+  object$time <- object$time + unname(toc - tic)
   
   return(object)
 }

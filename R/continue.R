@@ -63,7 +63,7 @@ continue <- function(object, new_mcmc, verb, re_approx, ...)
 
 continue.gp <- function(object, new_mcmc = 1000, verb = TRUE, ...) {
   
-  tic <- proc.time()[3]
+  tic <- proc.time()[[3]]
   
   # Use true nugget if it was specified
   if (length(unique(object$g)) == 1) true_g <- object$g[1] else true_g <- NULL
@@ -88,9 +88,10 @@ continue.gp <- function(object, new_mcmc = 1000, verb = TRUE, ...) {
   object$g <- c(object$g, samples$g[-1])
   object$theta <- c(object$theta, samples$theta[-1])
   object$tau2 <- c(object$tau2, samples$tau2[-1])
+  object$ll <- c(object$ll, samples$ll[-1])
   
-  toc <- proc.time()[3]
-  object$time <- object$time + (toc - tic)
+  toc <- proc.time()[[3]]
+  object$time <- object$time + unname(toc - tic)
   return(object)
 }
 
@@ -100,7 +101,7 @@ continue.gp <- function(object, new_mcmc = 1000, verb = TRUE, ...) {
 
 continue.dgp2 <- function(object, new_mcmc = 1000, verb = TRUE, ...) {
   
-  tic <- proc.time()[3]
+  tic <- proc.time()[[3]]
   
   # Use true nugget if it was specified
   if (length(unique(object$g)) == 1) true_g <- object$g[1] else true_g <- NULL
@@ -130,9 +131,10 @@ continue.dgp2 <- function(object, new_mcmc = 1000, verb = TRUE, ...) {
   object$theta_w <- rbind(object$theta_w, samples$theta_w[-1, , drop = FALSE])
   object$w <- c(object$w, samples$w[-1])
   object$tau2 <- c(object$tau2, samples$tau2[-1])
+  object$ll <- c(object$ll, samples$ll[-1])
   
-  toc <- proc.time()[3]
-  object$time <- object$time + (toc - tic)
+  toc <- proc.time()[[3]]
+  object$time <- object$time + unname(toc - tic)
   return(object)
 }
 
@@ -142,7 +144,7 @@ continue.dgp2 <- function(object, new_mcmc = 1000, verb = TRUE, ...) {
 
 continue.dgp3 <- function(object, new_mcmc = 1000, verb = TRUE, ...) {
   
-  tic <- proc.time()[3]
+  tic <- proc.time()[[3]]
   
   # Use true nugget if it was specified
   if (length(unique(object$g)) == 1) true_g <- object$g[1] else true_g <- NULL
@@ -176,9 +178,10 @@ continue.dgp3 <- function(object, new_mcmc = 1000, verb = TRUE, ...) {
   object$w <- c(object$w, samples$w[-1])
   object$z <- c(object$z, samples$z[-1])
   object$tau2 <- c(object$tau2, samples$tau2[-1])
+  object$ll <- c(object$ll, samples$ll[-1])
   
-  toc <- proc.time()[3]
-  object$time <- object$time + (toc - tic)
+  toc <- proc.time()[[3]]
+  object$time <- object$time + unname(toc - tic)
   return(object)
 }
 
@@ -189,7 +192,7 @@ continue.dgp3 <- function(object, new_mcmc = 1000, verb = TRUE, ...) {
 continue.gpvec <- function(object, new_mcmc = 1000, verb = TRUE, 
                            re_approx = FALSE, ...) {
   
-  tic <- proc.time()[3]
+  tic <- proc.time()[[3]]
   
   # Use true nugget if it was specified
   if (length(unique(object$g)) == 1) true_g <- object$g[1] else true_g <- NULL
@@ -214,6 +217,7 @@ continue.gpvec <- function(object, new_mcmc = 1000, verb = TRUE,
                                  settings = object$settings, 
                                  v = object$v, 
                                  m = object$m, 
+                                 ordering = object$ordering,
                                  x_approx = x_approx)
   
   # Append new information to original fit
@@ -222,9 +226,10 @@ continue.gpvec <- function(object, new_mcmc = 1000, verb = TRUE,
   object$theta <- c(object$theta, samples$theta[-1])
   object$tau2 <- c(object$tau2, samples$tau2[-1])
   object$x_approx <- samples$x_approx
+  object$ll <- c(object$ll, samples$ll[-1])
   
-  toc <- proc.time()[3]
-  object$time <- object$time + (toc - tic)
+  toc <- proc.time()[[3]]
+  object$time <- object$time + unname(toc - tic)
   return(object)
 }
 
@@ -235,7 +240,7 @@ continue.gpvec <- function(object, new_mcmc = 1000, verb = TRUE,
 continue.dgp2vec <- function(object, new_mcmc = 1000, verb = TRUE, 
                              re_approx = FALSE, ...) {
   
-  tic <- proc.time()[3]
+  tic <- proc.time()[[3]]
   
   # Use true nugget if it was specified
   if (length(unique(object$g)) == 1) true_g <- object$g[1] else true_g <- NULL
@@ -267,6 +272,7 @@ continue.dgp2vec <- function(object, new_mcmc = 1000, verb = TRUE,
                                  settings = object$settings, 
                                  v = object$v, 
                                  m = object$m, 
+                                 ordering = object$ordering,
                                  x_approx = x_approx, 
                                  w_approx = w_approx)
   
@@ -279,9 +285,10 @@ continue.dgp2vec <- function(object, new_mcmc = 1000, verb = TRUE,
   object$tau2 <- c(object$tau2, samples$tau2[-1])
   object$x_approx <- samples$x_approx
   object$w_approx <- samples$w_approx
+  object$ll <- c(object$ll, samples$ll[-1])
   
-  toc <- proc.time()[3]
-  object$time <- object$time + (toc - tic)
+  toc <- proc.time()[[3]]
+  object$time <- object$time + unname(toc - tic)
   return(object)
 }
 
@@ -292,7 +299,7 @@ continue.dgp2vec <- function(object, new_mcmc = 1000, verb = TRUE,
 continue.dgp3vec <- function(object, new_mcmc = 1000, verb = TRUE, 
                              re_approx = FALSE, ...) {
   
-  tic <- proc.time()[3]
+  tic <- proc.time()[[3]]
   
   # Use true nugget if it was specified
   if (length(unique(object$g)) == 1) true_g <- object$g[1] else true_g <- NULL
@@ -328,6 +335,7 @@ continue.dgp3vec <- function(object, new_mcmc = 1000, verb = TRUE,
                                    settings = object$settings, 
                                    v = object$v, 
                                    m = object$m, 
+                                   ordering = object$ordering,
                                    x_approx = x_approx, 
                                    z_approx = z_approx, 
                                    w_approx = w_approx)
@@ -344,8 +352,9 @@ continue.dgp3vec <- function(object, new_mcmc = 1000, verb = TRUE,
   object$x_approx <- samples$x_approx
   object$z_approx <- samples$z_approx
   object$w_approx <- samples$w_approx
+  object$ll <- c(object$ll, samples$ll[-1])
   
-  toc <- proc.time()[3]
-  object$time <- object$time + (toc - tic)
+  toc <- proc.time()[[3]]
+  object$time <- object$time + unname(toc - tic)
   return(object)
 }

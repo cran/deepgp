@@ -37,6 +37,7 @@ This vignette serves as an introduction to the package's main features.  Full me
 * @sauer2023active : Bayesian DGPs with sequential design targeting minimized posterior variance
 * @sauer2022vecchia : incorporation of the Vecchia approximation into the Bayesian DGP framework
 * @gramacy2021triangulation : optimization through expected improvement with strategic selection of candidates
+* @booth2024contour : contour location using entropy (combined with posterior uncertainty)
 
 While I will showcase simple one-dimensional examples here, the simulated examples provided in these works span up to seven dimensions, with training data sizes up to tens of thousands.  Real-world applications to computer experiments include a three-dimensional simulation of the Langley Glide Back Booster [LGBB, @pamadi2004aerodynamic], the seven-dimensional Test Particle Monte Carlo Simulator (TPM) of a satellite in low earth orbit [@sun2019emulating], and a seven-dimensional simulation of an RAE-2822 transonic airfoil 
 [@economon2016su2], with training data sizes ranging from $n = 300$ to $n = 100,000$.  
@@ -143,7 +144,7 @@ Y \mid W &\sim \mathcal{N}\left(0, \Sigma(W)\right) \\
 W_i &\sim \mathcal{N}\left(0, \Sigma_i(X)\right) \quad\textrm{for}\quad i = 1, \dots, D
 \end{aligned}
 $$
-where $\Sigma(\cdot)$ represents a stationary kernel function as defined in the previous subsection and where $W = [W_1, W_2, \dots, W_D]$ is the column-combined matrix of individual $W_i$ "nodes". Latent layers are noise-free with unit scale (i.e. $g = 0$ and $\tau^2 = 1$ for each $W_i$). The intermediate latent layer $W$ is unobserved and presents an inferential challenge (it can not be marginialized from the posterior analytically).  Many have embraced variational inference for fast, thrifty approximations [@salimbeni2017doubly,@marmin2022deep].  The `deepgp` package offers an alternative, fully-Bayesian sampling-based inferential scheme as detailed in @sauer2023active.  This sampling approach provides full uncertainty quantification (UQ), which is crucial for sequential design.
+where $\Sigma(\cdot)$ represents a stationary kernel function as defined in the previous subsection and $W = [W_1, W_2, \dots, W_D]$ is the column-combined matrix of individual $W_i$ "nodes". Latent layers are noise-free with unit scale (i.e. $g = 0$ and $\tau^2 = 1$ for each $W_i$). The intermediate latent layer $W$ is unobserved and presents an inferential challenge (it can not be marginialized from the posterior analytically).  Many have embraced variational inference for fast, thrifty approximations [@salimbeni2017doubly,@marmin2022deep].  The `deepgp` package offers an alternative, fully-Bayesian sampling-based inferential scheme as detailed in @sauer2023active.  This sampling approach provides full uncertainty quantification (UQ), which is crucial for sequential design.
 
 Latent Gaussian layers are sampled through elliptical slice sampling [ESS, @murray2010elliptical].  Kernel hyperparameters are sampled through Metropolis Hastings.  All of these are iterated in a Gibbs scheme.  MCMC sampling for two-layer DGPs is wrapped in the `fit_two_layer` function.
 
@@ -309,7 +310,7 @@ plot(xp, fit2$entropy, type = "l", lwd = 2, col = 3, axes = FALSE, xlab = "", yl
 ```
 
 <br>
-Notice entropy is highest where the predicted mean crosses the limit threshold.  The entropy criterion alone, with its extreme peakiness and limited incorporation of posterior uncertainty, is not an ideal acquisition criteria.  Instead, it is best combined with additional metrics that encourage exploration.  See @sauer2023deep, Chapter 3 for further discussion.  Again, this implementation relies on candidates, and strategic allocation of candidate locations is crucial.
+Notice entropy is highest where the predicted mean crosses the limit threshold.  The entropy criterion alone, with its extreme peakiness and limited incorporation of posterior uncertainty, is not an ideal acquisition criteria.  Instead, it is best combined with additional metrics that encourage exploration.  See @booth2024contour for further discussion.  Again, this implementation relies on candidates, and strategic allocation of candidate locations is crucial.
 
 ## Minimizing Posterior Variance
 
@@ -384,7 +385,7 @@ When conducting a full sequential design, it is helpful to initialize the DGP ch
 
 Fully-Bayesian DGPs are hefty models that require a good bit of computation.  While I have integrated tools to assist with fast computations, there are still some relevant considerations.
 
-* If you are not using the Vecchia implementation, you may substantially speed-up under-the-hood matrix calculations by using a fast linear algebra library.  <tt>R</tt>'s default BLAS/LAPACK is not optimized for speedy matrix calculations.  I recommend [Intel's Math Kernel Library (MKL)](https://www.intel.com/content/www/us/en/developer/tools/oneapi/onemkl.html#gs.l2uo65) when possible.  Other options include [OpenBLAS](https://www.openblas.net/) and the [Accelerate framework](https://developer.apple.com/documentation/accelerate) on OSX.  Check out Appendix A in @gramacy2020surrogates for further discussion and illustration of linear algebra library alternatives.  Even with these, I recommend using `vecchia = TRUE` for data sizes above the low hundreds.
+* If you are not using the Vecchia implementation, you may substantially speed-up under-the-hood matrix calculations by using a fast linear algebra library.  <tt>R</tt>'s default BLAS/LAPACK is not optimized for speedy matrix calculations.  I recommend Intel's Math Kernel Library (MKL) when possible.  Other options include [OpenBLAS](https://www.openblas.net/) and the [Accelerate framework](https://developer.apple.com/documentation/accelerate) on OSX.  Check out Appendix A in @gramacy2020surrogates for further discussion and illustration of linear algebra library alternatives.  Even with these, I recommend using `vecchia = TRUE` for data sizes above the low hundreds.
 * If you are using the Vecchia implementation, computation speed is reliant on parallelizaton through <tt>OpenMP</tt>.  When packages are installed from CRAN on a Mac, they are not compiled with <tt>OpenMP</tt> by default. To set up <tt>OpenMP</tt> parallelization on a Mac, download the package source code and install using the <tt>gcc/g++</tt> compiler.  The fit functions will produce a warning message when `vecchia = TRUE` is called if <tt>OpenMP</tt> is not setup. 
 
 -------

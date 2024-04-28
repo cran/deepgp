@@ -20,7 +20,8 @@ fit_two_layer(
   cov = c("matern", "exp2"),
   v = 2.5,
   vecchia = FALSE,
-  m = min(25, length(y) - 1)
+  m = min(25, length(y) - 1),
+  ordering = NULL
 )
 }
 \arguments{
@@ -69,6 +70,10 @@ small may cause numerical issues in matrix inversions.}
 
 \item{m}{size of Vecchia conditioning sets (only used if 
 \code{vecchia = TRUE})}
+
+\item{ordering}{optional ordering for Vecchia approximation, must correspond
+to rows of \code{x}, defaults to random, is applied to \code{x}
+and \code{w}}
 }
 \value{
 a list of the S3 class \code{dgp2} or \code{dgp2vec} with elements:
@@ -151,7 +156,7 @@ Maps inputs \code{x} through hidden layer \code{w} to outputs
     use with \code{continue}, \code{trim}, and \code{predict}.
 }
 \examples{
-# Examples of real-world implementations are available at: 
+# Additional examples including real-world computer experiments are available at: 
 # https://bitbucket.org/gramacylab/deepgp-ex/
 \donttest{
 # G function (https://www.sfu.ca/~ssurjano/gfunc.html)
@@ -210,7 +215,7 @@ Sauer, A. (2023). Deep Gaussian process surrogates for computer experiments.
 Sauer, A., Gramacy, R.B., & Higdon, D. (2023). Active learning for deep 
     Gaussian process surrogates. *Technometrics, 65,* 4-18.  arXiv:2012.08015
     \cr\cr
-Sauer, A., Cooper, A., & Gramacy, R. B. (2022). Vecchia-approximated deep 
+Sauer, A., Cooper, A., & Gramacy, R. B. (2023). Vecchia-approximated deep 
     Gaussian processes for computer experiments. 
     *Journal of Computational and Graphical Statistics,* 1-14.  arXiv:2204.02904
 }

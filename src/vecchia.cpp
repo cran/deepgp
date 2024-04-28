@@ -137,10 +137,11 @@ arma::mat U_entries_sep (const int Ncores, const arma::mat& x, const arma::umat&
       arma::uvec inds = revNNarray.row(k).t();
       arma::uvec inds00 = inds.elem(find(inds)) - 1;
       uword n0 = inds00.n_elem;
+      arma::mat covmat(n0, n0);
       if (v == 999) {
-        arma::mat covmat = Exp2Sep(x.rows(inds00), x.rows(inds00), tau2, theta, g);
+        covmat = Exp2Sep(x.rows(inds00), x.rows(inds00), tau2, theta, g);
       } else {
-        arma::mat covmat = MaternSep(x.rows(inds00), x.rows(inds00), tau2, theta, g, v);
+        covmat = MaternSep(x.rows(inds00), x.rows(inds00), tau2, theta, g, v);
       }
       arma::vec onevec = zeros(n0);
       onevec[n0 - 1] = 1;
@@ -154,10 +155,11 @@ arma::mat U_entries_sep (const int Ncores, const arma::mat& x, const arma::umat&
       arma::uvec inds = revNNarray.row(k).t();
       arma::uvec inds00 = inds.elem(find(inds)) - 1;
       uword n0 = inds00.n_elem;
+      arma::mat covmat(n0, n0);
       if (v == 999) {
-        arma::mat covmat = Exp2Sep(x.rows(inds00), x.rows(inds00), tau2, theta, g);
+        covmat = Exp2Sep(x.rows(inds00), x.rows(inds00), tau2, theta, g);
       } else {
-        arma::mat covmat = MaternSep(x.rows(inds00), x.rows(inds00), tau2, theta, g, v);
+        covmat = MaternSep(x.rows(inds00), x.rows(inds00), tau2, theta, g, v);
       }
       arma::vec onevec = zeros(n0);
       onevec[n0 - 1] = 1;

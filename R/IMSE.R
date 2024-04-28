@@ -31,7 +31,7 @@ Wij.C <- function(x1, x2, theta, a, b){
 #'     \code{x_new}.  Optionally utilizes SNOW parallelization.  User should 
 #'     select the point with the lowest IMSE to add to the design.
 #'     
-#' @details Not yet implemented for Vecchia-approximated fits.
+#' @details Not yet implemented for Vecchia-approximated fits or Matern kernels.
 #' 
 #'     All iterations in the object are used in the calculation, so samples
 #'     should be burned-in.  Thinning the samples using \code{trim} will speed 
@@ -149,12 +149,12 @@ IMSE <- function(object, x_new, cores)
 
 IMSE.gp <- function(object, x_new = NULL, cores = 1) {
   
-  tic <- proc.time()[3]
+  tic <- proc.time()[[3]]
   
-  if (object$v != 999) stop("Currently, ALC is only implemented for the
-                             un-approximated squared exponential kernel.  
-                             Re-fit model with 'vecchia = FALSE' and  
-                             cov = 'exp2' in order to use ALC.")
+  if (object$v != 999) 
+    stop("IMSE is only implemented for the un-approximated squared exponential 
+          kernel.  Re-fit model with 'vecchia = FALSE' and 'cov = 'exp2' in 
+          order to use IMSE.")
   
   if (is.null(x_new)) {
     if (is.null(object$x_new)) {
@@ -254,8 +254,8 @@ IMSE.gp <- function(object, x_new = NULL, cores = 1) {
     
   } # end of else statement
   
-  toc <- proc.time()[3]
-  return(list(value = imse / object$nmcmc, time = toc - tic))
+  toc <- proc.time()[[3]]
+  return(list(value = imse / object$nmcmc, time = unname(toc - tic)))
 }
 
 # IMSE Two Layer --------------------------------------------------------------
@@ -264,12 +264,12 @@ IMSE.gp <- function(object, x_new = NULL, cores = 1) {
 
 IMSE.dgp2 <- function(object, x_new = NULL, cores = 1) {
   
-  tic <- proc.time()[3]
+  tic <- proc.time()[[3]]
   
-  if (object$v != 999) stop("Currently, ALC is only implemented for the
-                             un-approximated squared exponential kernel.  
-                             Re-fit model with 'vecchia = FALSE' and  
-                             cov = 'exp2' in order to use ALC.")
+  if (object$v != 999) 
+    stop("IMSE is only implemented for the un-approximated squared exponential 
+          kernel.  Re-fit model with 'vecchia = FALSE' and 'cov = 'exp2' in 
+          order to use IMSE.")
   
   if (is.null(x_new)) {
     if (is.null(object$x_new)) {
@@ -403,8 +403,8 @@ IMSE.dgp2 <- function(object, x_new = NULL, cores = 1) {
     
   } # end of else statement
   
-  toc <- proc.time()[3]
-  return(list(value = imse / object$nmcmc, time = toc - tic))
+  toc <- proc.time()[[3]]
+  return(list(value = imse / object$nmcmc, time = unname(toc - tic)))
 }
 
 # IMSE Three Layer ------------------------------------------------------------
@@ -413,12 +413,12 @@ IMSE.dgp2 <- function(object, x_new = NULL, cores = 1) {
 
 IMSE.dgp3 <- function(object, x_new = NULL, cores = 1) {
   
-  tic <- proc.time()[3]
+  tic <- proc.time()[[3]]
   
-  if (object$v != 999) stop("Currently, ALC is only implemented for the
-                             un-approximated squared exponential kernel.  
-                             Re-fit model with 'vecchia = FALSE' and  
-                             cov = 'exp2' in order to use ALC.")
+  if (object$v != 999) 
+    stop("IMSE is only implemented for the un-approximated squared exponential 
+          kernel.  Re-fit model with 'vecchia = FALSE' and 'cov = 'exp2' in 
+          order to use IMSE.")
   
   if (is.null(x_new)) {
     if (is.null(object$x_new)) {
@@ -564,6 +564,6 @@ IMSE.dgp3 <- function(object, x_new = NULL, cores = 1) {
     
   } # end of else statement
   
-  toc <- proc.time()[3]
-  return(list(value = imse / object$nmcmc, time = toc - tic))
+  toc <- proc.time()[[3]]
+  return(list(value = imse / object$nmcmc, time = unname(toc - tic)))
 }

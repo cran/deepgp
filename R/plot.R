@@ -47,7 +47,7 @@ NULL
 
 plot.gp <- function(x, trace = NULL, predict = NULL, ...) {
   
-  # save and restore par settings
+  # save and restore par settings 
   oldpar <- par(no.readonly = TRUE)
   on.exit(par(oldpar))
   

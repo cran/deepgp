@@ -22,7 +22,7 @@ gibbs_one_layer <- function(x, y, nmcmc, verb, initial, true_g, settings, v) {
   
   for (j in 2:nmcmc) {
     
-    if(verb) if(j %% 500 == 0) cat(j, '\n')
+    if (verb & (j %% 500 == 0)) cat(j, '\n')
     
     # Sample nugget (g)
     if (is.null(true_g)) {
@@ -33,7 +33,7 @@ gibbs_one_layer <- function(x, y, nmcmc, verb, initial, true_g, settings, v) {
       ll <- samp$ll
     } else g[j] <- true_g
     
-    # Sample length scale (theta)
+    # Sample lengthscale (theta)
     samp <- sample_theta(y, dx, g[j], theta[j - 1], 
                          alpha = settings$alpha$theta,
                          beta = settings$beta$theta, l = settings$l, 
@@ -66,7 +66,7 @@ gibbs_one_layer_sep <- function(x, y, nmcmc, verb, initial, true_g, settings, v)
   
   for (j in 2:nmcmc) {
     
-    if(verb) if(j %% 500 == 0) cat(j, '\n')
+    if (verb & (j %% 500 == 0)) cat(j, '\n')
     
     # Sample nugget (g)
     if (is.null(true_g)) {
@@ -77,7 +77,7 @@ gibbs_one_layer_sep <- function(x, y, nmcmc, verb, initial, true_g, settings, v)
       ll <- samp$ll
     } else g[j] <- true_g
     
-    # Sample length scale (theta)
+    # Sample lengthscale (theta)
     for (i in 1:d) {
       samp <- sample_theta_sep(y, x, g[j], theta[j - 1, ], index = i,
                                alpha = settings$alpha$theta,
@@ -122,7 +122,7 @@ gibbs_two_layer <- function(x, y, nmcmc, D, verb, initial, true_g,
   
   for (j in 2:nmcmc) {
     
-    if(verb) if(j %% 500 == 0) cat(j, '\n')
+    if (verb & (j %% 500 == 0)) cat(j, '\n')
     
     # Sample nugget (g)
     if (is.null(true_g)) {
@@ -134,7 +134,7 @@ gibbs_two_layer <- function(x, y, nmcmc, D, verb, initial, true_g,
       ll_outer <- samp$ll
     } else g[j] <- true_g
     
-    # Sample outer length scale (theta_y)
+    # Sample outer lengthscale (theta_y)
     samp <- sample_theta(y, dw, g[j], theta_y[j - 1], 
                          alpha = settings$alpha$theta_y, 
                          beta = settings$beta$theta_y, l = settings$l, 
@@ -144,7 +144,7 @@ gibbs_two_layer <- function(x, y, nmcmc, D, verb, initial, true_g,
     ll_outer <- samp$ll
     if (is.null(samp$tau2)) tau2[j] <- tau2[j - 1] else tau2[j] <- samp$tau2
     
-    # Sample inner length scale (theta_w) - separately for each dimension
+    # Sample inner lengthscale (theta_w) - separately for each dimension
     for (i in 1:D) {
       if (settings$pmx) prior_mean <- x[, i] else prior_mean <- 0
       samp <- sample_theta(w[[j - 1]][, i], dx, g = eps, theta_w[j - 1, i],
@@ -200,7 +200,7 @@ gibbs_three_layer <- function(x, y, nmcmc, D, verb, initial, true_g,
   
   for (j in 2:nmcmc) {
     
-    if(verb) if(j %% 500 == 0) cat(j, '\n')
+    if (verb & (j %% 500 == 0)) cat(j, '\n')
     
     # Sample nugget (g)
     if (is.null(true_g)) {
@@ -212,7 +212,7 @@ gibbs_three_layer <- function(x, y, nmcmc, D, verb, initial, true_g,
       ll_outer <- samp$ll
     } else g[j] <- true_g
     
-    # Sample outer length scale (theta_y)
+    # Sample outer lengthscale (theta_y)
     samp <- sample_theta(y, dw, g[j], theta_y[j - 1], 
                          alpha = settings$alpha$theta_y,
                          beta = settings$beta$theta_y, l = settings$l, 
@@ -222,7 +222,7 @@ gibbs_three_layer <- function(x, y, nmcmc, D, verb, initial, true_g,
     ll_outer <- samp$ll
     if (is.null(samp$tau2)) tau2[j] <- tau2[j - 1] else tau2[j] <- samp$tau2
     
-    # Sample middle length scale (theta_w)
+    # Sample middle lengthscale (theta_w)
     ll_mid <- 0 # re-calculated each time since we have a new z
     for (i in 1:D) {
       samp <- sample_theta(w[[j - 1]][, i], dz, g = eps, theta_w[j - 1, i],
@@ -233,7 +233,7 @@ gibbs_three_layer <- function(x, y, nmcmc, D, verb, initial, true_g,
       ll_mid <- ll_mid + samp$ll
     }
     
-    # Sample inner length scale (theta_z)
+    # Sample inner lengthscale (theta_z)
     for (i in 1:D) {
       samp <- sample_theta(z[[j - 1]][, i], dx, g = eps, theta_z[j - 1, i], 
                            alpha = settings$alpha$theta_z, 

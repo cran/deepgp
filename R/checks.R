@@ -5,10 +5,11 @@
 #   check_initialization: sets default initial values for hyperparameters and 
 #                         hidden layers
 #   check_inputs: errors/warnings for input dimensions/class/etc
+#   check_ordering: errors/warnings for user-specifed Vecchia orderings
 
 # Check Settings --------------------------------------------------------------
 
-check_settings <- function(settings, layers = 1, D = NULL, n = NULL) {
+check_settings <- function(settings, layers = 1, D = NULL) {
   
   if (is.null(settings$l)) settings$l <- 1
   if (is.null(settings$u)) settings$u <- 2
@@ -46,8 +47,7 @@ check_settings <- function(settings, layers = 1, D = NULL, n = NULL) {
 check_initialization <- function(initial, layers = 2, x = NULL, D = NULL,
                                  vecchia = NULL, v = NULL, m = NULL) {
   
-  if (is.null(initial$tau2)) 
-    initial$tau2 <- 1
+  if (is.null(initial$tau2)) initial$tau2 <- 1
   
   if (layers == 2) {
     
@@ -122,3 +122,20 @@ check_inputs <- function(x, y, true_g) {
   
   return(NULL)
 }
+
+# Check Ordering --------------------------------------------------------------
+
+check_ordering <- function(ordering, n) {
+  
+  if (length(ordering) != n) 
+    stop("length(ordering) must match dimension of x for fitting or x_new for predicting")
+  if (min(ordering) != 1)
+    stop("ordering must begin at index 1")
+  if (max(ordering) != n)
+    stop("ordering must end at index nrow(x) for fitting or nrow(x_new) for predicting")
+  if (sum(duplicated(ordering)) > 0)
+    stop("ordering must not have any duplicates")
+  
+  return(NULL)
+}
+

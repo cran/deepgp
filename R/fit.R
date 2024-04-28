@@ -69,6 +69,8 @@
 #' @param vecchia logical indicating whether to use Vecchia approximation
 #' @param m size of Vecchia conditioning sets (only used if 
 #'        \code{vecchia = TRUE})
+#' @param ordering optional ordering for Vecchia approximation, must correspond
+#'        to rows of \code{x}, defaults to random
 #' 
 #' @return a list of the S3 class \code{gp} or \code{gpvec} with elements:
 #' \itemize{
@@ -93,12 +95,12 @@
 #' Sauer, A., Gramacy, R.B., & Higdon, D. (2023). Active learning for deep 
 #'     Gaussian process surrogates. *Technometrics, 65,* 4-18.  arXiv:2012.08015
 #'     \cr\cr
-#' Sauer, A., Cooper, A., & Gramacy, R. B. (2022). Vecchia-approximated deep 
+#' Sauer, A., Cooper, A., & Gramacy, R. B. (2023). Vecchia-approximated deep 
 #'     Gaussian processes for computer experiments. 
 #'     *Journal of Computational and Graphical Statistics,* 1-14.  arXiv:2204.02904
 #' 
 #' @examples 
-#' # Examples of real-world implementations are available at: 
+#' # Additional examples including real-world computer experiments are available at: 
 #' # https://bitbucket.org/gramacylab/deepgp-ex/
 #' \donttest{
 #' # G function (https://www.sfu.ca/~ssurjano/gfunc.html)
@@ -153,9 +155,10 @@
 fit_one_layer <- function(x, y, nmcmc = 10000, sep = FALSE, verb = TRUE, g_0 = 0.01, 
                           theta_0 = 0.1, true_g = NULL, settings = NULL,
                           cov = c("matern", "exp2"), v = 2.5, 
-                          vecchia = FALSE, m = min(25, length(y) - 1)) {
+                          vecchia = FALSE, m = min(25, length(y) - 1),
+                          ordering = NULL) {
   
-  tic <- proc.time()[3]
+  tic <- proc.time()[[3]]
   cov <- match.arg(cov)
   if (vecchia) check_omp()
   if (cov == "exp2") v <- 999 # solely used as an indicator
@@ -173,16 +176,23 @@ fit_one_layer <- function(x, y, nmcmc = 10000, sep = FALSE, verb = TRUE, g_0 = 0
   if (cov == "matern")
     if(!(v %in% c(0.5, 1.5, 2.5))) 
       stop("v must be one of 0.5, 1.5, or 2.5")
+  if (!is.null(ordering)) {
+    if (!vecchia) message("ordering only used when vecchia = TRUE")
+    test <- check_ordering(ordering, nrow(x)) # returns NULL if all checks pass
+  }
   
   # Create output object
   out <- list(x = x, y = y, nmcmc = nmcmc, settings = settings, v = v)
-  if (vecchia) out$m <- m
+  if (vecchia) {
+    out$m <- m
+    out$ordering <- ordering
+  }
 
   # Conduct MCMC
   if (sep) {
     if (vecchia) {
       samples <- gibbs_one_layer_vec_sep(x, y, nmcmc, verb, initial, true_g,
-                                         settings, v, m)
+                                         settings, v, m, ordering)
     } else{
       samples <- gibbs_one_layer_sep(x, y, nmcmc, verb, initial, true_g,
                                      settings, v)
@@ -190,7 +200,7 @@ fit_one_layer <- function(x, y, nmcmc = 10000, sep = FALSE, verb = TRUE, g_0 = 0
   } else {
     if (vecchia) {
       samples <- gibbs_one_layer_vec(x, y, nmcmc, verb, initial, true_g, 
-                                     settings, v, m)
+                                     settings, v, m, ordering)
     } else { 
       samples <- gibbs_one_layer(x, y, nmcmc, verb, initial, true_g,
                                  settings, v)
@@ -198,8 +208,8 @@ fit_one_layer <- function(x, y, nmcmc = 10000, sep = FALSE, verb = TRUE, g_0 = 0
   }
   
   out <- c(out, samples)
-  toc <- proc.time()[3]
-  out$time <- toc - tic
+  toc <- proc.time()[[3]]
+  out$time <- unname(toc - tic)
   if (vecchia) class(out) <- "gpvec" else class(out) <- "gp"
   return(out)
 }
@@ -292,6 +302,9 @@ fit_one_layer <- function(x, y, nmcmc = 10000, sep = FALSE, verb = TRUE, g_0 = 0
 #' @param vecchia logical indicating whether to use Vecchia approximation
 #' @param m size of Vecchia conditioning sets (only used if 
 #'        \code{vecchia = TRUE})
+#' @param ordering optional ordering for Vecchia approximation, must correspond
+#'        to rows of \code{x}, defaults to random, is applied to \code{x}
+#'        and \code{w}
 #' 
 #' @return a list of the S3 class \code{dgp2} or \code{dgp2vec} with elements:
 #' \itemize{
@@ -321,12 +334,12 @@ fit_one_layer <- function(x, y, nmcmc = 10000, sep = FALSE, verb = TRUE, g_0 = 0
 #' Sauer, A., Gramacy, R.B., & Higdon, D. (2023). Active learning for deep 
 #'     Gaussian process surrogates. *Technometrics, 65,* 4-18.  arXiv:2012.08015
 #'     \cr\cr
-#' Sauer, A., Cooper, A., & Gramacy, R. B. (2022). Vecchia-approximated deep 
+#' Sauer, A., Cooper, A., & Gramacy, R. B. (2023). Vecchia-approximated deep 
 #'     Gaussian processes for computer experiments. 
 #'     *Journal of Computational and Graphical Statistics,* 1-14.  arXiv:2204.02904
 #' 
 #' @examples 
-#' # Examples of real-world implementations are available at: 
+#' # Additional examples including real-world computer experiments are available at: 
 #' # https://bitbucket.org/gramacylab/deepgp-ex/
 #' \donttest{
 #' # G function (https://www.sfu.ca/~ssurjano/gfunc.html)
@@ -383,9 +396,10 @@ fit_two_layer <- function(x, y, nmcmc = 10000, D = ifelse(is.matrix(x), ncol(x),
                           pmx = FALSE, verb = TRUE, w_0 = NULL, g_0 = 0.01,
                           theta_y_0 = 0.1, theta_w_0 = 0.1, true_g = NULL,
                           settings = NULL, cov = c("matern", "exp2"), v = 2.5,
-                          vecchia = FALSE, m = min(25, length(y) - 1)) {
+                          vecchia = FALSE, m = min(25, length(y) - 1),
+                          ordering = NULL) {
 
-  tic <- proc.time()[3]
+  tic <- proc.time()[[3]]
   cov <- match.arg(cov)
   if (vecchia) check_omp()
   if (cov == "exp2") v <- 999 # solely used as an indicator
@@ -396,7 +410,7 @@ fit_two_layer <- function(x, y, nmcmc = 10000, D = ifelse(is.matrix(x), ncol(x),
   # Check inputs
   if (is.numeric(x)) x <- as.matrix(x)
   test <- check_inputs(x, y, true_g) # returns NULL if all checks pass
-  settings <- check_settings(settings, layers = 2, D, length(y))
+  settings <- check_settings(settings, layers = 2, D)
   initial <- list(w = w_0, theta_y = theta_y_0, theta_w = theta_w_0, 
                   g = g_0, tau2 = 1)
   initial <- check_initialization(initial, layers = 2, x = x, D = D, 
@@ -405,6 +419,10 @@ fit_two_layer <- function(x, y, nmcmc = 10000, D = ifelse(is.matrix(x), ncol(x),
   if (cov == "matern")
     if(!(v %in% c(0.5, 1.5, 2.5))) 
       stop("v must be one of 0.5, 1.5, or 2.5")
+  if (!is.null(ordering)) {
+    if (!vecchia) message("ordering only used when vecchia = TRUE")
+    test <- check_ordering(ordering, nrow(x)) # returns NULL if all checks pass
+  }
   
   # Check prior mean setting
   if (pmx == 0) pmx <- FALSE
@@ -419,20 +437,23 @@ fit_two_layer <- function(x, y, nmcmc = 10000, D = ifelse(is.matrix(x), ncol(x),
   
   # Create output object
   out <- list(x = x, y = y, nmcmc = nmcmc, settings = settings, v = v)
-  if (vecchia) out$m <- m
+  if (vecchia) {
+    out$m <- m
+    out$ordering <- ordering
+  }
 
   # Conduct MCMC
   if (vecchia) {
     samples <- gibbs_two_layer_vec(x, y, nmcmc, D, verb, initial,
-                                   true_g, settings, v, m)
+                                   true_g, settings, v, m, ordering)
   } else { 
     samples <- gibbs_two_layer(x, y, nmcmc, D, verb, initial,
                                true_g, settings, v)
   } 
   
   out <- c(out, samples)
-  toc <- proc.time()[3]
-  out$time <- toc - tic
+  toc <- proc.time()[[3]]
+  out$time <- unname(toc - tic)
   if (vecchia) class(out) <- "dgp2vec" else class(out) <- "dgp2"
   return(out)
 }
@@ -537,7 +558,10 @@ fit_two_layer <- function(x, y, nmcmc = 10000, D = ifelse(is.matrix(x), ncol(x),
 #' @param vecchia logical indicating whether to use Vecchia approximation
 #' @param m size of Vecchia conditioning sets (only used if 
 #'        \code{vecchia = TRUE})
-#' 
+#' @param ordering optional ordering for Vecchia approximation, must correspond
+#'        to rows of \code{x}, defaults to random, is applied to \code{x},
+#'        \code{w}, and \code{z}
+#'        
 #' @return a list of the S3 class \code{dgp3} or \code{dgp3vec} with elements:
 #' \itemize{
 #'   \item \code{x}: copy of input matrix
@@ -569,12 +593,12 @@ fit_two_layer <- function(x, y, nmcmc = 10000, D = ifelse(is.matrix(x), ncol(x),
 #' Sauer, A., Gramacy, R.B., & Higdon, D. (2023). Active learning for deep 
 #'     Gaussian process surrogates. *Technometrics, 65,* 4-18.  arXiv:2012.08015
 #'     \cr\cr
-#' Sauer, A., Cooper, A., & Gramacy, R. B. (2022). Vecchia-approximated deep 
+#' Sauer, A., Cooper, A., & Gramacy, R. B. (2023). Vecchia-approximated deep 
 #'     Gaussian processes for computer experiments. 
 #'     *Journal of Computational and Graphical Statistics,* 1-14.  arXiv:2204.02904
 #' 
 #' @examples 
-#' # Examples of real-world implementations are available at: 
+#' # Additional examples including real-world computer experiments are available at: 
 #' # https://bitbucket.org/gramacylab/deepgp-ex/
 #' \donttest{
 #' # G function (https://www.sfu.ca/~ssurjano/gfunc.html)
@@ -625,9 +649,9 @@ fit_three_layer <- function(x, y, nmcmc = 10000, D = ifelse(is.matrix(x), ncol(x
                             g_0 = 0.01, theta_y_0 = 0.1, theta_w_0 = 0.1, 
                             theta_z_0 = 0.1, true_g = NULL, settings = NULL,
                             cov = c("matern", "exp2"), v = 2.5, vecchia = FALSE, 
-                            m = min(25, length(y) - 1)) {
+                            m = min(25, length(y) - 1), ordering = NULL) {
   
-  tic <- proc.time()[3]
+  tic <- proc.time()[[3]]
   cov <- match.arg(cov)
   if (vecchia) check_omp()
   if (cov == "exp2") v <- 999 # solely used as an indicator
@@ -638,7 +662,7 @@ fit_three_layer <- function(x, y, nmcmc = 10000, D = ifelse(is.matrix(x), ncol(x
   # Check inputs
   if (is.numeric(x)) x <- as.matrix(x)
   test <- check_inputs(x, y, true_g)
-  settings <- check_settings(settings, layers = 3, D, length(y))
+  settings <- check_settings(settings, layers = 3, D)
   initial <- list(w = w_0, z = z_0, theta_y = theta_y_0, theta_w = theta_w_0, 
                   theta_z = theta_z_0, g = g_0, tau2 = 1)
   initial <- check_initialization(initial, layers = 3, x = x, D = D, 
@@ -647,23 +671,30 @@ fit_three_layer <- function(x, y, nmcmc = 10000, D = ifelse(is.matrix(x), ncol(x
   if (cov == "matern")
     if(!(v %in% c(0.5, 1.5, 2.5))) 
       stop("v must be one of 0.5, 1.5, or 2.5")
+  if (!is.null(ordering)) {
+    if (!vecchia) message("ordering only used when vecchia = TRUE")
+    test <- check_ordering(ordering, nrow(x)) # returns NULL if all checks pass
+  }
   
   # Create output object
   out <- list(x = x, y = y, nmcmc = nmcmc, settings = settings, v = v)
-  if (vecchia) out$m <- m
+  if (vecchia) {
+    out$m <- m
+    out$ordering <- ordering
+  }
   
   # Conduct MCMC
   if (vecchia) {
     samples <- gibbs_three_layer_vec(x, y, nmcmc, D, verb, initial, true_g,
-                                     settings, v, m)
+                                     settings, v, m, ordering)
   } else {
     samples <- gibbs_three_layer(x, y, nmcmc, D, verb, initial, true_g, 
                                  settings, v)
   }
   
   out <- c(out, samples)
-  toc <- proc.time()[3]
-  out$time <- toc - tic
+  toc <- proc.time()[[3]]
+  out$time <- unname(toc - tic)
   if (vecchia) class(out) <- "dgp3vec" else class(out) <- "dgp3"
   return(out)
 }

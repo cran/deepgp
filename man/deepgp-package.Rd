@@ -5,21 +5,23 @@
 \alias{deepgp-package}
 \title{Package deepgp}
 \description{
-Performs Bayesian posterior inference for deep Gaussian processes following 
-Sauer, Gramacy, and Higdon (2023, <arXiv:2012.08015>).  See Sauer (2023, 
-<http://hdl.handle.net/10919/114845>) for comprehensive methodological details and 
-<https://bitbucket.org/gramacylab/deepgp-ex/> for a variety of coding examples. 
-Models are trained through MCMC including elliptical slice sampling of latent 
-Gaussian layers and Metropolis-Hastings sampling of kernel hyperparameters.  
-Vecchia-approximation for faster computation is implemented following 
-Sauer, Cooper, and Gramacy (2022, <arXiv:2204.02904>).  Downstream tasks 
-include sequential design through active learning Cohn/integrated mean squared 
-error (ALC/IMSE; Sauer, Gramacy, and Higdon, 2023), optimization through 
-expected improvement (EI; Gramacy, Sauer, and Wycoff, 2021 <arXiv:2112.07457>), 
-and contour location through entrop(Sauer, 2023).  Models extend up to three 
-layers deep; a one layer model is equivalent to typical Gaussian process 
-regression.  Incorporates OpenMP and SNOW parallelization and utilizes 
-C/C++ under the hood.
+Performs Bayesian posterior inference for deep Gaussian 
+processes following Sauer, Gramacy, and Higdon (2023).  
+See Sauer (2023) for comprehensive 
+methodological details and \url{https://bitbucket.org/gramacylab/deepgp-ex/} for 
+a variety of coding examples. Models are trained through MCMC including 
+elliptical slice sampling of latent Gaussian layers and Metropolis-Hastings 
+sampling of kernel hyperparameters.  Vecchia-approximation for faster 
+computation is implemented following Sauer, Cooper, and Gramacy 
+(2023).  Downstream tasks include sequential design 
+through active learning Cohn/integrated mean squared error (ALC/IMSE; Sauer, 
+Gramacy, and Higdon, 2023), optimization through expected improvement 
+(EI; Gramacy, Sauer, and Wycoff, 2022), and contour 
+location through entropy (Booth, Renganathan, and Gramacy, 
+2024).  Models extend up to three layers deep; a one 
+layer model is equivalent to typical Gaussian process regression.  
+Incorporates OpenMP and SNOW parallelization and utilizes C/C++ under 
+the hood.
 }
 \section{Important Functions}{
 
@@ -47,24 +49,29 @@ C/C++ under the hood.
 \examples{
 # See "fit_one_layer", "fit_two_layer", "fit_three_layer", 
 # "ALC", or "IMSE" for examples
-# Examples of real-world implementations are available at: 
+# Many more examples including real-world computer experiments are available at: 
 # https://bitbucket.org/gramacylab/deepgp-ex/
 
 }
 \references{
 Sauer, A. (2023). Deep Gaussian process surrogates for computer experiments. 
      *Ph.D. Dissertation, Department of Statistics, Virginia Polytechnic Institute and State University.*
+     \url{http://hdl.handle.net/10919/114845}
      \cr\cr
 Sauer, A., Gramacy, R.B., & Higdon, D. (2023). Active learning for deep 
      Gaussian process surrogates. *Technometrics, 65,* 4-18.  arXiv:2012.08015
      \cr\cr
-Sauer, A., Cooper, A., & Gramacy, R. B. (2022). Vecchia-approximated deep Gaussian 
+Sauer, A., Cooper, A., & Gramacy, R. B. (2023). Vecchia-approximated deep Gaussian 
      processes for computer experiments. 
      *Journal of Computational and Graphical Statistics,* 1-14.  arXiv:2204.02904
      \cr\cr
 Gramacy, R. B., Sauer, A. & Wycoff, N. (2022). Triangulation candidates for Bayesian 
     optimization.  *Advances in Neural Information Processing Systems (NeurIPS), 35,* 
     35933-35945.  arXiv:2112.07457
+    \cr\cr
+Booth, A., Renganathan, S. A. & Gramacy, R. B. (2024). Contour location for 
+    reliability in airfoil simulation experiments using deep Gaussian 
+    processes. *In Review.* arXiv:2308.04420
 }
 \author{
 Annie S. Booth \email{annie_booth@ncsu.edu}

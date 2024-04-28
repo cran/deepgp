@@ -63,7 +63,7 @@ trim.gp <- function(object, burn, thin = 1) {
   object$ll <- object$ll[indx, drop = FALSE]
   
   toc <- proc.time()[3]
-  object$time <- object$time + (toc - tic)
+  object$time <- object$time + unname(toc - tic)
   
   return(object)
 }
@@ -97,7 +97,7 @@ trim.dgp2 <- function(object, burn, thin = 1) {
   object$ll <- object$ll[indx, drop = FALSE]
   
   toc <- proc.time()[3]
-  object$time <- object$time + (toc - tic)
+  object$time <- object$time + unname(toc - tic)
   
   return(object)
 }
@@ -133,7 +133,7 @@ trim.dgp3 <- function(object, burn, thin = 1) {
   object$ll <- object$ll[indx, drop = FALSE]
   
   toc <- proc.time()[3]
-  object$time <- object$time + (toc - tic)
+  object$time <- object$time + unname(toc - tic)
   
   return(object)
 }

@@ -39,7 +39,7 @@ Acts on a \code{gp}, \code{dgp2}, or \code{dgp3} object.
     select the point with the lowest IMSE to add to the design.
 }
 \details{
-Not yet implemented for Vecchia-approximated fits.
+Not yet implemented for Vecchia-approximated fits or Matern kernels.
 
     All iterations in the object are used in the calculation, so samples
     should be burned-in.  Thinning the samples using \code{trim} will speed 

@@ -67,12 +67,13 @@ create_U <- function(approx, g, theta, v, sep = FALSE,
 
 # Create Approximation --------------------------------------------------------
 
-create_approx <- function(x, m) {
+create_approx <- function(x, m, ordering = NULL) {
   
   n <- nrow(x)
-  rev_ord_obs <- sample(1:n, n, replace = FALSE) 
-  ord <- order(rev_ord_obs)
-  x_ord <- x[ord, , drop = FALSE]
+  if (is.null(ordering)) 
+    ordering <- sample(1:n, n, replace = FALSE)
+  rev_ord_obs <- order(ordering)
+  x_ord <- x[ordering, , drop = FALSE]
  
   NNarray <- GpGp::find_ordered_nn(x_ord, m)
   revNN <- rev_matrix(NNarray)
@@ -80,7 +81,7 @@ create_approx <- function(x, m) {
   pointers <- row_col_pointers(NNarray)
   n_cores <- parallel::detectCores(all.tests = FALSE, logical = TRUE)
   
-  out <- list(m = m, ord = ord, NNarray = NNarray, revNN = revNN, 
+  out <- list(m = m, ord = ordering, NNarray = NNarray, revNN = revNN, 
               notNA = notNA, pointers = pointers,
               n_cores = n_cores, rev_ord_obs = rev_ord_obs, x_ord = x_ord)
   return(out)
@@ -101,15 +102,16 @@ update_obs_in_approx <- function(approx, x_new, col_index = NULL) {
 
 # Add Pred to Approx ----------------------------------------------------------
 
-add_pred_to_approx <- function(approx, x_pred, m) {
+add_pred_to_approx <- function(approx, x_pred, m, ordering_new = NULL) {
   
   n <- nrow(approx$x_ord)
   n_pred <- nrow(x_pred)
-  ord_pred <- sample(1:n_pred, n_pred, replace = FALSE)
-  rev_ord_pred <- order(ord_pred)
+  if (is.null(ordering_new)) 
+    ordering_new <- sample(1:n_pred, n_pred, replace = FALSE)
+  rev_ord_pred <- order(ordering_new)
   
-  ord <- c(approx$ord, ord_pred + n) # observed data FIRST
-  x_ord <- rbind(approx$x_ord, x_pred[ord_pred, , drop = FALSE])
+  ord <- c(approx$ord, ordering_new + n) # observed data FIRST
+  x_ord <- rbind(approx$x_ord, x_pred[ordering_new, , drop = FALSE])
   observed <- c(rep(TRUE, n), rep(FALSE, n_pred))
   
   NNarray <- GpGp::find_ordered_nn(x_ord, m)
@@ -132,6 +134,7 @@ krig_vec <- function(y, theta, g, tau2 = 1,
                      NNarray_pred = NULL, # optional input for sigma = FALSE
                      approx = NULL, # inputs required for sigma = TRUE
                      sep = FALSE,
+                     f_min = FALSE,
                      prior_mean = rep(0, length(y)), 
                      prior_mean_new = 0) {
   
@@ -144,6 +147,7 @@ krig_vec <- function(y, theta, g, tau2 = 1,
       NNarray_pred <- FNN::get.knnx(x, x_new, m)$nn.index # NN DO NOT USE SCALED LENGTHSCALES IN SEPARABLE GP
     out$mean <- vector(length = n_new)
     if (s2) out$s2 <- vector(length = n_new)
+    if (f_min) mean_no_noise <- vector(length = n_new)
     for (i in 1:n_new) {
       NN <- NNarray_pred[i, ]
       x_combined <- rbind(x[NN, , drop = FALSE], x_new[i, , drop = FALSE])
@@ -159,13 +163,17 @@ krig_vec <- function(y, theta, g, tau2 = 1,
       L <- t(chol(K))
       out$mean[i] <- L[m + 1, 1:m] %*% forwardsolve(L[1:m, 1:m], y[NN] - prior_mean[NN])
       if (s2) out$s2[i] <- tau2 * (L[m + 1, m + 1] ^ 2)
+      if (f_min) { 
+        K <- K - diag(g - eps, nrow(K)) # remove nugget (tau2 = 1)
+        L <- t(chol(K))
+        mean_no_noise[i] <- L[m + 1, 1:m] %*% forwardsolve(L[1:m, 1:m], y[NN] - prior_mean[NN])
+      }
     }
     out$mean <- out$mean + prior_mean_new
+    if (f_min) out$f_min <- min(mean_no_noise + prior_mean_new)
     
   } else { # lite = FALSE
     
-    if (is.null(approx$observed)) # add pred to approximation if not provided
-      approx <- add_pred_to_approx(approx, x_new, m)
     prior_mean_ordered <- prior_mean[approx$ord[approx$observed]]
     yo <- y[approx$ord[approx$observed]] - prior_mean_ordered
     U_mat <- create_U(approx, g, theta, v, sep = sep)
@@ -177,6 +185,16 @@ krig_vec <- function(y, theta, g, tau2 = 1,
     mu_ordered <- -Matrix::crossprod(Uppinv, UopTy)
     out$mean <- prior_mean_new + mu_ordered[approx$rev_ord_pred]
     out$sigma <- as.matrix(tau2 * Winv[approx$rev_ord_pred, approx$rev_ord_pred])
+    if (f_min) {
+      U_mat <- create_U(approx, 0, theta, v, sep = sep)
+      Upp <- U_mat[!approx$observed, !approx$observed]
+      Uppinv <- Matrix::solve(Upp, sparse = TRUE)
+      Winv <- Matrix::crossprod(Uppinv)
+      Uop <- U_mat[approx$observed, !approx$observed]
+      UopTy <- Matrix::crossprod(Uop, yo)
+      mu_ordered <- -Matrix::crossprod(Uppinv, UopTy)
+      out$f_min <- min(prior_mean_new + mu_ordered[approx$rev_ord_pred])
+    }
     
   }
   

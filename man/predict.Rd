@@ -51,8 +51,10 @@
   object,
   x_new,
   m = object$m,
+  ordering_new = NULL,
   lite = TRUE,
   return_all = FALSE,
+  EI = FALSE,
   entropy_limit = NULL,
   cores = 1,
   ...
@@ -62,10 +64,12 @@
   object,
   x_new,
   m = object$m,
+  ordering_new = NULL,
   lite = TRUE,
   store_latent = FALSE,
   mean_map = TRUE,
   return_all = FALSE,
+  EI = FALSE,
   entropy_limit = NULL,
   cores = 1,
   ...
@@ -75,10 +79,12 @@
   object,
   x_new,
   m = object$m,
+  ordering_new = NULL,
   lite = TRUE,
   store_latent = FALSE,
   mean_map = TRUE,
   return_all = FALSE,
+  EI = FALSE,
   entropy_limit = NULL,
   cores = 1,
   ...
@@ -119,6 +125,10 @@ from the full MVN distribution (two or three layer models only),
 
 \item{m}{size of Vecchia conditioning sets (only for fits with 
 \code{vecchia = TRUE}), defaults to the \code{m} used for MCMC}
+
+\item{ordering_new}{optional ordering for Vecchia approximation, must correspond
+to rows of \code{x_new}, defaults to random, is applied to all layers
+in deeper models}
 }
 \value{
 object of the same class with the following additional elements:
@@ -179,12 +189,10 @@ All iterations in the object are used for prediction, so samples
 Sauer, A. (2023). Deep Gaussian process surrogates for computer experiments. 
      *Ph.D. Dissertation, Department of Statistics, Virginia Polytechnic Institute and State University.*
      \cr\cr
-Sauer, A, RB Gramacy, and D Higdon. 2020. "Active Learning for Deep Gaussian 
-    Process Surrogates." \emph{Technometrics, to appear;} arXiv:2012.08015. 
-    \cr\cr
-Sauer, A, A Cooper, and RB Gramacy. 2022. "Vecchia-approximated Deep Gaussian
-    Processes for Computer Experiments." \emph{pre-print on arXiv:2204.02904} 
-    \cr\cr   
-Gramacy, RB. \emph{Surrogates: Gaussian Process Modeling, Design, and 
-    Optimization for the Applied Sciences}. Chapman Hall, 2020.
+Sauer, A., Gramacy, R.B., & Higdon, D. (2023). Active learning for deep 
+     Gaussian process surrogates. *Technometrics, 65,* 4-18.  arXiv:2012.08015
+     \cr\cr
+Sauer, A., Cooper, A., & Gramacy, R. B. (2023). Vecchia-approximated deep Gaussian 
+     processes for computer experiments. 
+     *Journal of Computational and Graphical Statistics,* 1-14.  arXiv:2204.02904
 }

@@ -178,8 +178,6 @@ sample_w <- function(out_vec, w_t, w_t_dmat, in_dmat, g, theta_y, theta_w,
   if (is.null(ll_prev)) 
     ll_prev <- logl(out_vec, w_t_dmat, g, theta_y, outer = TRUE, v = v)$logl
   
-  count <- vector(length = D)
-  
   for (i in 1:D) { # separate sampling for each dimension of hidden layer
     
     # Draw from prior distribution

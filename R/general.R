@@ -3,12 +3,13 @@
 # Internal:
 #   eps: minimum nugget value (1.5e-8)
 #   krig: calculates posterior mean, sigma, and tau2 (optionally f_min)
+#   krig_sep: same as above, but with a separable kernel
 #   invdet: calculates inverse and log determinant of a matrix using C
 #           (credit given to the "laGP package, R.B. Gramacy & Furong Sun)
 #   fill_final_row: uses kriging to fill final row of w_0/z_0
-#   clean_prediction: removes prediction elements from object
 #   exp_improv: calculates expected improvement
 #   calc_entropy: calculates entropy for two classes (pass/fail)
+#   ifel: returns second or third element depending on first argument
 # External (see documentation below):
 #   sq_dist
 #   score
@@ -42,16 +43,16 @@ krig <- function(y, dx, d_new = NULL, d_cross = NULL, theta, g, tau2 = 1,
   }
   
   if (s2) {
-    C_new <- rep(1 + g, times = nrow(d_new))
+    C_new <- rep(1 + g, times = nrow(d_cross))
     out$s2 <- tau2 * (C_new - diag_quad_mat(C_cross, C_inv))
   }
   
   if (sigma) {
-    quadterm <- C_cross %*% C_inv %*% t(C_cross)
+    quad_term <- C_cross %*% C_inv %*% t(C_cross)
     if (v == 999) {
       C_new <- Exp2(d_new, 1, theta, g)
     } else  C_new <- Matern(d_new, 1, theta, g, v) 
-    out$sigma <- tau2 * (C_new - quadterm)
+    out$sigma <- tau2 * (C_new - quad_term)
   }
   return(out)
 }
@@ -80,17 +81,16 @@ krig_sep <- function(y, x, x_new, theta, g, tau2 = 1,
   }
   
   if (s2) {
-    quadterm <- C_cross %*% C_inv %*% t(C_cross)
     C_new <- rep(1 + g, times = nrow(x_new))
-    out$s2 <- tau2 * (C_new - diag(quadterm))
+    out$s2 <- tau2 * (C_new - diag_quad_mat(C_cross, C_inv))
   }
   
   if (sigma) {
-    quadterm <- C_cross %*% C_inv %*% t(C_cross)
+    quad_term <- C_cross %*% C_inv %*% t(C_cross)
     if (v == 999) {
       C_new <- Exp2Sep(x_new, x_new, 1, theta, g)
     } else  C_new <- MaternSep(x_new, x_new, 1, theta, g, v) 
-    out$sigma <- tau2 * (C_new - quadterm)
+    out$sigma <- tau2 * (C_new - quad_term)
   }
   return(out)
 }
@@ -240,29 +240,6 @@ fill_final_row <- function(x, w_0, D, theta_w_0, v) {
   return(rbind(w_0, new_w))
 }
 
-# Clean Prediction ------------------------------------------------------------
-
-clean_prediction <- function(object) {
-  
-  class_store <- class(object)
-  if (!is.null(object$x_new)) 
-    object <- object[-which(names(object) == "x_new")]
-  if (!is.null(object$mean)) 
-    object <- object[-which(names(object) == "mean")]
-  if (!is.null(object$s2)) 
-    object <- object[-which(names(object) == "s2")]
-  if (!is.null(object$s2_smooth)) 
-    object <- object[-which(names(object) == "s2_smooth")]
-  if (!is.null(object$Sigma)) 
-    object <- object[-which(names(object) == "Sigma")]
-  if (!is.null(object$Sigma_smooth)) 
-    object[-which(names(object) == "Sigma_smooth")]
-  if (!is.null(object$EI)) 
-    object[-which(names(object) == "EI")]
-  class(object) <- class_store
-  return(object)
-}
-
 # EI --------------------------------------------------------------------------
 
 exp_improv <- function(mu, sig2, f_min) {
@@ -287,4 +264,12 @@ calc_entropy <- function(mu, sig2, limit) {
   ent[which(is.nan(ent))] <- 0
   
   return(ent)
+}
+
+# If else ---------------------------------------------------------------------
+
+ifel <- function(logical, yes, no) {
+  if (logical) {
+    return(yes)
+  } else return(no)
 }
