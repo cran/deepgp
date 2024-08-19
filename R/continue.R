@@ -49,7 +49,7 @@
 #' @return object of the same class with the new iterations appended
 #' 
 #' @examples 
-#' # See "fit_two_layer" for an example
+#' # See ?fit_two_layer for an example
 #' 
 #' @rdname continue
 #' @export
@@ -102,34 +102,59 @@ continue.gp <- function(object, new_mcmc = 1000, verb = TRUE, ...) {
 continue.dgp2 <- function(object, new_mcmc = 1000, verb = TRUE, ...) {
   
   tic <- proc.time()[[3]]
+
+  monowarp <- (!is.null(object$x_grid))
   
   # Use true nugget if it was specified
   if (length(unique(object$g)) == 1) true_g <- object$g[1] else true_g <- NULL
   
-  # Start MCMC at last samples
-  initial <- list(w = object$w[[object$nmcmc]],
-                  theta_y = object$theta_y[object$nmcmc],
-                  theta_w = object$theta_w[object$nmcmc, ],
-                  g = object$g[object$nmcmc],
-                  tau2 = object$tau2[object$nmcmc])
+  if (monowarp) {
+    initial <- list(w = monowarp_ref(object$x, object$x_grid, object$w_grid[[object$nmcmc]]),
+                    theta_y = object$theta_y[object$nmcmc, ],
+                    theta_w = object$theta_w[object$nmcmc, ],
+                    g = object$g[object$nmcmc],
+                    tau2 = object$tau2[object$nmcmc])
+    samples <- gibbs_two_layer_mono(x = object$x,
+                                    y = object$y,
+                                    x_grid = object$x_grid,
+                                    nmcmc = new_mcmc + 1,
+                                    D = ncol(object$theta_y),
+                                    verb = verb,
+                                    initial = initial,
+                                    true_g = true_g,
+                                    settings = object$settings,
+                                    v = object$v)
+  } else {
+    initial <- list(w = object$w[[object$nmcmc]],
+                    theta_y = object$theta_y[object$nmcmc],
+                    theta_w = object$theta_w[object$nmcmc, ],
+                    g = object$g[object$nmcmc],
+                    tau2 = object$tau2[object$nmcmc])
+    # Run continuing MCMC iterations
+    samples <- gibbs_two_layer(x = object$x, 
+                               y = object$y, 
+                               nmcmc = new_mcmc + 1, 
+                               D = ncol(object$w[[1]]), 
+                               verb = verb, 
+                               initial = initial, 
+                               true_g = true_g, 
+                               settings = object$settings, 
+                               v = object$v)
+  }
   
-  # Run continuing MCMC iterations
-  samples <- gibbs_two_layer(x = object$x, 
-                             y = object$y, 
-                             nmcmc = new_mcmc + 1, 
-                             D = ncol(object$w[[1]]), 
-                             verb = verb, 
-                             initial = initial, 
-                             true_g = true_g, 
-                             settings = object$settings, 
-                             v = object$v)
+  
 
   # Append new information to original fit
   object$nmcmc <- object$nmcmc + new_mcmc
   object$g <- c(object$g, samples$g[-1])
-  object$theta_y <- c(object$theta_y, samples$theta_y[-1])
+  if (monowarp) {
+    object$theta_y <- rbind(object$theta_y, samples$theta_y[-1, , drop = FALSE])
+    object$w_grid <- c(object$w_grid, samples$w_grid[-1])
+  } else {
+    object$theta_y <- c(object$theta_y, samples$theta_y[-1])
+    object$w <- c(object$w, samples$w[-1])
+  }
   object$theta_w <- rbind(object$theta_w, samples$theta_w[-1, , drop = FALSE])
-  object$w <- c(object$w, samples$w[-1])
   object$tau2 <- c(object$tau2, samples$tau2[-1])
   object$ll <- c(object$ll, samples$ll[-1])
   
@@ -241,49 +266,77 @@ continue.dgp2vec <- function(object, new_mcmc = 1000, verb = TRUE,
                              re_approx = FALSE, ...) {
   
   tic <- proc.time()[[3]]
+
+  monowarp <- (!is.null(object$x_grid))
   
   # Use true nugget if it was specified
   if (length(unique(object$g)) == 1) true_g <- object$g[1] else true_g <- NULL
   
-  # Start MCMC at last samples
-  initial <- list(w = object$w[[object$nmcmc]],
-                  theta_y = object$theta_y[object$nmcmc],
-                  theta_w = object$theta_w[object$nmcmc, ],
-                  g = object$g[object$nmcmc],
-                  tau2 = object$tau2[object$nmcmc])
-  
   # Optionally redo approximation
   if (re_approx) {
-    x_approx <- NULL
+    if (!monowarp) x_approx <- NULL
     w_approx <- NULL
   } else {
-    x_approx <- object$x_approx
+    if (!monowarp) x_approx <- object$x_approx
     w_approx <- object$w_approx
   }
-  
-  # Run continuing MCMC iterations
-  samples <- gibbs_two_layer_vec(x = object$x, 
-                                 y = object$y, 
-                                 nmcmc = new_mcmc + 1, 
-                                 D = ncol(object$w[[1]]), 
-                                 verb = verb, 
-                                 initial = initial, 
-                                 true_g = true_g, 
-                                 settings = object$settings, 
-                                 v = object$v, 
-                                 m = object$m, 
-                                 ordering = object$ordering,
-                                 x_approx = x_approx, 
-                                 w_approx = w_approx)
+
+  # Start MCMC at last samples
+  if (monowarp) {
+    inital <- list(w = monowarp_ref(object$x, object$xgrid, object$w_grid[[object$nmcmc]]),
+                   theta_y = object$theta_y[object$nmcmc, ],
+                   theta_w = object$theta_w[object$nmcmc, ],
+                   g = object$g[object$nmcmc],
+                   tau2 = object$tau2[object$nmcmc])
+
+    samples <- gibbs_two_layer_vec_mono(x = object$x,
+                                        y = object$y,
+                                        x_grid = object$x_grid,
+                                        nmcmc = new_mcmc + 1,
+                                        D = ncol(object$theta_y),
+                                        verb = verb,
+                                        initial = initial,
+                                        true_g = true_g,
+                                        settings = object$settings,
+                                        v = object$v,
+                                        m = object$m,
+                                        ordering = object$ordering,
+                                        w_approx = w_approx)
+  } else {
+    initial <- list(w = object$w[[object$nmcmc]],
+                    theta_y = object$theta_y[object$nmcmc],
+                    theta_w = object$theta_w[object$nmcmc, ],
+                    g = object$g[object$nmcmc],
+                    tau2 = object$tau2[object$nmcmc])
+
+    samples <- gibbs_two_layer_vec(x = object$x, 
+                                   y = object$y, 
+                                   nmcmc = new_mcmc + 1, 
+                                   D = ncol(object$w[[1]]), 
+                                   verb = verb, 
+                                   initial = initial, 
+                                   true_g = true_g, 
+                                   settings = object$settings, 
+                                   v = object$v, 
+                                   m = object$m, 
+                                   ordering = object$ordering,
+                                   x_approx = x_approx, 
+                                   w_approx = w_approx)
+  }
   
   # Append new information to original fit
   object$nmcmc <- object$nmcmc + new_mcmc
   object$g <- c(object$g, samples$g[-1])
-  object$theta_y <- c(object$theta_y, samples$theta_y[-1])
+  if (monowarp) {
+    object$theta_y <- rbind(object$theta_y, samples$theta_y[-1, , drop = FALSE])
+    object$w_grid <- c(object$w_grid, samples$w_grid[-1])
+  } else {
+    object$theta_y <- c(object$theta_y, samples$theta_y[-1])
+    object$w <- c(object$w, samples$w[-1])
+  }
   object$theta_w <- rbind(object$theta_w, samples$theta_w[-1, , drop = FALSE])
-  object$w <- c(object$w, samples$w[-1])
   object$tau2 <- c(object$tau2, samples$tau2[-1])
-  object$x_approx <- samples$x_approx
+  if (monowarp) object$x_approx <- samples$x_approx
   object$w_approx <- samples$w_approx
   object$ll <- c(object$ll, samples$ll[-1])
   

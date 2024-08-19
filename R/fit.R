@@ -37,13 +37,11 @@
 
 #'     Priors on \code{g} and \code{theta} follow Gamma distributions with 
 #'     shape parameters (\code{alpha}) and rate parameters (\code{beta}) 
-#'     controlled within the \code{settings} list object.  Defaults are
-#'     \itemize{
-#'         \item \code{settings$alpha$g <- 1.5}
-#'         \item \code{settings$beta$g <- 3.9}
-#'         \item \code{settings$alpha$theta <- 1.5}
-#'         \item \code{settings$beta$theta <- 3.9 / 1.5}
-#'     }
+#'     controlled within the \code{settings} list object.  
+#'     Defaults have been updated with package version 1.1.3.  Default priors differ
+#'     for noisy/deterministic settings and depend on whether \code{monowarp = TRUE}.  
+#'     All default values are visible in the internal
+#'     \code{deepgp:::check_settings} function.
 #'     These priors are designed for \code{x} scaled 
 #'     to [0, 1] and \code{y} scaled to have mean 0 and variance 1.  These may
 #'     be adjusted using the \code{settings} input.
@@ -95,34 +93,31 @@
 #' Sauer, A., Gramacy, R.B., & Higdon, D. (2023). Active learning for deep 
 #'     Gaussian process surrogates. *Technometrics, 65,* 4-18.  arXiv:2012.08015
 #'     \cr\cr
-#' Sauer, A., Cooper, A., & Gramacy, R. B. (2023). Vecchia-approximated deep 
-#'     Gaussian processes for computer experiments. 
-#'     *Journal of Computational and Graphical Statistics,* 1-14.  arXiv:2204.02904
+#' Sauer, A., Cooper, A., & Gramacy, R. B. (2023). Vecchia-approximated deep Gaussian 
+#'    processes for computer experiments. 
+#'    *Journal of Computational and Graphical Statistics, 32*(3), 824-837.  arXiv:2204.02904
 #' 
 #' @examples 
 #' # Additional examples including real-world computer experiments are available at: 
 #' # https://bitbucket.org/gramacylab/deepgp-ex/
 #' \donttest{
-#' # G function (https://www.sfu.ca/~ssurjano/gfunc.html)
-#' f <- function(xx, a = (c(1:length(xx)) - 1) / 2) { 
-#'     new1 <- abs(4 * xx - 2) + a
-#'     new2 <- 1 + a
-#'     prod <- prod(new1 / new2)
-#'     return((prod - 1) / 0.86)
+#' # Booth function (inspired by the Higdon function)
+#' f <- function(x) {
+#'   i <- which(x <= 0.58)
+#'   x[i] <- sin(pi * x[i] * 6) + cos(pi * x[i] * 12)
+#'   x[-i] <- 5 * x[-i] - 4.9
+#'   return(x)
 #' }
 #' 
 #' # Training data
-#' d <- 1 
-#' n <- 20
-#' x <- matrix(runif(n * d), ncol = d)
-#' y <- apply(x, 1, f)
+#' x <- seq(0, 1, length = 25)
+#' y <- f(x)
 #' 
 #' # Testing data
-#' n_test <- 100
-#' xx <- matrix(runif(n_test * d), ncol = d)
-#' yy <- apply(xx, 1, f)
+#' xx <- seq(0, 1, length = 200)
+#' yy <- f(xx)
 #' 
-#' plot(xx[order(xx)], yy[order(xx)], type = "l")
+#' plot(xx, yy, type = "l")
 #' points(x, y, col = 2)
 #' 
 #' # Example 1: full model (nugget fixed)
@@ -140,10 +135,10 @@
 #' plot(fit)
 #' par(new = TRUE) # overlay EI
 #' plot(xx[order(xx)], fit$EI[order(xx)], type = 'l', lty = 2, 
-#'       axes = FALSE, xlab = '', ylab = '')
-#'       
-#' # Example 3: Vecchia approximated model
-#' fit <- fit_one_layer(x, y, nmcmc = 2000, vecchia = TRUE, m = 10) 
+#' axes = FALSE, xlab = '', ylab = '')
+#' 
+#' # Example 3: Vecchia approximated model (nugget estimated)
+#' fit <- fit_one_layer(x, y, nmcmc = 2000, vecchia = TRUE, m = 10)
 #' plot(fit)
 #' fit <- trim(fit, 1000, 2)
 #' fit <- predict(fit, xx, cores = 1)
@@ -152,7 +147,7 @@
 #' 
 #' @export
 
-fit_one_layer <- function(x, y, nmcmc = 10000, sep = FALSE, verb = TRUE, g_0 = 0.01, 
+fit_one_layer <- function(x, y, nmcmc = 10000, sep = FALSE, verb = TRUE, g_0 = 0.001, 
                           theta_0 = 0.1, true_g = NULL, settings = NULL,
                           cov = c("matern", "exp2"), v = 2.5, 
                           vecchia = FALSE, m = min(25, length(y) - 1),
@@ -170,9 +165,8 @@ fit_one_layer <- function(x, y, nmcmc = 10000, sep = FALSE, verb = TRUE, g_0 = 0
   if (is.numeric(x)) x <- as.matrix(x)
   if (sep & ncol(x) == 1) sep <- FALSE # no need for separable theta in one dimension
   test <- check_inputs(x, y, true_g) # returns NULL if all checks pass
-  settings <- check_settings(settings, layers = 1)
-  initial <- list(theta = theta_0, g = g_0, tau2 = 1)
-  if (m >= length(y)) stop("m must be less than the length of y")
+  settings <- check_settings(settings, layers = 1, noisy = is.null(true_g))
+  if (vecchia & m >= length(y)) stop("m must be less than the length of y")
   if (cov == "matern")
     if(!(v %in% c(0.5, 1.5, 2.5))) 
       stop("v must be one of 0.5, 1.5, or 2.5")
@@ -180,6 +174,8 @@ fit_one_layer <- function(x, y, nmcmc = 10000, sep = FALSE, verb = TRUE, g_0 = 0
     if (!vecchia) message("ordering only used when vecchia = TRUE")
     test <- check_ordering(ordering, nrow(x)) # returns NULL if all checks pass
   }
+  initial <- list(theta = theta_0, g = g_0, tau2 = 1)
+  if (sep & (length(initial$theta) == 1)) initial$theta <- rep(initial$theta, ncol(x))
   
   # Create output object
   out <- list(x = x, y = y, nmcmc = nmcmc, settings = settings, v = v)
@@ -232,6 +228,21 @@ fit_one_layer <- function(x, y, nmcmc = 10000, sep = FALSE, verb = TRUE, g_0 = 0
 #'     leverage the Vecchia approximation with specified conditioning set size
 #'     \code{m}.  Vecchia approximation is only implemented for 
 #'     \code{cov = "matern"}.
+#'   
+#'     When \code{monowarp = TRUE}, each input dimension is warped separately and
+#'     monotonically.  This requires \code{D = ncol(x)}.  Monotonic warpings trigger
+#'     separable lengthscales on the outer layer (\code{theta_y}).  As a default, monotonic 
+#'     warpings use the reference grid: \code{seq(0, 1, length = 50)}.  The grid size 
+#'     may be controlled by passing a numeric integer to \code{monowarp}
+#'     (i.e., \code{monowarp = 100} uses the grid \code{seq(0, 1, length = 100)}).
+#'     Alternatively, any user-specified grid may be passed as the argument to 
+#'     \code{monowarp}.
+#'     
+#'     When \code{pmx = TRUE}, the prior on the latent layer is set at \code{x} 
+#'     (rather than the default of zero).  This requires \code{D = ncol(x)}.  If
+#'     \code{pmx} is set to a numeric value, then that value is used as the scale
+#'     parameter on the latent layer.  Specifying a small value here encourages
+#'     an identity mapping.
 #'     
 #'     NOTE on OpenMP: The Vecchia implementation relies on OpenMP parallelization
 #'     for efficient computation.  This function will produce a warning message 
@@ -250,15 +261,10 @@ fit_one_layer <- function(x, y, nmcmc = 10000, sep = FALSE, verb = TRUE, g_0 = 0
 #'     Priors on \code{g}, \code{theta_y}, and \code{theta_w} follow Gamma 
 #'     distributions with shape parameters (\code{alpha}) and rate parameters 
 #'     (\code{beta}) controlled within the \code{settings} list object.  
-#'     Defaults are
-#'     \itemize{
-#'         \item \code{settings$alpha$g <- 1.5}
-#'         \item \code{settings$beta$g <- 3.9}
-#'         \item \code{settings$alpha$theta_w <- 1.5}
-#'         \item \code{settings$beta$theta_w <- 3.9 / 4}
-#'         \item \code{settings$alpha$theta_y <- 1.5}
-#'         \item \code{settings$beta$theta_y <- 3.9 / 6}
-#'     }
+#'     Defaults have been updated with package version 1.1.3.  Default priors differ
+#'     for noisy/deterministic settings and depend on whether \code{monowarp = TRUE}.  
+#'     All default values are visible in the internal
+#'     \code{deepgp:::check_settings} function.
 #'     These priors are designed for \code{x} scaled to 
 #'     [0, 1] and \code{y} scaled to have mean 0 and variance 1.  These may be 
 #'     adjusted using the \code{settings} input.
@@ -277,8 +283,15 @@ fit_one_layer <- function(x, y, nmcmc = 10000, sep = FALSE, verb = TRUE, g_0 = 0
 #' @param nmcmc number of MCMC iterations
 #' @param D integer designating dimension of hidden layer, defaults to 
 #'        dimension of \code{x}
-#' @param pmx "prior mean X", logical indicating whether W should have prior
-#'        mean of X (\code{TRUE}, requires \code{D = ncol(X)}) or prior 
+#' @param monowarp indicates whether warpings should be forced to be 
+#'        monotonic.  Input may be a matrix of
+#'        grid points (or a vector which will be applied to every dimension)
+#'        for interpolation of the cumulative sum, an integer
+#'        specifying the number of grid points to use over the range [0, 1],
+#'        or simply the boolean \code{TRUE} which triggers 50 grid points
+#'        over the range [0, 1].
+#' @param pmx "prior mean x", logical indicating whether \code{w} should have 
+#'        prior mean of \code{x} (\code{TRUE}, requires \code{D = ncol(x)}) or prior 
 #'        mean zero (\code{FALSE}).  \code{pmx = TRUE} is recommended for
 #'        higher dimensions.  May be numeric, in which case the specified
 #'        argument is used as the scale (\code{tau2}) in the latent \code{w}
@@ -334,66 +347,74 @@ fit_one_layer <- function(x, y, nmcmc = 10000, sep = FALSE, verb = TRUE, g_0 = 0
 #' Sauer, A., Gramacy, R.B., & Higdon, D. (2023). Active learning for deep 
 #'     Gaussian process surrogates. *Technometrics, 65,* 4-18.  arXiv:2012.08015
 #'     \cr\cr
-#' Sauer, A., Cooper, A., & Gramacy, R. B. (2023). Vecchia-approximated deep 
-#'     Gaussian processes for computer experiments. 
-#'     *Journal of Computational and Graphical Statistics,* 1-14.  arXiv:2204.02904
+#' Sauer, A., Cooper, A., & Gramacy, R. B. (2023). Vecchia-approximated deep Gaussian 
+#'      processes for computer experiments. 
+#'      *Journal of Computational and Graphical Statistics, 32*(3), 824-837.  arXiv:2204.02904
+#'      \cr\cr
+#' Barnett, S., Beesley, L. J., Booth, A. S., Gramacy, R. B., & Osthus D. (2024). Monotonic 
+#'      warpings for additive and deep Gaussian processes. *In Review.* arXiv:2408.01540
 #' 
 #' @examples 
 #' # Additional examples including real-world computer experiments are available at: 
 #' # https://bitbucket.org/gramacylab/deepgp-ex/
 #' \donttest{
-#' # G function (https://www.sfu.ca/~ssurjano/gfunc.html)
-#' f <- function(xx, a = (c(1:length(xx)) - 1) / 2) { 
-#'     new1 <- abs(4 * xx - 2) + a
-#'     new2 <- 1 + a
-#'     prod <- prod(new1 / new2)
-#'     return((prod - 1) / 0.86)
+#' # Booth function (inspired by the Higdon function)
+#' f <- function(x) {
+#'   i <- which(x <= 0.58)
+#'   x[i] <- sin(pi * x[i] * 6) + cos(pi * x[i] * 12)
+#'   x[-i] <- 5 * x[-i] - 4.9
+#'   return(x)
 #' }
 #' 
 #' # Training data
-#' d <- 1 
-#' n <- 20
-#' x <- matrix(runif(n * d), ncol = d)
-#' y <- apply(x, 1, f)
+#' x <- seq(0, 1, length = 25)
+#' y <- f(x)
 #' 
 #' # Testing data
-#' n_test <- 100
-#' xx <- matrix(runif(n_test * d), ncol = d)
-#' yy <- apply(xx, 1, f)
+#' xx <- seq(0, 1, length = 200)
+#' yy <- f(xx)
 #' 
-#' plot(xx[order(xx)], yy[order(xx)], type = "l")
+#' plot(xx, yy, type = "l")
 #' points(x, y, col = 2)
 #' 
 #' # Example 1: full model (nugget estimated, using continue)
 #' fit <- fit_two_layer(x, y, nmcmc = 1000)
 #' plot(fit)
 #' fit <- continue(fit, 1000) 
-#' plot(fit) 
+#' plot(fit, hidden = TRUE) # trace plots and ESS samples 
 #' fit <- trim(fit, 1000, 2)
 #' fit <- predict(fit, xx, cores = 1)
-#' plot(fit, hidden = TRUE)
+#' plot(fit)
 #' 
-#' # Example 2: Vecchia approximated model
+#' # Example 2: Vecchia approximated model (nugget estimated)
 #' # (Vecchia approximation is faster for larger data sizes)
 #' fit <- fit_two_layer(x, y, nmcmc = 2000, vecchia = TRUE, m = 10)
-#' plot(fit) 
+#' plot(fit, hidden = TRUE) # trace plots and ESS samples
 #' fit <- trim(fit, 1000, 2)
 #' fit <- predict(fit, xx, cores = 1)
-#' plot(fit, hidden = TRUE)
+#' plot(fit)
 #' 
-#' # Example 3: Vecchia approximated model (re-approximated after burn-in)
+#' # Example 3: Vecchia approximated model, re-approximated after burn-in 
 #' fit <- fit_two_layer(x, y, nmcmc = 1000, vecchia = TRUE, m = 10)
 #' fit <- continue(fit, 1000, re_approx = TRUE)
-#' plot(fit)
+#' plot(fit, hidden = TRUE) # trace plots and ESS samples
 #' fit <- trim(fit, 1000, 2)
 #' fit <- predict(fit, xx, cores = 1)
-#' plot(fit, hidden = TRUE)
+#' plot(fit)
+#' 
+#' # Example 4: full model with monotonic warpings (nugget estimated)
+#' fit <- fit_two_layer(x, y, nmcmc = 2000, monowarp = TRUE)
+#' plot(fit, hidden = TRUE) # trace plots and ESS samples
+#' fit <- trim(fit, 1000, 2)
+#' fit <- predict(fit, xx, cores = 1)
+#' plot(fit)
 #' }
 #' 
 #' @export
 
 fit_two_layer <- function(x, y, nmcmc = 10000, D = ifelse(is.matrix(x), ncol(x), 1), 
-                          pmx = FALSE, verb = TRUE, w_0 = NULL, g_0 = 0.01,
+                          monowarp = FALSE, pmx = FALSE, 
+                          verb = TRUE, w_0 = NULL, g_0 = 0.001,
                           theta_y_0 = 0.1, theta_w_0 = 0.1, true_g = NULL,
                           settings = NULL, cov = c("matern", "exp2"), v = 2.5,
                           vecchia = FALSE, m = min(25, length(y) - 1),
@@ -410,12 +431,7 @@ fit_two_layer <- function(x, y, nmcmc = 10000, D = ifelse(is.matrix(x), ncol(x),
   # Check inputs
   if (is.numeric(x)) x <- as.matrix(x)
   test <- check_inputs(x, y, true_g) # returns NULL if all checks pass
-  settings <- check_settings(settings, layers = 2, D)
-  initial <- list(w = w_0, theta_y = theta_y_0, theta_w = theta_w_0, 
-                  g = g_0, tau2 = 1)
-  initial <- check_initialization(initial, layers = 2, x = x, D = D, 
-                                  vecchia = vecchia, v = v, m = m)
-  if (m >= length(y)) stop("m must be less than the length of y")
+  if (vecchia & m >= length(y)) stop("m must be less than the length of y")
   if (cov == "matern")
     if(!(v %in% c(0.5, 1.5, 2.5))) 
       stop("v must be one of 0.5, 1.5, or 2.5")
@@ -423,6 +439,45 @@ fit_two_layer <- function(x, y, nmcmc = 10000, D = ifelse(is.matrix(x), ncol(x),
     if (!vecchia) message("ordering only used when vecchia = TRUE")
     test <- check_ordering(ordering, nrow(x)) # returns NULL if all checks pass
   }
+  
+  # Check monotonic settings
+  if (is.numeric(monowarp)) { # anything except FALSE triggers monotonic warpings
+    if (length(monowarp) == 1) { # monowarp is integer specifying length of grid
+      grid <- seq(0, 1, length = monowarp)
+      x_grid <- matrix(grid, nrow = monowarp, ncol = ncol(x), byrow = FALSE)
+    } else { # monowarp may be a vector or a matrix
+      if (!is.matrix(monowarp)) monowarp <- matrix(monowarp, ncol = 1)
+      if (ncol(monowarp) == 1) { # monowarp is the grid for all dimensions
+        x_grid <- matrix(sort(monowarp), nrow = nrow(monowarp), ncol = ncol(x), byrow = FALSE)
+      } else { # monowarp is a matrix, must check dimensions, make sure ordered
+        if (ncol(monowarp) != ncol(x)) stop("dimension of monowarp does not match x")
+        x_grid <- monowarp
+        for (i in 1:ncol(x_grid)) x_grid[, i] <- sort(x_grid[, i])
+      }
+    }
+    monowarp <- TRUE
+  } else if (monowarp) {
+      x_grid <- matrix(seq(0, 1, length = 50), nrow = 50, ncol = ncol(x), byrow = FALSE)
+  } else {
+    x_grid <- NULL
+    monowarp <- FALSE
+  }
+  if (monowarp) {
+    for (i in 1:D) {
+      if (min(x[, i]) < min(x_grid[, i]) | max(x[, i]) > max(x_grid[, i]))
+        message("monowarp grid is narrower than range of x, consider scaling x to [0, 1]
+                  or manually specifying the monowarp grid")
+      }
+  }
+  if (monowarp & (ncol(x) != D)) stop("monowarp requires D = ncol(x)")
+
+  # Check settings and initial values
+  settings <- check_settings(settings, layers = 2, monowarp, is.null(true_g))
+  initial <- list(w = w_0, theta_y = theta_y_0, theta_w = theta_w_0, 
+                  g = g_0, tau2 = 1)
+  initial <- check_initialization(initial, layers = 2, x = x, D = D, 
+                                  vecchia = vecchia, v = v, m = m, 
+                                  monowarp = monowarp)
   
   # Check prior mean setting
   if (pmx == 0) pmx <- FALSE
@@ -436,7 +491,7 @@ fit_two_layer <- function(x, y, nmcmc = 10000, D = ifelse(is.matrix(x), ncol(x),
   settings$pmx <- pmx
   
   # Create output object
-  out <- list(x = x, y = y, nmcmc = nmcmc, settings = settings, v = v)
+  out <- list(x = x, y = y, x_grid = x_grid, nmcmc = nmcmc, settings = settings, v = v)
   if (vecchia) {
     out$m <- m
     out$ordering <- ordering
@@ -444,11 +499,21 @@ fit_two_layer <- function(x, y, nmcmc = 10000, D = ifelse(is.matrix(x), ncol(x),
 
   # Conduct MCMC
   if (vecchia) {
-    samples <- gibbs_two_layer_vec(x, y, nmcmc, D, verb, initial,
-                                   true_g, settings, v, m, ordering)
+    if (monowarp) {
+      samples <- gibbs_two_layer_vec_mono(x, y, x_grid, nmcmc, D, verb, initial,
+                                          true_g, settings, v, m, ordering)
+    } else {
+      samples <- gibbs_two_layer_vec(x, y, nmcmc, D, verb, initial,
+                                     true_g, settings, v, m, ordering)
+    }
   } else { 
-    samples <- gibbs_two_layer(x, y, nmcmc, D, verb, initial,
-                               true_g, settings, v)
+    if (monowarp) {
+      samples <- gibbs_two_layer_mono(x, y, x_grid, nmcmc, D, verb, initial,
+                                      true_g, settings, v)
+    } else {
+      samples <- gibbs_two_layer(x, y, nmcmc, D, verb, initial,
+                                 true_g, settings, v)
+    }
   } 
   
   out <- c(out, samples)
@@ -498,23 +563,17 @@ fit_two_layer <- function(x, y, nmcmc = 10000, D = ifelse(is.matrix(x), ncol(x),
 #'     Priors on \code{g}, \code{theta_y}, \code{theta_w}, and \code{theta_z} 
 #'     follow Gamma distributions with shape parameters (\code{alpha}) and rate 
 #'     parameters (\code{beta}) controlled within the \code{settings} list 
-#'     object.  Defaults are 
-#'     \itemize{
-#'         \item \code{settings$alpha$g <- 1.5}
-#'         \item \code{settings$beta$g <- 3.9}
-#'         \item \code{settings$alpha$theta_z <- 1.5}
-#'         \item \code{settings$beta$theta_z <- 3.9 / 4}
-#'         \item \code{settings$alpha$theta_w <- 1.5}
-#'         \item \code{settings$beta$theta_w <- 3.9 / 12}
-#'         \item \code{settings$alpha$theta_y <- 1.5}
-#'         \item \code{settings$beta$theta_y <- 3.9 / 6}
-#'     }
+#'     object.  Defaults have been updated with package version 1.1.3.  
+#'     Default priors differ for noisy/deterministic settings and 
+#'     depend on whether \code{monowarp = TRUE}.  All default values are 
+#'     visible in the internal \code{deepgp:::check_settings} function.
 #'     These priors are designed for \code{x} scaled to [0, 1] and \code{y} 
 #'     scaled to have mean 0 and variance 1.  These may be adjusted using the 
 #'     \code{settings} input.
 #'     
 #'     In the current version, the three-layer does not have any equivalent
-#'     setting for \code{pmx = TRUE} as in \code{fit_two_layer}.
+#'     setting for \code{monowarp = TRUE} or \code{pmx = TRUE} as in 
+#'     \code{fit_two_layer}.
 #'     
 #'     When \code{w_0 = NULL} and/or \code{z_0 = NULL}, the hidden layers are 
 #'     initialized at \code{x} (i.e. the identity mapping).  The default prior 
@@ -593,20 +652,20 @@ fit_two_layer <- function(x, y, nmcmc = 10000, D = ifelse(is.matrix(x), ncol(x),
 #' Sauer, A., Gramacy, R.B., & Higdon, D. (2023). Active learning for deep 
 #'     Gaussian process surrogates. *Technometrics, 65,* 4-18.  arXiv:2012.08015
 #'     \cr\cr
-#' Sauer, A., Cooper, A., & Gramacy, R. B. (2023). Vecchia-approximated deep 
-#'     Gaussian processes for computer experiments. 
-#'     *Journal of Computational and Graphical Statistics,* 1-14.  arXiv:2204.02904
+#' Sauer, A., Cooper, A., & Gramacy, R. B. (2023). Vecchia-approximated deep Gaussian 
+#'      processes for computer experiments. 
+#'      *Journal of Computational and Graphical Statistics, 32*(3), 824-837.  arXiv:2204.02904
 #' 
 #' @examples 
 #' # Additional examples including real-world computer experiments are available at: 
 #' # https://bitbucket.org/gramacylab/deepgp-ex/
 #' \donttest{
-#' # G function (https://www.sfu.ca/~ssurjano/gfunc.html)
+#' # G function in 2 dimensions (https://www.sfu.ca/~ssurjano/gfunc.html)
 #' f <- function(xx, a = (c(1:length(xx)) - 1) / 2) { 
-#'     new1 <- abs(4 * xx - 2) + a
-#'     new2 <- 1 + a
-#'     prod <- prod(new1 / new2)
-#'     return((prod - 1) / 0.86)
+#'   new1 <- abs(4 * xx - 2) + a
+#'   new2 <- 1 + a
+#'   prod <- prod(new1 / new2)
+#'   return((prod - 1) / 0.86)
 #' }
 #' 
 #' # Training data
@@ -616,27 +675,30 @@ fit_two_layer <- function(x, y, nmcmc = 10000, D = ifelse(is.matrix(x), ncol(x),
 #' y <- apply(x, 1, f)
 #' 
 #' # Testing data
-#' n_test <- 100
+#' n_test <- 500
 #' xx <- matrix(runif(n_test * d), ncol = d)
 #' yy <- apply(xx, 1, f)
 #' 
 #' i <- interp::interp(xx[, 1], xx[, 2], yy)
 #' image(i, col = heat.colors(128))
 #' contour(i, add = TRUE)
+#' contour(i, level = -0.5, col = 4, add = TRUE) # potential failure limit
 #' points(x)
 #' 
-#' # Example 1: full model (nugget estimated)
+#' # Example 1: full model (nugget estimated, entropy calculated)
 #' fit <- fit_three_layer(x, y, nmcmc = 2000)
 #' plot(fit)
 #' fit <- trim(fit, 1000, 2)
-#' fit <- predict(fit, xx, cores = 1)
+#' fit <- predict(fit, xx, entropy_limit = -0.5, cores = 1)
 #' plot(fit)
+#' i <- interp::interp(xx[, 1], xx[, 2], fit$entropy)
+#' image(i, col = heat.colors(128), main = "Entropy")
 #' 
 #' # Example 2: Vecchia approximated model (nugget fixed)
 #' # (Vecchia approximation is faster for larger data sizes)
 #' fit <- fit_three_layer(x, y, nmcmc = 2000, vecchia = TRUE, 
 #'                        m = 10, true_g = 1e-6)
-#' plot(fit) 
+#' plot(fit)
 #' fit <- trim(fit, 1000, 2)
 #' fit <- predict(fit, xx, cores = 1)
 #' plot(fit)
@@ -646,7 +708,7 @@ fit_two_layer <- function(x, y, nmcmc = 10000, D = ifelse(is.matrix(x), ncol(x),
 
 fit_three_layer <- function(x, y, nmcmc = 10000, D = ifelse(is.matrix(x), ncol(x), 1), 
                             verb = TRUE, w_0 = NULL, z_0 = NULL,
-                            g_0 = 0.01, theta_y_0 = 0.1, theta_w_0 = 0.1, 
+                            g_0 = 0.001, theta_y_0 = 0.1, theta_w_0 = 0.1, 
                             theta_z_0 = 0.1, true_g = NULL, settings = NULL,
                             cov = c("matern", "exp2"), v = 2.5, vecchia = FALSE, 
                             m = min(25, length(y) - 1), ordering = NULL) {
@@ -662,12 +724,8 @@ fit_three_layer <- function(x, y, nmcmc = 10000, D = ifelse(is.matrix(x), ncol(x
   # Check inputs
   if (is.numeric(x)) x <- as.matrix(x)
   test <- check_inputs(x, y, true_g)
-  settings <- check_settings(settings, layers = 3, D)
-  initial <- list(w = w_0, z = z_0, theta_y = theta_y_0, theta_w = theta_w_0, 
-                  theta_z = theta_z_0, g = g_0, tau2 = 1)
-  initial <- check_initialization(initial, layers = 3, x = x, D = D, 
-                                  vecchia = vecchia, v = v, m = m)
-  if (m >= length(y)) stop("m must be less than the length of y")
+  settings <- check_settings(settings, layers = 3, noisy = is.null(true_g))
+  if (vecchia & m >= length(y)) stop("m must be less than the length of y")
   if (cov == "matern")
     if(!(v %in% c(0.5, 1.5, 2.5))) 
       stop("v must be one of 0.5, 1.5, or 2.5")
@@ -675,6 +733,10 @@ fit_three_layer <- function(x, y, nmcmc = 10000, D = ifelse(is.matrix(x), ncol(x
     if (!vecchia) message("ordering only used when vecchia = TRUE")
     test <- check_ordering(ordering, nrow(x)) # returns NULL if all checks pass
   }
+  initial <- list(w = w_0, z = z_0, theta_y = theta_y_0, theta_w = theta_w_0, 
+                  theta_z = theta_z_0, g = g_0, tau2 = 1)
+  initial <- check_initialization(initial, layers = 3, x = x, D = D, 
+                                  vecchia = vecchia, v = v, m = m)
   
   # Create output object
   out <- list(x = x, y = y, nmcmc = nmcmc, settings = settings, v = v)

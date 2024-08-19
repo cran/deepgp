@@ -10,7 +10,7 @@
 # Vecchia Log Likelihood-------------------------------------------------------
 # Separable option is included directly, with input sep = TRUE
 
-logl_vec <- function(out_vec, approx, g, theta, outer = TRUE, v, tau2 = FALSE,
+logl_vec <- function(out_vec, approx, g, theta, outer = TRUE, v, calc_tau2 = FALSE,
                      sep = FALSE, mu = 0, scale = 1) {
   
   n <- length(out_vec)
@@ -27,7 +27,7 @@ logl_vec <- function(out_vec, approx, g, theta, outer = TRUE, v, tau2 = FALSE,
     logl <- logdet - 0.5 * ytUUty
   }
   
-  if (tau2) {
+  if (calc_tau2) {
     tau2 <- c(ytUUty) / n
   } else tau2 <- NULL
   
@@ -64,7 +64,7 @@ sample_g_vec <- function(y, g_t, theta, alpha, beta, l, u, ll_prev = NULL,
 # Sample Theta Vecchia --------------------------------------------------------
 
 sample_theta_vec <- function(y, g, theta_t, alpha, beta, l, u, outer, 
-                             ll_prev = NULL, approx, v, tau2 = FALSE,
+                             ll_prev = NULL, approx, v, calc_tau2 = FALSE,
                              prior_mean = 0, scale = 1) {
 
   # Propose value
@@ -78,7 +78,7 @@ sample_theta_vec <- function(y, g, theta_t, alpha, beta, l, u, outer,
   lpost_threshold <- ll_prev + dgamma(theta_t - eps, alpha, beta, log = TRUE) + 
                       log(ru) - log(theta_t) + log(theta_star)
   
-  ll_new <- logl_vec(y, approx, g, theta_star, outer, v, tau2 = tau2,
+  ll_new <- logl_vec(y, approx, g, theta_star, outer, v, calc_tau2 = calc_tau2,
                      mu = prior_mean, scale = scale)
 
   # Accept or reject (lower bound of eps)
@@ -91,10 +91,10 @@ sample_theta_vec <- function(y, g, theta_t, alpha, beta, l, u, outer,
 }
 
 # Sample Theta Vecchia SEPARABLE ----------------------------------------------
-# Only used in one-layer GP (outer = TRUE only)
+# Only used in one-layer GP or monotone two-layer (outer = TRUE only)
 
 sample_theta_vec_sep <- function(y, g, theta_t, index = 1, alpha, beta, l, u,
-                                 ll_prev = NULL, approx, v, tau2 = FALSE) {
+                                 ll_prev = NULL, approx, v, calc_tau2 = FALSE) {
   
   # Propose value
   theta_star <- runif(1, min = l * theta_t[index] / u, max = u * theta_t[index] / l)
@@ -109,7 +109,8 @@ sample_theta_vec_sep <- function(y, g, theta_t, index = 1, alpha, beta, l, u,
   lpost_threshold <- ll_prev + dgamma(theta_t[index] - eps, alpha, beta, log = TRUE) + 
     log(ru) - log(theta_t[index]) + log(theta_star)
   
-  ll_new <- logl_vec(y, approx, g, theta_t_updated, outer = TRUE, v, tau2 = tau2, sep = TRUE)
+  ll_new <- logl_vec(y, approx, g, theta_t_updated, outer = TRUE, v, 
+                     calc_tau2 = calc_tau2, sep = TRUE)
   
   # Accept or reject (lower bound of eps)
   new <- ll_new$logl + dgamma(theta_star - eps, alpha, beta, log = TRUE)
@@ -175,12 +176,82 @@ sample_w_vec <- function(y, w_approx, x_approx, g, theta_y, theta_w,
           amax <- a
         }
         a <- runif(1, amin, amax)
-        if (count > 100) stop('reached maximum iterations of ESS')
+        if (count > 100) stop("reached maximum iterations of ESS")
       } # end of else statement
     } # end of while loop
   } # end of i for loop
 
   return(list(w_approx = w_approx, ll = ll_prev))
+}
+
+# Elliptical Slice W Vecchia MONOTONE -----------------------------------------
+
+sample_w_vec_mono <- function(y, w_t_grid, w_approx, x, x_grid, dx_grid, 
+                              grid_index, g, theta_y, theta_w, ll_prev = NULL, 
+                              v, prior_mean = NULL, # defaults to zero
+                              scale = 1) {
+
+  D <- ncol(w_approx$x_ord) # dimension of hidden layer
+  if (is.null(ll_prev)) 
+    ll_prev <- logl_vec(y, w_approx, g, theta_y, outer = TRUE, v, sep = TRUE)$logl
+
+  for (i in 1:D) { # separate sampling for each dimension of hidden layer
+    # Check prior_mean
+    if (is.null(prior_mean)) {
+      pm <- rep(0, nrow(w_t_grid))
+    } else if (ncol(prior_mean) == 1) {
+      pm <- prior_mean
+    } else pm <- prior_mean[, i]
+
+    # Draw from prior distribution at grid locations
+    if (v == 999) {
+      sigma <- scale * Exp2(dx_grid[[i]], 1, theta_w[i], 0)
+    } else sigma <- scale * Matern(dx_grid[[i]], 1, theta_w[i], 0, v)
+    w_prior_grid <- t(mvtnorm::rmvnorm(1, mean = pm, sigma = sigma)) 
+    
+    # Initialize a and bounds on a
+    a <- runif(1, min = 0, max = 2 * pi)
+    amin <- a - 2 * pi
+    amax <- a
+
+    # Compute acceptance threshold - based on all dimensions of previous w
+    ru <- runif(1, min = 0, max = 1)
+    ll_threshold <- ll_prev + log(ru)
+
+    # Calculate proposed values, accept or reject, repeat if necessary
+    accept <- FALSE
+    count <- 0
+
+    while (accept == FALSE) {
+      count <- count + 1
+
+      # Calculate proposed values and new likelihood
+      w_new_grid <- w_t_grid[, i] * cos(a) + w_prior_grid * sin(a)
+      w_new_warp <- monowarp_ref(x[, i], x_grid[, i], w_new_grid, grid_index[, i])
+      
+      # Incorporate proposal in vecchia approximation object
+      w_approx <- update_obs_in_approx(w_approx, w_new_warp, i)
+      new_logl <- logl_vec(y, w_approx, g, theta_y, outer = TRUE, v, sep = TRUE)$logl
+
+      # Accept or reject
+      if (new_logl > ll_threshold) {
+        ll_prev <- new_logl
+        accept <- TRUE
+        w_t_grid[, i] <- w_new_grid
+      } else { 
+        # update the bounds on a and repeat
+        if (a < 0) {
+          amin <- a
+        } else {
+          amax <- a
+        }
+        a <- runif(1, amin, amax)
+        if (count > 100) stop("reached maximum iterations of ESS")
+      } # end of else statement
+    } # end of while loop
+  } # end of i for loop
+
+  return(list(w_grid = w_t_grid, w_approx = w_approx, ll = ll_prev))
 }
 
 # Elliptical Slice Z Vecchia --------------------------------------------------
@@ -241,7 +312,7 @@ sample_z_vec <- function(w, z_approx, x_approx, g, theta_w, theta_z,
           amax <- a
         }
         a <- runif(1, amin, amax)
-        if (count > 100) stop('reached maximum iterations of ESS')
+        if (count > 100) stop("reached maximum iterations of ESS")
       } # end of else statement
     } # end of while loop
   } # end of i for loop

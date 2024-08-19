@@ -2,7 +2,7 @@
 #include <math.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include "general.h"
+#include "misc.h"
 
 double pnorm(double x, double mu, double sigma, int lower_tail,
              int give_log);

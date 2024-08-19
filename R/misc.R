@@ -10,6 +10,8 @@
 #   exp_improv: calculates expected improvement
 #   calc_entropy: calculates entropy for two classes (pass/fail)
 #   ifel: returns second or third element depending on first argument
+#   monowarp_ref: uses cumulative sum on a reference grid to make warping monotonic
+#   fo_approx: linearly approximates along a reference grid
 # External (see documentation below):
 #   sq_dist
 #   score
@@ -179,6 +181,10 @@ sq_dist <- function(X1, X2 = NULL) {
 #' Gneiting, T, and AE Raftery. 2007. Strictly Proper Scoring Rules, Prediction, 
 #'     and Estimation. \emph{Journal of the American Statistical Association 102} 
 #'     (477), 359-378.
+#'     
+#' @examples
+#' # Additional examples including real-world computer experiments are available at: 
+#' # https://bitbucket.org/gramacylab/deepgp-ex/
 #' 
 #' @export
 
@@ -196,6 +202,10 @@ score <- function(y, mu, sigma) {
 #' 
 #' @param y response vector
 #' @param mu predicted mean
+#' 
+#' @examples
+#' # Additional examples including real-world computer experiments are available at: 
+#' # https://bitbucket.org/gramacylab/deepgp-ex/
 #' 
 #' @export
 
@@ -216,6 +226,11 @@ rmse <- function(y, mu) {
 #' Gneiting, T, and AE Raftery. 2007. Strictly Proper Scoring Rules, Prediction, 
 #'     and Estimation. \emph{Journal of the American Statistical Association 102} 
 #'     (477), 359-378.
+#'     
+#' @examples
+#' # Additional examples including real-world computer experiments are available at: 
+#' # https://bitbucket.org/gramacylab/deepgp-ex/
+#' 
 #' @export
 
 crps <- function(y, mu, s2) {
@@ -244,15 +259,11 @@ fill_final_row <- function(x, w_0, D, theta_w_0, v) {
 
 exp_improv <- function(mu, sig2, f_min) {
   
-  ei_store <- rep(0, times = length(mu))
-  i <- which(sig2 > eps)
-  mu_i <- mu[i]
-  sig_i <- sqrt(sig2[i])
-  ei <- (f_min - mu_i) * pnorm(f_min, mean = mu_i, sd = sig_i) + 
-    sig_i * dnorm(f_min, mean = mu_i, sd = sig_i)
-  ei_store[i] <- ei
+  s <- sqrt(sig2)
+  z <- (f_min - mu) / s
+  ei <- (f_min - mu)*pnorm(z) + s*dnorm(z)
   
-  return(ei_store)
+  return(ei)
 }
 
 # Entropy ---------------------------------------------------------------------
@@ -272,4 +283,50 @@ ifel <- function(logical, yes, no) {
   if (logical) {
     return(yes)
   } else return(no)
+}
+
+# Monowarp --------------------------------------------------------------------
+
+monowarp_ref <- function(x, xg, wg, index) {
+  # x: matrix of input locations for returned w
+  # xg: matrix of grid locations
+  # wg: matrix of w values at xg locations to be warped
+  if (!is.matrix(x)) x <- matrix(x, ncol = 1)
+  if (!is.matrix(xg)) xg <- matrix(xg, ncol = 1)
+  if (!is.matrix(wg)) wg <- matrix(wg, ncol = 1)
+  if (!is.matrix(index)) index <- matrix(index, ncol = 1)
+  
+  w <- matrix(nrow = nrow(x), ncol = ncol(wg))
+  for (i in 1:ncol(wg)) {
+    wg[, i] <- exp(wg[, i])
+    wg[, i] <- cumsum(wg[, i])
+    r <- range(wg[, i])
+    wg[, i] <- (wg[, i] - r[1]) / (r[2] - r[1])
+    w[, i] <- fo_approx(xg[, i], wg[, i], x[, i], index[, i])
+  }
+  return(w)
+}
+
+# Fixed order approx ----------------------------------------------------------
+# Implements linear approximation assuming that input locations are unchanged,
+# so their ordering may be pre-calculated.  Uses linear extrapolation outside
+# the range of the data.
+
+fo_approx <- function(xg, wg, x, index = NULL) {
+  # calculate slopes and intercepts between every adjacent pair
+  n <- length(wg)
+  slopes <- icepts <- rep(NA, n + 1)
+  slopes[-c(1, n + 1)] <- (wg[2:n] - wg[1:(n - 1)]) / (xg[2:n] - xg[1:(n - 1)])
+  icepts[-c(1, n + 1)] <- -slopes[-c(1, n + 1)] * xg[1:(n-1)] + wg[1:(n-1)] 
+    
+  # accommodating linear extrapolation outside the range
+  slopes[1] <- slopes[2]
+  slopes[n + 1] <- slopes[n]
+  icepts[1] <- icepts[2]
+  icepts[n + 1] <- icepts[n]
+
+  if (is.null(index)) index <- fo_approx_init(as.matrix(xg), as.matrix(x))
+      
+  # linear interpolation
+  return(x * slopes[index] + icepts[index])
 }

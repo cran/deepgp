@@ -181,8 +181,8 @@ All iterations in the object are used for prediction, so samples
     more memory storage.
 }
 \examples{
-# See "fit_one_layer", "fit_two_layer", or "fit_three_layer"
-# for an example
+# See ?fit_one_layer, ?fit_two_layer, or ?fit_three_layer
+# for examples
 
 }
 \references{
@@ -194,5 +194,8 @@ Sauer, A., Gramacy, R.B., & Higdon, D. (2023). Active learning for deep
      \cr\cr
 Sauer, A., Cooper, A., & Gramacy, R. B. (2023). Vecchia-approximated deep Gaussian 
      processes for computer experiments. 
-     *Journal of Computational and Graphical Statistics,* 1-14.  arXiv:2204.02904
+     *Journal of Computational and Graphical Statistics, 32*(3), 824-837.  arXiv:2204.02904
+     \cr\cr
+Barnett, S., Beesley, L. J., Booth, A. S., Gramacy, R. B., & Osthus D. (2024). Monotonic 
+     warpings for additive and deep Gaussian processes. *In Review.* arXiv:2408.01540
 }

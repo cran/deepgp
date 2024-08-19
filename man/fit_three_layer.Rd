@@ -12,7 +12,7 @@ fit_three_layer(
   verb = TRUE,
   w_0 = NULL,
   z_0 = NULL,
-  g_0 = 0.01,
+  g_0 = 0.001,
   theta_y_0 = 0.1,
   theta_w_0 = 0.1,
   theta_z_0 = 0.1,
@@ -141,23 +141,17 @@ Conducts MCMC sampling of hyperparameters, hidden layer
     Priors on \code{g}, \code{theta_y}, \code{theta_w}, and \code{theta_z} 
     follow Gamma distributions with shape parameters (\code{alpha}) and rate 
     parameters (\code{beta}) controlled within the \code{settings} list 
-    object.  Defaults are 
-    \itemize{
-        \item \code{settings$alpha$g <- 1.5}
-        \item \code{settings$beta$g <- 3.9}
-        \item \code{settings$alpha$theta_z <- 1.5}
-        \item \code{settings$beta$theta_z <- 3.9 / 4}
-        \item \code{settings$alpha$theta_w <- 1.5}
-        \item \code{settings$beta$theta_w <- 3.9 / 12}
-        \item \code{settings$alpha$theta_y <- 1.5}
-        \item \code{settings$beta$theta_y <- 3.9 / 6}
-    }
+    object.  Defaults have been updated with package version 1.1.3.  
+    Default priors differ for noisy/deterministic settings and 
+    depend on whether \code{monowarp = TRUE}.  All default values are 
+    visible in the internal \code{deepgp:::check_settings} function.
     These priors are designed for \code{x} scaled to [0, 1] and \code{y} 
     scaled to have mean 0 and variance 1.  These may be adjusted using the 
     \code{settings} input.
     
     In the current version, the three-layer does not have any equivalent
-    setting for \code{pmx = TRUE} as in \code{fit_two_layer}.
+    setting for \code{monowarp = TRUE} or \code{pmx = TRUE} as in 
+    \code{fit_two_layer}.
     
     When \code{w_0 = NULL} and/or \code{z_0 = NULL}, the hidden layers are 
     initialized at \code{x} (i.e. the identity mapping).  The default prior 
@@ -176,12 +170,12 @@ Conducts MCMC sampling of hyperparameters, hidden layer
 # Additional examples including real-world computer experiments are available at: 
 # https://bitbucket.org/gramacylab/deepgp-ex/
 \donttest{
-# G function (https://www.sfu.ca/~ssurjano/gfunc.html)
+# G function in 2 dimensions (https://www.sfu.ca/~ssurjano/gfunc.html)
 f <- function(xx, a = (c(1:length(xx)) - 1) / 2) { 
-    new1 <- abs(4 * xx - 2) + a
-    new2 <- 1 + a
-    prod <- prod(new1 / new2)
-    return((prod - 1) / 0.86)
+  new1 <- abs(4 * xx - 2) + a
+  new2 <- 1 + a
+  prod <- prod(new1 / new2)
+  return((prod - 1) / 0.86)
 }
 
 # Training data
@@ -191,27 +185,30 @@ x <- matrix(runif(n * d), ncol = d)
 y <- apply(x, 1, f)
 
 # Testing data
-n_test <- 100
+n_test <- 500
 xx <- matrix(runif(n_test * d), ncol = d)
 yy <- apply(xx, 1, f)
 
 i <- interp::interp(xx[, 1], xx[, 2], yy)
 image(i, col = heat.colors(128))
 contour(i, add = TRUE)
+contour(i, level = -0.5, col = 4, add = TRUE) # potential failure limit
 points(x)
 
-# Example 1: full model (nugget estimated)
+# Example 1: full model (nugget estimated, entropy calculated)
 fit <- fit_three_layer(x, y, nmcmc = 2000)
 plot(fit)
 fit <- trim(fit, 1000, 2)
-fit <- predict(fit, xx, cores = 1)
+fit <- predict(fit, xx, entropy_limit = -0.5, cores = 1)
 plot(fit)
+i <- interp::interp(xx[, 1], xx[, 2], fit$entropy)
+image(i, col = heat.colors(128), main = "Entropy")
 
 # Example 2: Vecchia approximated model (nugget fixed)
 # (Vecchia approximation is faster for larger data sizes)
 fit <- fit_three_layer(x, y, nmcmc = 2000, vecchia = TRUE, 
                        m = 10, true_g = 1e-6)
-plot(fit) 
+plot(fit)
 fit <- trim(fit, 1000, 2)
 fit <- predict(fit, xx, cores = 1)
 plot(fit)
@@ -225,7 +222,7 @@ Sauer, A. (2023). Deep Gaussian process surrogates for computer experiments.
 Sauer, A., Gramacy, R.B., & Higdon, D. (2023). Active learning for deep 
     Gaussian process surrogates. *Technometrics, 65,* 4-18.  arXiv:2012.08015
     \cr\cr
-Sauer, A., Cooper, A., & Gramacy, R. B. (2023). Vecchia-approximated deep 
-    Gaussian processes for computer experiments. 
-    *Journal of Computational and Graphical Statistics,* 1-14.  arXiv:2204.02904
+Sauer, A., Cooper, A., & Gramacy, R. B. (2023). Vecchia-approximated deep Gaussian 
+     processes for computer experiments. 
+     *Journal of Computational and Graphical Statistics, 32*(3), 824-837.  arXiv:2204.02904
 }

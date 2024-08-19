@@ -2,7 +2,7 @@
 
 Maintainer: Annie S. Booth (<annie_booth@ncsu.edu>)
 
-Performs Bayesian posterior inference for deep Gaussian processes following Sauer, Gramacy, and Higdon (2023).  See Sauer (2023) for comprehensive methodological details and <https://bitbucket.org/gramacylab/deepgp-ex/> for a variety of coding examples. Models are trained through MCMC including elliptical slice sampling of latent Gaussian layers and Metropolis-Hastings sampling of kernel hyperparameters.  Vecchia-approximation for faster computation is implemented following Sauer, Cooper, and Gramacy (2023).  Downstream tasks include sequential design through active learning Cohn/integrated mean squared error (ALC/IMSE; Sauer, Gramacy, and Higdon, 2023), optimization through expected improvement (EI; Gramacy, Sauer, and Wycoff, 2022), and contour location through entropy (Booth, Renganathan, and Gramacy, 2024).  Models extend up to three layers deep; a one layer model is equivalent to typical Gaussian process regression.  Incorporates OpenMP and SNOW parallelization and utilizes C/C++ under the hood.
+Performs Bayesian posterior inference for deep Gaussian processes following Sauer, Gramacy, and Higdon (2023).  See Sauer (2023) for comprehensive methodological details and <https://bitbucket.org/gramacylab/deepgp-ex/> for a variety of coding examples. Models are trained through MCMC including elliptical slice sampling of latent Gaussian layers and Metropolis-Hastings sampling of kernel hyperparameters.  Vecchia-approximation for faster computation is implemented following Sauer, Cooper, and Gramacy (2023).  Optional monotonic warpings are implemented following Barnett et al. (2024).  Downstream tasks include sequential design through active learning Cohn/integrated mean squared error (ALC/IMSE; Sauer, Gramacy, and Higdon, 2023), optimization through expected improvement (EI; Gramacy, Sauer, and Wycoff, 2022), and contour location through entropy (Booth, Renganathan, and Gramacy, 2024).  Models extend up to three layers deep; a one layer model is equivalent to typical Gaussian process regression.  Incorporates OpenMP and SNOW parallelization and utilizes C/C++ under the hood.
 
 Run `help("deepgp-package")` or `help(package = "deepgp")` for more information.
 
@@ -16,9 +16,19 @@ Sauer, A., Cooper, A., & Gramacy, R. B. (2023). Vecchia-approximated deep Gaussi
 
 Gramacy, R. B., Sauer, A. & Wycoff, N. (2022). Triangulation candidates for Bayesian optimization.  *Advances in Neural Information Processing Systems (NeurIPS), 35,* 35933-35945.  arXiv:2112.07457
 
-Booth, A., Renganathan, S. A. & Gramacy, R. B. (2024). Contour location for reliability in airfoil simulation experiments using deep Gaussian processes. *In Review.* arXiv:2308.04420
+Booth, A. S., Renganathan, S. A. & Gramacy, R. B. (2024). Contour location for reliability in airfoil simulation experiments using deep Gaussian processes. *In Review.* arXiv:2308.04420
+
+Barnett, S., Beesley, L. J., Booth, A. S., Gramacy, R. B., & Osthus D. (2024). Monotonic warpings for additive and deep Gaussian processes. *In Review.* arXiv:2408.01540
 
 ## Version History
+
+What's new in version 1.1.3?
+
+* Option to force monotonic warpings in the two-layer DGP with the argument `monowarp = TRUE` to `fit_two_layer`.  Monotonic warpings trigger separable lengthscales on the outer layer.
+* Updated default prior values on lengthscales and nugget for noisy settings (when `true_g = NULL`)
+* Minor bug fix in Gibbs updating of separable lengthscale sampling in `fit_one_layer`
+* Some improvements to default plotting
+* Updated package examples and vignette
 
 What's new in version 1.1.2?
 

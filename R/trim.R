@@ -31,8 +31,8 @@
 #' @return object of the same class with the selected iterations removed
 #' 
 #' @examples 
-#' # See "fit_one_layer", "fit_two_layer", or "fit_three_layer"
-#' # for an example
+#' # See ?fit_one_layer, ?fit_two_layer, or ?fit_three_layer
+#' # for examples
 #' 
 #' @rdname trim
 #' @export
@@ -83,6 +83,8 @@ trim.dgp2 <- function(object, burn, thin = 1) {
   tic <- proc.time()[3]
   
   if (burn >= object$nmcmc) stop('burn must be less than nmcmc')
+
+  monowarp <- (!is.null(object$x_grid))
   
   nmcmc <- object$nmcmc
   indx <- (burn + 1):nmcmc
@@ -90,9 +92,14 @@ trim.dgp2 <- function(object, burn, thin = 1) {
   
   object$nmcmc <- length(indx)
   object$g <- object$g[indx, drop = FALSE]
-  object$theta_y <- object$theta_y[indx, drop = FALSE]
   object$theta_w <- object$theta_w[indx, , drop = FALSE]
-  object$w <- as.list(object$w[indx])
+  if (monowarp) {
+    object$theta_y <- object$theta_y[indx, , drop = FALSE]
+    object$w_grid <- as.list(object$w_grid[indx])
+  } else {
+    object$theta_y <- object$theta_y[indx, drop = FALSE]
+    object$w <- as.list(object$w[indx])
+  }
   object$tau2 <- object$tau2[indx, drop = FALSE]
   object$ll <- object$ll[indx, drop = FALSE]
   

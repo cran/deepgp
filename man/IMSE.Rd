@@ -61,6 +61,9 @@ Not yet implemented for Vecchia-approximated fits or Matern kernels.
     SNOW parallelization reduces computation time but requires more memory storage.
 }
 \examples{
+# Additional examples including real-world computer experiments are available at: 
+# https://bitbucket.org/gramacylab/deepgp-ex/
+
 # --------------------------------------------------------
 # Example 1: toy step function, runs in less than 5 seconds
 # --------------------------------------------------------
@@ -119,8 +122,8 @@ imse <- IMSE(fit)
 # Visualize fit
 plot(fit)
 par(new = TRUE) # overlay IMSE
-plot(xx, imse$value, col = 2, type = 'l', lty = 2, 
-     axes = FALSE, xlab = '', ylab = '')
+plot(xx, imse$value, col = 2, type = 'l', lty = 2, axes = FALSE, 
+     xlab = '', ylab = '')
 
 # Select next design point
 x_new <- xx[which.min(imse$value)]

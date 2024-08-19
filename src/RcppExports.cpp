@@ -7,6 +7,19 @@ Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
 Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
+// fo_approx_init
+NumericMatrix fo_approx_init(const NumericMatrix xg, const NumericMatrix x);
+RcppExport SEXP _deepgp_fo_approx_init(SEXP xgSEXP, SEXP xSEXP) {
+    BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const NumericMatrix >::type xg(xgSEXP);
+    Rcpp::traits::input_parameter< const NumericMatrix >::type x(xSEXP);
+    rcpp_result_gen = Rcpp::wrap(fo_approx_init(xg, x));
+    return rcpp_result_gen;
+    END_RCPP
+}
+
 // forward_solve
 NumericVector forward_solve_raw(NumericMatrix U, NumericVector z,
                             NumericMatrix NNarray);
@@ -205,6 +218,7 @@ extern "C" {
 }
 
 static const R_CallMethodDef CallEntries[] = {
+    {"_deepgp_fo_approx_init",     (DL_FUNC) &_deepgp_fo_approx_init,     2},
     {"_deepgp_forward_solve_raw",  (DL_FUNC) &_deepgp_forward_solve_raw,  3},
     {"_deepgp_diag_quad_mat",      (DL_FUNC) &_deepgp_diag_quad_mat,      2},
     {"_deepgp_rev_matrix",         (DL_FUNC) &_deepgp_rev_matrix,         1},

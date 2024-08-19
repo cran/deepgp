@@ -5,7 +5,7 @@
 #include <Rmath.h>
 #include <R.h>
 #include <Rinternals.h>
-#include "general.h"
+#include "misc.h"
 
 #ifndef CBLAS_ENUM_DEFINED_H
 #define CBLAS_ENUM_DEFINED_H

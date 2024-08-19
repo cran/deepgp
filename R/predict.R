@@ -93,12 +93,15 @@
 #'      \cr\cr
 #' Sauer, A., Cooper, A., & Gramacy, R. B. (2023). Vecchia-approximated deep Gaussian 
 #'      processes for computer experiments. 
-#'      *Journal of Computational and Graphical Statistics,* 1-14.  arXiv:2204.02904
-#' 
+#'      *Journal of Computational and Graphical Statistics, 32*(3), 824-837.  arXiv:2204.02904
+#'      \cr\cr
+#' Barnett, S., Beesley, L. J., Booth, A. S., Gramacy, R. B., & Osthus D. (2024). Monotonic 
+#'      warpings for additive and deep Gaussian processes. *In Review.* arXiv:2408.01540
+#'
 #' @examples 
-#' # See "fit_one_layer", "fit_two_layer", or "fit_three_layer"
-#' # for an example
-#' 
+#' # See ?fit_one_layer, ?fit_two_layer, or ?fit_three_layer
+#' # for examples
+#'
 #' @rdname predict
 NULL
 
@@ -151,23 +154,33 @@ predict_nonvec <- function(object, x_new, settings, layers) {
   
   tic <- proc.time()[[3]]
   if (is.numeric(x_new)) x_new <- as.matrix(x_new)
+  monowarp <- (!is.null(object$x_grid))
   object$x_new <- x_new
   n_new <- nrow(object$x_new)
+
+  if (monowarp) {
+     grid_index <- fo_approx_init(object$x_grid, object$x)
+     grid_index_new <- fo_approx_init(object$x_grid, x_new)
+  }
+
   if (layers >= 2) {
-    D <- ncol(object$w[[1]]) # dimension of latent layer(s)
+    if (monowarp) D <- ncol(object$w_grid[[1]]) else D <- ncol(object$w[[1]]) 
     if (settings$lite & !settings$mean_map)
       stop("mean_map = FALSE requires lite = FALSE")
     if (!settings$mean_map) 
       message("mean_map = FALSE may cause numerical instability in latent layer mapping")
   }
+
   if (layers == 1) {
     sep <- is.matrix(object$theta)
-  } else sep <- FALSE # two and three layers never use separable lengthscales
+  } else sep <- monowarp # separable lengthscales only used in monotonic warpings
+
   if (!sep) {
     dx <- sq_dist(object$x)
     dx_cross <- sq_dist(object$x_new, object$x)
     if (!settings$lite) dx_new <- sq_dist(object$x_new) else dx_new <- NULL
   }
+
   if (settings$return_all & !settings$lite) 
     stop("return_all only offered when lite = TRUE")
   if (!is.null(settings$entropy_limit) & !is.numeric(settings$entropy_limit))
@@ -222,37 +235,48 @@ predict_nonvec <- function(object, x_new, settings, layers) {
       if (layers >= 2) {
         # 2 layers: map x_new to w_new (separately for each dimension)
         # 3 layers: map z_new to w_new (separately for each dimension)
-        w_t <- object$w[[t]]
-        w_new <- matrix(nrow = n_new, ncol = D)
-        for (i in 1:D) {
-          if (layers == 2) {
-            if (object$settings$pmx) { # Optional prior mean of x
-              prior_mean_new <- x_new[, i]
-              prior_mean <- object$x[, i]
-              prior_tau2 <- object$settings$inner_tau2
-            }
-          } 
-          k <- krig(w_t[, i], ifel(layers == 2, dx, dz), 
+        if (monowarp) { # simply get the monowarped values at x_new locations
+          w_grid_t <- object$w_grid[[t]]
+          w_t <- monowarp_ref(object$x, object$x_grid, w_grid_t, grid_index)
+          w_new <- monowarp_ref(x_new, object$x_grid, w_grid_t, grid_index_new)
+        } else {
+          w_t <- object$w[[t]]
+          w_new <- matrix(nrow = n_new, ncol = D)
+          for (i in 1:D) {
+            if (layers == 2) {
+              if (object$settings$pmx) { # Optional prior mean of x
+                prior_mean_new <- x_new[, i]
+                prior_mean <- object$x[, i]
+                prior_tau2 <- object$settings$inner_tau2
+              }
+            } 
+            k <- krig(w_t[, i], 
+                    ifel(layers == 2, dx, dz), 
                     ifel(layers == 2, dx_new, dz_new),
                     ifel(layers == 2, dx_cross, dz_cross),
                     object$theta_w[t, i], g = eps, tau2 = prior_tau2,
                     sigma = !settings$mean_map,
                     v = object$v, prior_mean = prior_mean,
                     prior_mean_new = prior_mean_new)
-          if (settings$mean_map) {
-            w_new[, i] <- k$mean
-          } else w_new[, i] <- mvtnorm::rmvnorm(1, k$mean, k$sigma)
-        } # end of i for loop
+            if (settings$mean_map) {
+              w_new[, i] <- k$mean
+            } else w_new[, i] <- mvtnorm::rmvnorm(1, k$mean, k$sigma)
+          } # end of i for loop
+          dw <- sq_dist(w_t)
+          dw_cross <- sq_dist(w_new, w_t)
+          if (!settings$lite) dw_new <- sq_dist(w_new) else dw_new <- NULL
+        } # end of monowarp else statement
         if (settings$store_latent) w_new_list[[t]] <- w_new
-        dw <- sq_dist(w_t)
-        dw_cross <- sq_dist(w_new, w_t)
-        if (!settings$lite) dw_new <- sq_dist(w_new) else dw_new <- NULL
       }
       
       # 1 layer: map x_new to y
       # 2 and 3 layers: map w_new to y
-      if (sep) { # only occurs in one layer
-        k <- krig_sep(object$y, object$x, x_new, object$theta[t, ], object$g[t], 
+      if (sep) { # only occurs in one layer or monowarped two-layer
+        k <- krig_sep(object$y, 
+                      ifel(monowarp, w_t, object$x), 
+                      ifel(monowarp, w_new, x_new), 
+                      ifel(monowarp, object$theta_y[t, ], object$theta[t, ]), 
+                      object$g[t], 
                       object$tau2[t], s2 = settings$lite, 
                       sigma = !settings$lite, f_min = f_min, 
                       v = object$v)
@@ -333,37 +357,47 @@ predict_nonvec <- function(object, x_new, settings, layers) {
         if (layers >= 2) {
           # 2 layers: map x_new to w_new (separately for each dimension)
           # 3 layers: map z_new to w_new (separately for each dimension)
-          w_t <- object$w[[t]]
-          w_new <- matrix(nrow = n_new, ncol = D)
-          for (i in 1:D) {
-            if (layers == 2) {
-              if (object$settings$pmx) { # Optional prior mean of x
-                prior_mean_new <- x_new[, i]
-                prior_mean <- object$x[, i]
-                prior_tau2 <- object$settings$inner_tau2
-              }
-            } 
-            k <- krig(w_t[, i], ifel(layers == 2, dx, dz), 
-                      ifel(layers == 2, dx_new, dz_new),
-                      ifel(layers == 2, dx_cross, dz_cross),
-                      object$theta_w[t, i], g = eps, tau2 = prior_tau2,
-                      sigma = !settings$mean_map,
-                      v = object$v, prior_mean = prior_mean,
-                      prior_mean_new = prior_mean_new)
-            if (settings$mean_map) {
-              w_new[, i] <- k$mean
-            } else w_new[, i] <- mvtnorm::rmvnorm(1, k$mean, k$sigma)
-          } # end of i for loop
+          if (monowarp) { # simply get the monowarped values at x_new locations
+            w_grid_t <- object$w_grid[[t]]
+            w_t <- monowarp_ref(object$x, object$x_grid, w_grid_t, grid_index)
+            w_new <- monowarp_ref(x_new, object$x_grid, w_grid_t, grid_index_new)
+          } else {
+            w_t <- object$w[[t]]
+            w_new <- matrix(nrow = n_new, ncol = D)
+            for (i in 1:D) {
+              if (layers == 2) {
+                if (object$settings$pmx) { # Optional prior mean of x
+                  prior_mean_new <- x_new[, i]
+                  prior_mean <- object$x[, i]
+                  prior_tau2 <- object$settings$inner_tau2
+                }
+              } 
+              k <- krig(w_t[, i], ifel(layers == 2, dx, dz), 
+                        ifel(layers == 2, dx_new, dz_new),
+                        ifel(layers == 2, dx_cross, dz_cross),
+                        object$theta_w[t, i], g = eps, tau2 = prior_tau2,
+                        sigma = !settings$mean_map,
+                        v = object$v, prior_mean = prior_mean,
+                        prior_mean_new = prior_mean_new)
+              if (settings$mean_map) {
+                w_new[, i] <- k$mean
+              } else w_new[, i] <- mvtnorm::rmvnorm(1, k$mean, k$sigma)
+            } # end of i for loop
+            dw <- sq_dist(w_t)
+            dw_cross <- sq_dist(w_new, w_t)
+            if (!settings$lite) dw_new <- sq_dist(w_new) else dw_new <- NULL
+          } # end of monowarp if statement
           if (settings$store_latent) out$w_new[[t]] <- w_new
-          dw <- sq_dist(w_t)
-          dw_cross <- sq_dist(w_new, w_t)
-          if (!settings$lite) dw_new <- sq_dist(w_new) else dw_new <- NULL
         }
         
         # 1 layer: map x_new to y
         # 2 and 3 layers: map w_new to y
-        if (sep) { # only occurs in one layer
-          k <- krig_sep(object$y, object$x, x_new, object$theta[t, ], object$g[t], 
+        if (sep) { # only occurs in one layer or monowarped two-layer
+          k <- krig_sep(object$y, 
+                        ifel(monowarp, w_t, object$x), 
+                        ifel(monowarp, w_new, x_new), 
+                        ifel(monowarp, object$theta_y[t, ], object$theta[t, ]), 
+                        object$g[t], 
                         object$tau2[t], s2 = settings$lite, 
                         sigma = !settings$lite, f_min = f_min, 
                         v = object$v)

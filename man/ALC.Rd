@@ -68,6 +68,9 @@ Not yet implemented for Vecchia-approximated fits or Matern kernels.
     Furong Sun).
 }
 \examples{
+# Additional examples including real-world computer experiments are available at: 
+# https://bitbucket.org/gramacylab/deepgp-ex/
+
 # --------------------------------------------------------
 # Example 1: toy step function, runs in less than 5 seconds
 # --------------------------------------------------------
@@ -123,8 +126,7 @@ alc <- ALC(fit)
 # Visualize fit
 plot(fit)
 par(new = TRUE) # overlay ALC
-plot(xx, alc$value, type = 'l', lty = 2, 
-     axes = FALSE, xlab = '', ylab = '')
+plot(xx, alc$value, type = 'l', lty = 2, axes = FALSE, xlab = '', ylab = '')
 
 # Select next design point
 x_new <- xx[which.max(alc$value)]

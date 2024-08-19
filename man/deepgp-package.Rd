@@ -13,7 +13,8 @@ a variety of coding examples. Models are trained through MCMC including
 elliptical slice sampling of latent Gaussian layers and Metropolis-Hastings 
 sampling of kernel hyperparameters.  Vecchia-approximation for faster 
 computation is implemented following Sauer, Cooper, and Gramacy 
-(2023).  Downstream tasks include sequential design 
+(2023).  Optional monotonic warpings are implemented following 
+Barnett et al. (2024).  Downstream tasks include sequential design 
 through active learning Cohn/integrated mean squared error (ALC/IMSE; Sauer, 
 Gramacy, and Higdon, 2023), optimization through expected improvement 
 (EI; Gramacy, Sauer, and Wycoff, 2022), and contour 
@@ -47,8 +48,8 @@ the hood.
 }
 
 \examples{
-# See "fit_one_layer", "fit_two_layer", "fit_three_layer", 
-# "ALC", or "IMSE" for examples
+# See vignette, ?fit_one_layer, ?fit_two_layer, ?fit_three_layer, 
+# ?ALC, or ?IMSE for examples
 # Many more examples including real-world computer experiments are available at: 
 # https://bitbucket.org/gramacylab/deepgp-ex/
 
@@ -63,7 +64,7 @@ Sauer, A., Gramacy, R.B., & Higdon, D. (2023). Active learning for deep
      \cr\cr
 Sauer, A., Cooper, A., & Gramacy, R. B. (2023). Vecchia-approximated deep Gaussian 
      processes for computer experiments. 
-     *Journal of Computational and Graphical Statistics,* 1-14.  arXiv:2204.02904
+     *Journal of Computational and Graphical Statistics, 32*(3), 824-837.  arXiv:2204.02904
      \cr\cr
 Gramacy, R. B., Sauer, A. & Wycoff, N. (2022). Triangulation candidates for Bayesian 
     optimization.  *Advances in Neural Information Processing Systems (NeurIPS), 35,* 
@@ -72,6 +73,9 @@ Gramacy, R. B., Sauer, A. & Wycoff, N. (2022). Triangulation candidates for Baye
 Booth, A., Renganathan, S. A. & Gramacy, R. B. (2024). Contour location for 
     reliability in airfoil simulation experiments using deep Gaussian 
     processes. *In Review.* arXiv:2308.04420
+
+Barnett, S., Beesley, L. J., Booth, A. S., Gramacy, R. B., & Osthus D. (2024). 
+    Monotonic warpings for additive and deep Gaussian processes. *In Review.* arXiv:2408.01540
 }
 \author{
 Annie S. Booth \email{annie_booth@ncsu.edu}

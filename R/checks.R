@@ -9,43 +9,81 @@
 
 # Check Settings --------------------------------------------------------------
 
-check_settings <- function(settings, layers = 1, D = NULL) {
+check_settings <- function(settings, layers = 1, monowarp = FALSE,
+                           noisy = FALSE) {
   
   if (is.null(settings$l)) settings$l <- 1
   if (is.null(settings$u)) settings$u <- 2
   
-  if (is.null(settings$alpha$g)) settings$alpha$g <- 1.5
-  if (is.null(settings$beta$g)) settings$beta$g <- 3.9
-  
-  if (layers == 1) {
+  if (noisy) {
+    if (is.null(settings$alpha$g)) settings$alpha$g <- 1.01
+    if (is.null(settings$beta$g)) settings$beta$g <- 10
+      # mode = 0.001, 95% quantile = 0.3
     
-    if (is.null(settings$alpha$theta)) settings$alpha$theta <- 1.5
-    if (is.null(settings$beta$theta)) settings$beta$theta <- 3.9/1.5
-    
-  } else if (layers == 2) {
-    
-    if (is.null(settings$alpha$theta_w)) settings$alpha$theta_w <- 1.5
-    if (is.null(settings$alpha$theta_y)) settings$alpha$theta_y <- 1.5
-    if (is.null(settings$beta$theta_w)) settings$beta$theta_w <- 3.9/4
-    if (is.null(settings$beta$theta_y)) settings$beta$theta_y <- 3.9/6
-    
-  } else if (layers == 3) {
-    
-    if (is.null(settings$alpha$theta_z)) settings$alpha$theta_z <- 1.5
-    if (is.null(settings$alpha$theta_w)) settings$alpha$theta_w <- 1.5
-    if (is.null(settings$alpha$theta_y)) settings$alpha$theta_y <- 1.5
-    if (is.null(settings$beta$theta_z)) settings$beta$theta_z <- 3.9/4
-    if (is.null(settings$beta$theta_w)) settings$beta$theta_w <- 3.9/12
-    if (is.null(settings$beta$theta_y)) settings$beta$theta_y <- 3.9/6
-  
+    if (layers == 1) {
+      if (is.null(settings$alpha$theta)) settings$alpha$theta <- 1.2
+      if (is.null(settings$beta$theta)) settings$beta$theta <- 4
+        # mode = 0.05, 95% quantile = 0.84
+    } else if (layers == 2) {
+      if (monowarp) { # theta_w should be wiggly, theta_y acts on [0, 1]
+        if (is.null(settings$alpha$theta_w)) settings$alpha$theta_w <- 1.2
+        if (is.null(settings$beta$theta_w)) settings$beta$theta_w <- 10
+          # mode = 0.02, 95% quantile = 0.34
+        if (is.null(settings$alpha$theta_y)) settings$alpha$theta_y <- 1.2
+        if (is.null(settings$beta$theta_y)) settings$beta$theta_y <- 4
+          # mode = 0.05, 95% quantile = 0.84
+      } else { # theta_y acts on standard normal range ~ [-2, 2]
+        if (is.null(settings$alpha$theta_w)) settings$alpha$theta_w <- 1.2
+        if (is.null(settings$beta$theta_w)) settings$beta$theta_w <- 2
+          # mode = 0.1, 95% quantile = 1.7  
+        if (is.null(settings$alpha$theta_y)) settings$alpha$theta_y <- 1.2
+        if (is.null(settings$beta$theta_y)) settings$beta$theta_y <- 1
+          # mode = 0.2, 95% quantile = 3.4
+      }
+    } else if (layers == 3) {
+      if (is.null(settings$alpha$theta_z)) settings$alpha$theta_z <- 1.2
+      if (is.null(settings$beta$theta_z)) settings$beta$theta_z <- 2
+      if (is.null(settings$alpha$theta_w)) settings$alpha$theta_w <- 1.2
+      if (is.null(settings$beta$theta_w)) settings$beta$theta_w <- 0.8
+      if (is.null(settings$beta$theta_y)) settings$beta$theta_y <- 1.2
+      if (is.null(settings$alpha$theta_y)) settings$alpha$theta_y <- 1
+    }
+  } else { # Original default values 
+    if (layers == 1) {
+      if (is.null(settings$alpha$theta)) settings$alpha$theta <- 1.5
+      if (is.null(settings$beta$theta)) settings$beta$theta <- 3.9/1.5
+    } else if (layers == 2) {
+      if (monowarp) { # theta_w should be wiggly, theta_y acts on [0, 1]
+        if (is.null(settings$alpha$theta_w)) settings$alpha$theta_w <- 1.2
+        if (is.null(settings$beta$theta_w)) settings$beta$theta_w <- 10
+          # mode = 0.02, 95% quantile = 0.34
+        if (is.null(settings$alpha$theta_y)) settings$alpha$theta_y <- 1.2
+        if (is.null(settings$beta$theta_y)) settings$beta$theta_y <- 4
+          # mode = 0.05, 95% quantile = 0.84
+      } else {
+        if (is.null(settings$alpha$theta_w)) settings$alpha$theta_w <- 1.5
+        if (is.null(settings$alpha$theta_y)) settings$alpha$theta_y <- 1.5
+        if (is.null(settings$beta$theta_w)) settings$beta$theta_w <- 3.9/4
+        if (is.null(settings$beta$theta_y)) settings$beta$theta_y <- 3.9/6
+      }
+    } else if (layers == 3) {
+      if (is.null(settings$alpha$theta_z)) settings$alpha$theta_z <- 1.5
+      if (is.null(settings$alpha$theta_w)) settings$alpha$theta_w <- 1.5
+      if (is.null(settings$alpha$theta_y)) settings$alpha$theta_y <- 1.5
+      if (is.null(settings$beta$theta_z)) settings$beta$theta_z <- 3.9/4
+      if (is.null(settings$beta$theta_w)) settings$beta$theta_w <- 3.9/12
+      if (is.null(settings$beta$theta_y)) settings$beta$theta_y <- 3.9/6
+    }
   }
+  
   return(settings)
 }
 
 # Check Initialization --------------------------------------------------------
 
 check_initialization <- function(initial, layers = 2, x = NULL, D = NULL,
-                                 vecchia = NULL, v = NULL, m = NULL) {
+                                 vecchia = NULL, v = NULL, m = NULL,
+                                 monowarp = FALSE) {
   
   if (is.null(initial$tau2)) initial$tau2 <- 1
   
@@ -59,6 +97,8 @@ check_initialization <- function(initial, layers = 2, x = NULL, D = NULL,
       stop("dimension of initial$w does not match D")
     if (length(initial$theta_w) == 1) 
       initial$theta_w <- rep(initial$theta_w, D)
+    if (monowarp & (length(initial$theta_y) == 1))
+      initial$theta_y <- rep(initial$theta_y, D)
     
     # If initial$w is from previous sequential step, predict at new point
     if (nrow(initial$w) == nrow(x) - 1) {

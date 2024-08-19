@@ -3,7 +3,7 @@
 #include <Rmath.h>
 #include <assert.h>
 #include <Rinternals.h>
-#include "general.h"
+#include "misc.h"
 
 char uplo = 'U';
 

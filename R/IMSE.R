@@ -72,6 +72,9 @@ Wij.C <- function(x1, x2, theta, a, b){
 #'     61}, 7-23. Taylor & Francis. doi:10.1080/00401706.2018.1469433
 #' 
 #' @examples
+#' # Additional examples including real-world computer experiments are available at: 
+#' # https://bitbucket.org/gramacylab/deepgp-ex/
+#' 
 #' # --------------------------------------------------------
 #' # Example 1: toy step function, runs in less than 5 seconds
 #' # --------------------------------------------------------
@@ -130,8 +133,8 @@ Wij.C <- function(x1, x2, theta, a, b){
 #' # Visualize fit
 #' plot(fit)
 #' par(new = TRUE) # overlay IMSE
-#' plot(xx, imse$value, col = 2, type = 'l', lty = 2, 
-#'      axes = FALSE, xlab = '', ylab = '')
+#' plot(xx, imse$value, col = 2, type = 'l', lty = 2, axes = FALSE, 
+#'      xlab = '', ylab = '')
 #' 
 #' # Select next design point
 #' x_new <- xx[which.min(imse$value)]

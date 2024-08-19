@@ -84,6 +84,9 @@ alc.C <- function(X, Ki, theta, g, Xcand, Xref, tau2, verb = 0) {
 #'     72} (1), 1-46. doi:10.18637/jss.v072.i01
 #' 
 #' @examples
+#' # Additional examples including real-world computer experiments are available at: 
+#' # https://bitbucket.org/gramacylab/deepgp-ex/
+#' 
 #' # --------------------------------------------------------
 #' # Example 1: toy step function, runs in less than 5 seconds
 #' # --------------------------------------------------------
@@ -139,8 +142,7 @@ alc.C <- function(X, Ki, theta, g, Xcand, Xref, tau2, verb = 0) {
 #' # Visualize fit
 #' plot(fit)
 #' par(new = TRUE) # overlay ALC
-#' plot(xx, alc$value, type = 'l', lty = 2, 
-#'      axes = FALSE, xlab = '', ylab = '')
+#' plot(xx, alc$value, type = 'l', lty = 2, axes = FALSE, xlab = '', ylab = '')
 #' 
 #' # Select next design point
 #' x_new <- xx[which.max(alc$value)]
@@ -243,7 +245,7 @@ ALC.dgp2 <- function(object, x_new = NULL, ref = NULL, cores = 1) {
     }
   } else predicted <- FALSE
   if (is.numeric(x_new)) x_new <- as.matrix(x_new)
-  if (!is.null(ref) & !is.matrix(ref)) stop('ref must be a matrix')
+  if (!is.null(ref) & !is.matrix(ref)) stop("ref must be a matrix")
   
   # Specify pre-calculations if predicted is FALSE
   n_new <- nrow(x_new)
@@ -347,7 +349,7 @@ ALC.dgp3 <- function(object, x_new = NULL, ref = NULL, cores = 1) {
     } 
   } else predicted <- FALSE
   if (is.numeric(x_new)) x_new <- as.matrix(x_new)
-  if (!is.null(ref) & !is.matrix(ref)) stop('ref must be a matrix')
+  if (!is.null(ref) & !is.matrix(ref)) stop("ref must be a matrix")
   
   # Specify pre-calculations if predicted is FALSE
   n_new <- nrow(x_new)

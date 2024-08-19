@@ -1,10 +1,12 @@
 Package: deepgp
 Type: Package
 Title: Bayesian Deep Gaussian Processes using MCMC
-Version: 1.1.2
-Date: 2024-04-28
-Author: Annie S. Booth <annie_booth@ncsu.edu>
-Maintainer: Annie S. Booth <annie_booth@ncsu.edu>
+Version: 1.1.3
+Date: 2024-07-31
+Authors@R: person(given = c("Annie", "S."),
+                    family = "Booth",
+                    role = c("aut", "cre"),
+                    email = "annie_booth@ncsu.edu")
 Depends: R (>= 3.6)
 Description: Performs Bayesian posterior inference for deep Gaussian processes 
     following Sauer, Gramacy, and Higdon (2023, <doi:10.48550/arXiv.2012.08015>).  See Sauer 
@@ -14,7 +16,8 @@ Description: Performs Bayesian posterior inference for deep Gaussian processes
     slice sampling of latent Gaussian layers and Metropolis-Hastings 
     sampling of kernel hyperparameters.  Vecchia-approximation for faster 
     computation is implemented following Sauer, Cooper, and Gramacy 
-    (2023, <doi:10.48550/arXiv.2204.02904>).  Downstream tasks include sequential design 
+    (2023, <doi:10.48550/arXiv.2204.02904>).  Optional monotonic warpings are implemented
+    following Barnett et al. (2024, <doi:10.48550/arXiv.2408.01540>).  Downstream tasks include sequential design 
     through active learning Cohn/integrated mean squared error 
     (ALC/IMSE; Sauer, Gramacy, and Higdon, 2023), optimization through 
     expected improvement (EI; Gramacy, Sauer, and Wycoff, 2022 <doi:10.48550/arXiv.2112.07457>), 
@@ -32,6 +35,8 @@ LinkingTo: Rcpp, RcppArmadillo,
 Suggests: interp, knitr, rmarkdown
 VignetteBuilder: knitr
 RoxygenNote: 7.2.3
-Packaged: 2024-04-28 17:42:53 UTC; asauer3
+Packaged: 2024-08-19 14:07:08 UTC; asauer3
+Author: Annie S. Booth [aut, cre]
+Maintainer: Annie S. Booth <annie_booth@ncsu.edu>
 Repository: CRAN
-Date/Publication: 2024-04-28 21:10:06 UTC
+Date/Publication: 2024-08-19 15:00:02 UTC

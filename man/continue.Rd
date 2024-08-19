@@ -71,6 +71,6 @@ See \code{fit_one_layer}, \code{fit_two_layer}, or
     are used (maintaining the continuity of the previous chain).
 }
 \examples{
-# See "fit_two_layer" for an example
+# See ?fit_two_layer for an example
 
 }

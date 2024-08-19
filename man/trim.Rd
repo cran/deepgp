@@ -54,7 +54,7 @@ The resulting object will have \code{nmcmc} equal to the previous
     iterations.
 }
 \examples{
-# See "fit_one_layer", "fit_two_layer", or "fit_three_layer"
-# for an example
+# See ?fit_one_layer, ?fit_two_layer, or ?fit_three_layer
+# for examples
 
 }

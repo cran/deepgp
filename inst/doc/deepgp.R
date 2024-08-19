@@ -21,7 +21,7 @@ higdon <- function(x) {
   return(x)
 }
 
-## ---- fig.width = 6, fig.height = 4-------------------------------------------
+## ---- fig.width = 6, fig.height = 4.5-----------------------------------------
 # Training data
 n <- 24
 x <- seq(0, 1, length = n)
@@ -88,6 +88,35 @@ metrics
 
 ## ---- eval = FALSE------------------------------------------------------------
 #  fit2_no_g <- fit_two_layer(x, y, nmcmc = 10000, true_g = 1e-4)
+
+## -----------------------------------------------------------------------------
+tray <- function(x) {
+  x <- x * 4 - 2
+  p1 <- abs(100 - sqrt(apply(x^2, 1, sum)) / pi)
+  p2 <- abs(apply(sin(x), 1, prod) * exp(p1)) + 1
+  y <- -0.0001 * (p2)^(0.1)
+  return((y + 1.9) / 0.2)
+}
+
+## -----------------------------------------------------------------------------
+grid <- seq(0, 1, length = 30)
+xp_tray <- as.matrix(expand.grid(grid, grid))
+yp_tray <- tray(xp_tray)
+par(mar = c(1, 1, 1, 1))
+persp(grid, grid, matrix(yp_tray, nrow = length(grid)), xlab = "x1", ylab = "x2",
+      zlab = "y", theta = 30, phi = 30, r = 30)
+
+## -----------------------------------------------------------------------------
+x_tray <- matrix(runif(50 * 2), ncol = 2)
+y_tray <- tray(x_tray)
+fit <- fit_two_layer(x_tray, y_tray, nmcmc = 10000, monowarp = TRUE, verb = FALSE)
+
+## ---- fig.height = 3.5--------------------------------------------------------
+plot(fit, trace = FALSE, hidden = TRUE)
+
+## ---- fig.height = 4----------------------------------------------------------
+fit <- predict(fit, xp_tray, lite = TRUE)
+plot(fit)
 
 ## ---- eval = FALSE------------------------------------------------------------
 #  fit1_sep <- fit_one_layer(x, y, nmcmc = 10000, sep = TRUE)
