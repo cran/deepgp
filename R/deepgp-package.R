@@ -2,8 +2,8 @@
 # Imported Functions ----------------------------------------------------------
 #' @importFrom Matrix t solve
 #' @importFrom grDevices heat.colors
-#' @importFrom graphics image lines matlines par plot points contour abline
-#' @importFrom stats cov dgamma dnorm pnorm qnorm rnorm runif var
+#' @importFrom graphics image lines par plot points contour abline matplot matlines
+#' @importFrom stats cov dgamma dnorm pnorm qnorm rnorm runif var approx
 #' @importFrom parallel makeCluster detectCores stopCluster
 #' @importFrom doParallel registerDoParallel
 #' @importFrom foreach %dopar% foreach
@@ -11,12 +11,13 @@
 #' @importFrom mvtnorm rmvnorm
 #' @importFrom FNN get.knnx
 #' @importFrom GpGp find_ordered_nn
+#' @importFrom fields rdist
+#' @importFrom abind abind
 
 # Package Documentation -------------------------------------------------------
 #' @useDynLib deepgp, .registration = TRUE
 #' @title Package deepgp
 #' @author Annie S. Booth \email{annie_booth@ncsu.edu}
-#' @docType package
 #' @name deepgp-package
 #'
 #' @description Performs Bayesian posterior inference for deep Gaussian 
@@ -25,15 +26,16 @@
 #' methodological details and \url{https://bitbucket.org/gramacylab/deepgp-ex/} for 
 #' a variety of coding examples. Models are trained through MCMC including 
 #' elliptical slice sampling of latent Gaussian layers and Metropolis-Hastings 
-#' sampling of kernel hyperparameters.  Vecchia-approximation for faster 
+#' sampling of kernel hyperparameters.  Gradient-enhancement and gradient
+#' predictions are offered following Booth (2025).  Vecchia approximation for faster 
 #' computation is implemented following Sauer, Cooper, and Gramacy 
 #' (2023).  Optional monotonic warpings are implemented following 
-#' Barnett et al. (2024).  Downstream tasks include sequential design 
+#' Barnett et al. (2025).  Downstream tasks include sequential design 
 #' through active learning Cohn/integrated mean squared error (ALC/IMSE; Sauer, 
 #' Gramacy, and Higdon, 2023), optimization through expected improvement 
 #' (EI; Gramacy, Sauer, and Wycoff, 2022), and contour 
 #' location through entropy (Booth, Renganathan, and Gramacy, 
-#' 2024).  Models extend up to three layers deep; a one 
+#' 2025).  Models extend up to three layers deep; a one 
 #' layer model is equivalent to typical Gaussian process regression.  
 #' Incorporates OpenMP and SNOW parallelization and utilizes C/C++ under 
 #' the hood.
@@ -64,6 +66,8 @@
 #'      *Ph.D. Dissertation, Department of Statistics, Virginia Polytechnic Institute and State University.*
 #'      \url{http://hdl.handle.net/10919/114845}
 #'      \cr\cr
+#' Booth, A. S. (2025). Deep Gaussian processes with gradients. arXiv:2512.18066
+#'      \cr\cr
 #' Sauer, A., Gramacy, R.B., & Higdon, D. (2023). Active learning for deep 
 #'      Gaussian process surrogates. *Technometrics, 65,* 4-18.  arXiv:2012.08015
 #'      \cr\cr
@@ -75,12 +79,13 @@
 #'     optimization.  *Advances in Neural Information Processing Systems (NeurIPS), 35,* 
 #'     35933-35945.  arXiv:2112.07457
 #'     \cr\cr
-#' Booth, A., Renganathan, S. A. & Gramacy, R. B. (2024). Contour location for 
+#' Booth, A., Renganathan, S. A. & Gramacy, R. B. (2025). Contour location for 
 #'     reliability in airfoil simulation experiments using deep Gaussian 
-#'     processes. *In Review.* arXiv:2308.04420
-#'
-#' Barnett, S., Beesley, L. J., Booth, A. S., Gramacy, R. B., & Osthus D. (2024). 
-#'     Monotonic warpings for additive and deep Gaussian processes. *In Review.* arXiv:2408.01540
+#'     processes. *Annals of Applied Statistics, 19*(1), 191-211. arXiv:2308.04420
+#'	   \cr\cr
+#' Barnett, S., Beesley, L. J., Booth, A. S., Gramacy, R. B., & Osthus D. (2025). 
+#'     Monotonic warpings for additive and deep Gaussian processes. 
+#'     *Statistics and Computing, 35*(3), 65. arXiv:2408.01540
 #'     
 #' @examples 
 #' # See vignette, ?fit_one_layer, ?fit_two_layer, ?fit_three_layer, 
@@ -88,4 +93,4 @@
 #' # Many more examples including real-world computer experiments are available at: 
 #' # https://bitbucket.org/gramacylab/deepgp-ex/
 #' 
-NULL
+"_PACKAGE"

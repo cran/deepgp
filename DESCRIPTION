@@ -1,42 +1,44 @@
 Package: deepgp
 Type: Package
 Title: Bayesian Deep Gaussian Processes using MCMC
-Version: 1.1.3
-Date: 2024-07-31
+Version: 1.2.0
+Date: 2025-12-18
 Authors@R: person(given = c("Annie", "S."),
                     family = "Booth",
                     role = c("aut", "cre"),
-                    email = "annie_booth@ncsu.edu")
+                    email = "annie_booth@vt.edu")
 Depends: R (>= 3.6)
-Description: Performs Bayesian posterior inference for deep Gaussian processes 
-    following Sauer, Gramacy, and Higdon (2023, <doi:10.48550/arXiv.2012.08015>).  See Sauer 
-    (2023, <http://hdl.handle.net/10919/114845>) for comprehensive methodological 
-    details and <https://bitbucket.org/gramacylab/deepgp-ex/> for a variety of 
-    coding examples. Models are trained through MCMC including elliptical 
-    slice sampling of latent Gaussian layers and Metropolis-Hastings 
-    sampling of kernel hyperparameters.  Vecchia-approximation for faster 
+Description: Performs Bayesian posterior inference for deep Gaussian 
+    processes following Sauer, Gramacy, and Higdon (2023, <doi:10.48550/arXiv.2012.08015>).  
+    See Sauer (2023, <http://hdl.handle.net/10919/114845>) for comprehensive 
+    methodological details and <https://bitbucket.org/gramacylab/deepgp-ex/> for 
+    a variety of coding examples. Models are trained through MCMC including 
+    elliptical slice sampling of latent Gaussian layers and Metropolis-Hastings 
+    sampling of kernel hyperparameters.  Gradient-enhancement and gradient
+    predictions are offered following Booth (2025, <doi:10.48550/arXiv.2512.18066>).
+    Vecchia approximation for faster 
     computation is implemented following Sauer, Cooper, and Gramacy 
-    (2023, <doi:10.48550/arXiv.2204.02904>).  Optional monotonic warpings are implemented
-    following Barnett et al. (2024, <doi:10.48550/arXiv.2408.01540>).  Downstream tasks include sequential design 
-    through active learning Cohn/integrated mean squared error 
-    (ALC/IMSE; Sauer, Gramacy, and Higdon, 2023), optimization through 
-    expected improvement (EI; Gramacy, Sauer, and Wycoff, 2022 <doi:10.48550/arXiv.2112.07457>), 
-    and contour location through entropy 
-    (Booth, Renganathan, and Gramacy, 2024 <doi:10.48550/arXiv.2308.04420>).  Models 
-    extend up to three layers deep; a one layer model is equivalent to typical 
-    Gaussian process regression.  Incorporates OpenMP and SNOW parallelization 
-    and utilizes C/C++ under the hood.
+    (2023, <doi:10.48550/arXiv.2204.02904>).  Optional monotonic warpings are 
+    implemented following Barnett et al. (2025, <doi:10.48550/arXiv.2408.01540>).  
+    Downstream tasks include sequential design 
+    through active learning Cohn/integrated mean squared error (ALC/IMSE; Sauer, 
+    Gramacy, and Higdon, 2023), optimization through expected improvement 
+    (EI; Gramacy, Sauer, and Wycoff, 2022, <doi:10.48550/arXiv.2112.07457>), 
+    and contour location through entropy (Booth, Renganathan, and Gramacy, 
+    2025, <doi:10.48550/arXiv.2308.04420>).  Models extend up to three layers deep; 
+    a one layer model is equivalent to typical Gaussian process regression.  
+    Incorporates OpenMP and SNOW parallelization and utilizes C/C++ under the hood.
 License: LGPL
 Encoding: UTF-8
 NeedsCompilation: yes
 Imports: grDevices, graphics, stats, doParallel, foreach, parallel,
-        GpGp, Matrix, Rcpp, mvtnorm, FNN
+        GpGp, fields, Matrix, Rcpp, mvtnorm, FNN, abind
 LinkingTo: Rcpp, RcppArmadillo,
 Suggests: interp, knitr, rmarkdown
 VignetteBuilder: knitr
-RoxygenNote: 7.2.3
-Packaged: 2024-08-19 14:07:08 UTC; asauer3
+RoxygenNote: 7.3.3
+Packaged: 2026-01-08 16:27:10 UTC; anniebooth
 Author: Annie S. Booth [aut, cre]
-Maintainer: Annie S. Booth <annie_booth@ncsu.edu>
+Maintainer: Annie S. Booth <annie_booth@vt.edu>
 Repository: CRAN
-Date/Publication: 2024-08-19 15:00:02 UTC
+Date/Publication: 2026-01-08 23:50:09 UTC

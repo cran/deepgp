@@ -1,6 +1,6 @@
 ---
 title: "<tt>deepgp</tt>: an <sf>R</sf>-package for Bayesian Deep Gaussian Processes"
-author: "Annie Sauer Booth (<annie_booth@ncsu.edu>)"
+author: "Annie S. Booth (<annie_booth@vt.edu>)"
 output: 
   rmarkdown::html_vignette:
     toc: true
@@ -36,9 +36,10 @@ This vignette serves as an introduction to the package's main features.  Full me
 
 * @sauer2023active: Bayesian DGPs with sequential design targeting minimized posterior variance
 * @sauer2023vecchia: incorporation of the Vecchia approximation into the Bayesian DGP framework
-* Gramacy, Sauer, and Wycoff (2022): optimization through expected improvement with strategic selection of candidates
-* @booth2024contour: contour location using entropy (combined with posterior uncertainty)
-* @barnett2024monotonic: monotonic latent layer warpings
+* @gramacy2022triangulation: optimization through expected improvement with strategic selection of candidates
+* @booth2025contour: contour location using entropy (combined with posterior uncertainty)
+* @barnett2025monotonic: monotonic latent layer warpings
+* @booth2025deep: gradient-enhancement and gradient predictions
 
 While I will showcase simple one-dimensional examples here, the simulated examples provided in these works span up to seven dimensions, with training data sizes up to tens of thousands.  Real-world applications to computer experiments include a three-dimensional simulation of the Langley Glide Back Booster [LGBB, @pamadi2004aerodynamic], the seven-dimensional Test Particle Monte Carlo Simulator (TPM) of a satellite in low earth orbit [@sun2019emulating], and a seven-dimensional simulation of an RAE-2822 transonic airfoil 
 [@economon2016su2], with training data sizes ranging from $n = 300$ to $n = 100,000$.  
@@ -46,38 +47,42 @@ While I will showcase simple one-dimensional examples here, the simulated exampl
 All exercises are supported by code in a public git repository: https://bitbucket.org/gramacylab/deepgp-ex/.
 Further details on function arguments and default settings (including prior distributions) are provided in the function documentation.  
 
-In the first section, I'll discuss model fitting (training through MCMC then generating posterior predictions).  I'll review a typical one-layer Gaussian process before introducing the DGP functionality.  I'll also discuss extensions to the original DGP framework, including the utilization of Vecchia approximation [@vecchia1988estimation] for faster computations and optional monotonic warpings.  In the second section, I'll introduce sequential design criteria for three different objectives: optimizing the response, locating a contour, and minimizing posterior variance.
+In the first section, I'll discuss model fitting (training through MCMC then generating posterior predictions).  I'll review a typical one-layer Gaussian process before introducing the DGP functionality.  I'll also discuss extensions to the original DGP framework, including the utilization of Vecchia approximation [@vecchia1988estimation] for faster computations, monotonic warpings, gradient-enhancement, and gradient predictions.  In the second section, I'll introduce sequential design criteria for three different objectives: optimizing the response, locating a contour, and minimizing posterior variance.
 
-To start, let's define a one-dimensional function that we can use for demonstration and visualization.  The following code defines the "Higdon function" [@higdon2002space], found on the pages of the Virtual Library of Simulation Experiments [@surjanovic2013virtual].
+To start, let's define a one-dimensional function that we can use for demonstration and visualization.  The following code defines the "Booth" function, an adaptation of the "Higdon" function [@higdon2002space] which is found on the pages of the Virtual Library of Simulation Experiments [@surjanovic2013virtual].
 
 ```{r}
-higdon <- function(x) {
-  i <- which(x <= 0.6)
-  x[i] <- 2 * sin(pi * 0.8 * x[i] * 4) + 0.4 * cos(pi * 0.8 * x[i] * 16)
-  x[-i] <- 2 * x[-i] - 1
-  return(x)
+booth <- function(x) {
+  y <- rep(NA, length(x))
+  for (i in 1:length(x)) {
+    if (x[i] <= 0.58) {
+      y[i] <- sin(pi * x[i] * 6) + cos(pi * x[i] * 12)
+    } else y[i] <- 5 * x[i] - 4.9
+  }
+  return(y)
 }
 ```
 
-Next, we generate training and testing data.  For now, we will work in a noise-free setting (although we will presume not to know that there is no noise).
+Next, we generate training and testing data.  For now, we will work in a noise-free setting (to mimic a deterministic computer simulation).
 
 ```{r, fig.width = 6, fig.height = 4.5}
 # Training data
-n <- 24
-x <- seq(0, 1, length = n)
-y <- higdon(x)
+n <- 20
+x_booth <- seq(0, 1, length = n)
+y_booth <- booth(x_booth)
 
 # Testing data
 np <- 100
-xp <- seq(0, 1, length = np)
-yp <- higdon(xp)
+xp_booth <- seq(0, 1, length = np)
+yp_booth <- booth(xp_booth)
 
-plot(xp, yp, type = "l", col = 4, xlab = "X", ylab = "Y", main = "Higdon function")
-points(x, y)
+plot(xp_booth, yp_booth, type = "l", col = 4, xlab = "X", ylab = "Y", 
+     main = "Booth function")
+points(x_booth, y_booth)
 ```
 
 <br>
-The piecewise form of this function is an example of "non-stationarity".  There are two distinct regimes (one wiggly and one linear), with an abrupt shift  at `x = 0.6`.  We will soon see how a one-layer GP suffers from an assumption of stationarity which restricts it from fitting these two separate regimes simultaneously.  DGPs are better equipped to handle such complex surfaces.
+The piecewise form of this function is an example of "nonstationarity".  There are two distinct regimes (one wiggly and one linear), with an abrupt shift near `x = 0.6`.  We will soon see how a one-layer GP suffers from an assumption of stationarity which restricts it from fitting these two separate regimes simultaneously.  DGPs are better equipped to handle such complex surfaces.
 
 -------
 
@@ -95,23 +100,24 @@ $$
 $$
 where $k(\cdot)$ represents a stationary kernel function (`deepgp` offers both the squared exponential and Matérn kernels).  The package only supports mean-zero priors (aside from a special case in the two-layer DGP), but non-zero means may be addressed by pre-scaling the response appropriately.  In this canonical form, GPs suffer from the limitation of stationarity due to reliance on covariance kernels $k(\cdot)$ that are strictly functions of Euclidean distance.  
 
-This covariance depends on hyperparameters $\tau^2$, $\theta$, and $g$ controlling the scale, lengthscale, and noise respectively.  [Notice how $\theta$ operates on squared distances under this parameterization.]  Looking forward to our DGP implementation, we embrace an MCMC scheme utilizing Metropolis-Hastings sampling of these unknown hyperparameters (except $\tau^2$ which can be marginialized analytically under an inverse gamma reference prior, see @gramacy2020surrogates, Chapter 5).
+This covariance depends on hyperparameters $\tau^2$, $\theta$, and $g$ controlling the scale, lengthscale, and noise respectively.  [Notice how $\theta$ operates on squared distances under this parameterization.]  Looking forward to our DGP implementation, we embrace an MCMC scheme utilizing Metropolis Hastings sampling of these unknown hyperparameters (except $\tau^2$ which can be marginialized analytically under an inverse gamma reference prior, see @gramacy2020surrogates, Chapter 5).
 
-Ok, let's get to some code.  MCMC sampling of `theta` and `g` for a one-layer GP is built into the `fit_one_layer` function.  The following code collects 10,000 Metropolis Hastings samples (using the Matérn kernel by default and creating an S3 object of the `gp` class), then displays trace plots of the log likelihood and corresponding samples.  
+Ok, let's get to some code.  MCMC sampling of `theta` and `g` for a one-layer GP is built into the `fit_one_layer` function.  Since our function is deterministic, we will fix `g` at a small value with `true_g` argument below.  The following code collects 10,000 Metropolis Hastings samples (using the Matérn kernel by default and creating an S3 object of the `gp` class), then displays trace plots of the log likelihood and corresponding samples.  
 
 ```{r, fig.height = 3.5, fig.width = 6}
-fit1 <- fit_one_layer(x, y, nmcmc = 10000, verb = FALSE)
-plot(fit1)
+gp_booth <- fit_one_layer(x_booth, y_booth, nmcmc = 10000, true_g = 1e-6, 
+                          verb = FALSE)
+plot(gp_booth)
 ```
 
 <br>
 There is randomization involved in MCMC proposals and acceptances, so these trace plots may show slight variations upon different renderings.  In this simple case they burn-in quickly.  Before we do anything else with these samples, we may want to trim off burn-in and thin the remaining samples.  This functionality is built into the `trim` function (which will work on any of our models, not just the one layer).
 
 ```{r}
-fit1 <- trim(fit1, 5000, 2) # remove 5000 as burn-in, thin by half
+gp_booth <- trim(gp_booth, 5000, 2) # remove 5000 as burn-in, thin by half
 ```
 
-Now that we have a set of posterior samples for `theta` and `g`, we can generate posterior predictions for the testing locations `xp`.  Under a GP prior, posterior predictions $Y^\star$ at $X^\star$ locations follow
+Now that we have a set of posterior samples of kernel hyperparameters, we can generate posterior predictions for the testing locations `xp`.  Under a GP prior, posterior predictions $Y^\star$ at $X^\star$ locations follow
 $$
 \begin{aligned}
 Y^\star \mid X, Y \sim \mathcal{N}\left(\mu^\star, \Sigma^\star\right)
@@ -120,7 +126,7 @@ Y^\star \mid X, Y \sim \mathcal{N}\left(\mu^\star, \Sigma^\star\right)
 \end{aligned}
 $$
 
-Each $\Sigma(\cdot)$ above relies on values of $\theta$ and $g$.  Since we have MCMC samples $\{\theta^t, g^t\}$ for $t\in\mathcal{T}$, we can evaluate $\mu^{\star(t)}$ and $\Sigma^{\star(t)}$ for each $t\in\mathcal{T}$ and aggregate the results using the law of total variance,
+Each $\Sigma(\cdot)$ above relies on values of $\tau^2$, $\theta$, and $g$.  Since we have MCMC samples $\{\tau2^t, \theta^t\}$ for $t\in\mathcal{T}$ (with `g` fixed), we can evaluate $\mu^{\star(t)}$ and $\Sigma^{\star(t)}$ for each $t\in\mathcal{T}$ and aggregate the results using the law of total variance,
 $$
 \mu^\star = \sum_{t=1}^\mathcal{T} \mu^{\star(t)} \quad\textrm{and}\quad 
 \Sigma^\star = \sum_{t=1}^\mathcal{T} \Sigma^{\star(t)} + \mathbb{C}\mathrm{ov}\left(\mu^{\star(t)}\right)
@@ -129,16 +135,18 @@ $$
 This process is neatly wrapped in the `predict` function (tailored for each S3 class object), with convenient plotting in one-dimension provided in the `plot` function.
 
 ```{r, fig.width = 6, fig.height = 4.5}
-fit1 <- predict(fit1, xp, lite = FALSE)
-plot(fit1)
+gp_booth <- predict(gp_booth, xp_booth, lite = FALSE)
+plot(gp_booth)
 ```
 
 <br>
-The GP provides a nice nonlinear fit with appropriate uncertainty estimates, but it fails to pick up on the regime shifts.  We allowed the model to estimate a noise parameter, and it over-smoothed the data.
+The GP provides a nice nonlinear fit with uncertainty estimates, but it has
+inflated uncertainty in the linear region.  It is unable to accommodate different
+regimes simultaneously.
 
 ## Two-layer DGP
 
-DGPs [@damianou2013deep] address this stationarity limitation through functional compositions of Gaussian layers.  Intermediate layers act as warped versions of the original inputs, allowing for non-stationary flexibility.  A "two-layer" DGP may be formulated as
+DGPs [@damianou2013deep] address this stationarity limitation through functional compositions of Gaussian layers.  Intermediate layers act as warped versions of the original inputs, allowing for nonstationary flexibility.  A "two-layer" DGP may be formulated as
 $$
 \begin{aligned}
 Y \mid W &\sim \mathcal{N}\left(0, \Sigma(W)\right) \\
@@ -150,42 +158,43 @@ where $\Sigma(\cdot)$ represents a stationary kernel function as defined in the 
 Latent Gaussian layers are sampled through elliptical slice sampling [ESS, @murray2010elliptical].  Kernel hyperparameters are sampled through Metropolis Hastings.  All of these are iterated in a Gibbs scheme.  MCMC sampling for two-layer DGPs is wrapped in the `fit_two_layer` function.
 
 ```{r, fig.height = 3}
-fit2 <- fit_two_layer(x, y, nmcmc = 8000, verb = FALSE)
-plot(fit2)
+dgp_booth <- fit_two_layer(x_booth, y_booth, nmcmc = 8000, true_g = 1e-6, 
+                           verb = FALSE)
+plot(dgp_booth)
 ```
 
 <br>
 Notice there are now two lengthscale parameters, one for each GP layer (there will be additional `theta_w[i]` in higher dimensions, with each $\Sigma_i(X)$ having its own).  Again there is some randomization involved in this sampling.  These trace plots are helpful in diagnosing burn-in.  If you need to run further MCMC samples, you may use the `continue` function.
 
 ```{r, fig.height = 4}
-fit2 <- continue(fit2, 2000, verb = FALSE)
+dgp_booth <- continue(dgp_booth, 2000, verb = FALSE)
 ```
 
 There are now 10,000 total samples stored in `fit2`,
 
 ```{r}
-fit2$nmcmc
+dgp_booth$nmcmc
 ```
 
 In one dimension we may visualize the ESS samples of W by specifying `hidden = TRUE` to the `plot` call.  
 
 ```{r, fig.width = 6, fig.height = 4}
-plot(fit2, trace = FALSE, hidden = TRUE) 
+plot(dgp_booth, trace = FALSE, hidden = TRUE) 
 ```
 
 <br>
-Each line represents a single ESS sample of $W$.  Since 10,000 lines would be a lot to plot, an evenly spaced selection of samples is shown.  The samples are colored on a gradient -- red lines are the earliest iterations and yellow lines are the latest.  In this simple example these lines don't look all too interesting, but we see that they are "stretching" inputs in the left region (indicated by a steeper slope) and "squishing" inputs in the right region (indicated by the flatter slope).  This accommodates the fact that there is more signal for `x < 0.6`.
+Each line represents a single ESS sample of $W$.  Since 10,000 lines would be a lot to plot, an evenly spaced selection of 100 samples is shown.  The samples are colored on a gradient -- red lines are the earliest iterations and yellow lines are the latest.  In this simple example these lines don't look all too interesting, but we see that they are "stretching" inputs in the left region (indicated by a steeper slope) and "squishing" inputs in the right region (indicated by the flatter slope).  This accommodates the fact that there is more signal for `x < 0.6`.
 
 We may then trim/thin and predict using the same function calls.  Predictions follow the same structure of the one-layer GP, they just involve an additional mapping of $X^\star$ through $W$ before obtaining $\mu^\star$ and $\Sigma^\star$.  We utilize `lite = FALSE` here so that full posterior predictive covariances are returned (by default, only point-wise variances are returned).  
 
 ```{r, fig.width = 6, fig.height = 4.5}
-fit2 <- trim(fit2, 5000, 2)
-fit2 <- predict(fit2, xp, lite = FALSE)
-plot(fit2)
+dgp_booth <- trim(dgp_booth, 5000, 2)
+dgp_booth <- predict(dgp_booth, xp_booth, lite = FALSE)
+plot(dgp_booth)
 ```
 
 <br>
-The two-layer DGP was more easily able to identify the "wiggly" regions on the left, while simultaneously predicting the linear fit on the right.  We allowed our DGP to also estimate the noise parameter, so it too over-smoothed a bit.
+The two-layer DGP was more easily able to identify the "wiggly" regions on the left, while simultaneously predicting the linear fit on the right.
 
 ## Three-layer DGP
 
@@ -200,10 +209,11 @@ $$
 We conduct additional Metropolis Hastings sampling of lengthscale parameters for the innermost layer and additional elliptical slice sampling for $Z$.  In prediction, we incorporate an additional mapping $X^\star \rightarrow Z \rightarrow W$ before obtaining predictions for $Y^\star$.  Training/prediction utilizes the same functionality, simply with the `fit_three_layer` function.
 
 ```{r, fig.width = 6, fig.height = 4.5}
-fit3 <- fit_three_layer(x, y, nmcmc = 10000, verb = FALSE)
-fit3 <- trim(fit3, 5000, 2)
-fit3 <- predict(fit3, xp, lite = FALSE)
-plot(fit3)
+dgp3_booth <- fit_three_layer(x_booth, y_booth, nmcmc = 10000, true_g = 1e-6, 
+                              verb = FALSE)
+dgp3_booth <- trim(dgp3_booth, 5000, 2)
+dgp3_booth <- predict(dgp3_booth, xp_booth, lite = FALSE)
+plot(dgp3_booth)
 ```
 
 <br>
@@ -217,56 +227,64 @@ To objectively compare various models, we can evaluate predictions against the t
 * `crps`: continuous rank probability score (requires point-wise predictive variances, lower is better)
 * `score`: predictive log likelihood (requires full predictive covariance, higher is better)
 
-Let's calculate these metrics for the four models we have entertained.
+Let's evaluate these metrics for the three models we have entertained.
 
 ```{r}
-metrics <- data.frame("RMSE" = c(rmse(yp, fit1$mean), 
-                                 rmse(yp, fit2$mean),
-                                 rmse(yp, fit3$mean)),
-                      "CRPS" = c(crps(yp, fit1$mean, diag(fit1$Sigma)),
-                                 crps(yp, fit2$mean, diag(fit2$Sigma)),
-                                 crps(yp, fit3$mean, diag(fit3$Sigma))),
-                      "SCORE" = c(score(yp, fit1$mean, fit1$Sigma),
-                                  score(yp, fit2$mean, fit2$Sigma),
-                                  score(yp, fit3$mean, fit3$Sigma)))
+metrics <- data.frame("RMSE" = c(rmse(yp_booth, gp_booth$mean), 
+                                 rmse(yp_booth, dgp_booth$mean),
+                                 rmse(yp_booth, dgp3_booth$mean)),
+                      "CRPS" = c(crps(yp_booth, gp_booth$mean, diag(gp_booth$Sigma)),
+                                 crps(yp_booth, dgp_booth$mean, diag(dgp_booth$Sigma)),
+                                 crps(yp_booth, dgp3_booth$mean, diag(dgp3_booth$Sigma))),
+                      "SCORE" = c(score(yp_booth, gp_booth$mean, gp_booth$Sigma),
+                                  score(yp_booth, dgp_booth$mean, dgp_booth$Sigma),
+                                  score(yp_booth, dgp3_booth$mean, dgp3_booth$Sigma)))
 rownames(metrics) <- c("One-layer GP", "Two-layer DGP", "Three-layer DGP")
 metrics
 ```
 
-Both deep models outperform the stationary one-layer GP, offering similar performances (whether two or three layers wins here may vary upon random renderings).
+Both deep models outperform the stationary one-layer GP, but the simpler two-layer DGP performs better than the three-layer DGP.
 
-## Extensions
+-------
 
-### Vecchia Approximation
+# Extensions
 
-The Bayesian DGP suffers from the computational bottlenecks that are endemic in typical GPs.  Inverses of dense covariance matrices experience $\mathcal{O}(n^3)$ costs.  The Vecchia approximation [@vecchia1988estimation] circumvents this bottleneck by inducing sparsity in the precision matrix [@katzfuss2020vecchia;@katzfuss2021general].  The sparse Cholesky decomposition of the precision matrix is easily populated in parallel (the package uses <tt>OpenMP</tt> for this), making for fast evaluation of Gaussian likelihoods and posterior predictive moments.  In addition to the original, un-approximated implementation, the `deepgp` package offers the option to utilize Vecchia approximation in all under-the-hood calculations.  Vecchia approximation is triggered by specifying `vecchia = TRUE` in any of the fit functions.
+## Noisy Modeling
 
-```{r, eval = FALSE}
-fit2_vec <- fit_two_layer(x, y, nmcmc = 10000, vecchia = TRUE, m = 20)
+Previously, we fixed the `g` parameter using the `true_g` argument.  If we wanted to estimate noisy data, we could leave `true_g = NULL` (the default), and the `g` parameter would be inferred through Metropolis Hastings sampling.  For example:
+
+```{r, fig.width = 6, fig.height = 4.5}
+dgp_booth_noisy <- fit_two_layer(x_booth, y_booth, nmcmc = 10000, verb = FALSE)
+dgp_booth_noisy <- trim(dgp_booth_noisy, 5000, 2)
+dgp_booth_noisy <- predict(dgp_booth_noisy, xp_booth, lite = FALSE)
+plot(dgp_booth_noisy)
 ```
 
-The `m` argument controls the fidelity of the approximation.  Details are provided in @sauer2023vecchia.  While the original implementation was only suitable for data sizes in the hundreds, the Vecchia option allows for feasible computations with data sizes up to a hundred thousand.  
+## Vecchia Approximation
+
+The Bayesian DGP suffers from the computational bottlenecks that are endemic in typical GPs.  Inverses of dense covariance matrices experience $\mathcal{O}(n^3)$ costs.  The Vecchia approximation [@vecchia1988estimation] circumvents this bottleneck by inducing sparsity in the precision matrix [@katzfuss2020vecchia;@katzfuss2021general].  The sparse Cholesky decomposition of the precision matrix is easily populated in parallel (the package uses <tt>OpenMP</tt> for this), making for fast evaluation of Gaussian likelihoods and posterior predictive moments.  In addition to the original, un-approximated implementation, the `deepgp` package offers the option to utilize Vecchia approximation in all under-the-hood calculations.  Vecchia approximation is triggered by specifying `vecchia = TRUE` in any of the fit functions.  
+
+An additional `m` argument controls the fidelity of the approximation.  Details are provided in @sauer2023vecchia.  While the original implementation was only suitable for data sizes in the hundreds, the Vecchia option allows for feasible computations with data sizes up to a hundred thousand.  
+
+The `to_vec` function may be called on a non-Vecchia approximated fit before prediction in order
+to trigger Vecchia-approximated predictions (when MCMC samples were not collected with Vecchia
+approximation).  This is useful if the training data size is small, but the testing data size is large.
 
 Note, this Vecchia implementation is targeted towards no-noise or low-noise settings.  It has not been adapted for high-noise, low-signal situations yet.
 
-### Noise-free Modeling
+## Joint posterior sampling
 
-If we know that our training data is noise-free, we can tell the fit functions to conduct noise-free modeling by fixing $g = 0$.  In actuality, there are numerical issues that come from fixing the nugget to be too small (especially with a smoother kernel).  To avoid any numerical issues, I recommend using a small value such as $g = 1e-4$ instead.  This parameter is specified by the argument `true_g` to either `fit_one_layer`, `fit_two_layer`, or `fit_three_layer`.
+The `post_sample` function provides full joint posterior sampling (rather than the summarized
+posterior moments that are provided in `predict`).  Vecchia approximation will be used if the fit was evaluated with `vecchia = TRUE` or the object has been passed through the `to_vec` function.  I will provide an example in the "Gradients" section below.
 
-```{r, eval = FALSE}
-fit2_no_g <- fit_two_layer(x, y, nmcmc = 10000, true_g = 1e-4)
-```
-
-If you use `trim`, `predict`, and `plot` on this fit, you will see that the predictions interpolate the points.  [If you are experiencing numerical issues or the fit is not interpolating the points, simply increase the value of `true_g`.  This is most likely to happen in the one-layer GP because of its smoother fit.]
-
-### Monotonic Warpings
+## Monotonic Warpings
 
 In its original form, the only assumption placed on the latent layer $W$ is the Gaussian process prior.  This is a very flexible assumption, and in some situations it is advantageous to reign in this flexibility.
 In particular, we may want to constrain $W$ so that it *monotonically* warps $X$.  In our previous plots of ESS samples, monotonicity would ensure that no line folds back in on itself, thus ensuring an injective mapping from `x` to each sample of `w`. 
 
-To enforce monotonicity, we must warp each dimension of $X$ individually.  We accomplish a monotonic warping by applying three consecutive transformations to the originally implemented ESS samples: (i) exponentiate to force positivity, (ii) cumulatively sum to force monotonicity, and (iii) re-scale to [0, 1].  ESS proposals proceed normally, but only the transformed values are plugged into the outer Gaussian likelihood.  The cumulative sum requires a pre-specified reference grid, and the uniform scaling of each sample to [0, 1] necessitates separable lengthscales on the outer layer.  We defer other methodological details to @barnett2024monotonic.
+To enforce monotonicity, we must warp each dimension of $X$ individually.  We accomplish a monotonic warping by applying a transformation to the originally implemented ESS samples.ESS proposals proceed normally, but only the transformed values are plugged into the outer Gaussian likelihood.  Further methodological details are provided in @barnett2025monotonic.
 
-Let's see it in action.  Monotonic warpings are most effective when the non-stationarity in the response surface is axis-aligned.  To highlight this, consider the two-dimensional "cross-in-tray" function (also found on the VLSE).
+Let's see this in action.  Monotonic warpings are most effective when the nonstationarity in the response surface is axis-aligned.  To highlight this, consider the two-dimensional "cross-in-tray" function (also found on the VLSE).
 
 ```{r}
 tray <- function(x) {
@@ -288,63 +306,128 @@ par(mar = c(1, 1, 1, 1))
 persp(grid, grid, matrix(yp_tray, nrow = length(grid)), xlab = "x1", ylab = "x2",
       zlab = "y", theta = 30, phi = 30, r = 30)
 ```
-
+<br>
 We then get some training data and fit a two-layer DGP as usual, but specify `monowarp = TRUE` to trigger the monotonic warpings.
 
 ```{r}
 x_tray <- matrix(runif(50 * 2), ncol = 2)
 y_tray <- tray(x_tray)
-fit <- fit_two_layer(x_tray, y_tray, nmcmc = 10000, monowarp = TRUE, verb = FALSE)
+dgp_tray <- fit_two_layer(x_tray, y_tray, nmcmc = 10000, monowarp = TRUE, 
+                          true_g = 1e-6, verb = FALSE)
+dgp_tray <- trim(dgp_tray, 5000, 2)
 ```
 
 When we visualize the samples of the latent layer, we now have `w1` as a monotonic function over `x1` and `w2` as a monotonic function over `x2`.  Each of these "nodes" is stretching the input values near the center and squishing the input values near the edges, which allows the outer GP to better model the cross shape in the center of the space.
 
 ```{r, fig.height = 3.5}
-plot(fit, trace = FALSE, hidden = TRUE)
+plot(dgp_tray, trace = FALSE, hidden = TRUE)
 ```
-
-Finally, we may visualize the predicted surface.  [Although the code is not featured here, these predictions will compare favoribly to the original two-layer DGP and to a stationary GP.]
+<br>
+Finally, we may visualize the predicted surface.  [Although the code is not featured here, these predictions compare favoribly to the original two-layer DGP and to a stationary GP.]
 
 ```{r, fig.height = 4}
-fit <- predict(fit, xp_tray, lite = TRUE)
-plot(fit)
+dgp_tray <- predict(dgp_tray, xp_tray, lite = TRUE)
+plot(dgp_tray)
 ```
 
-### Separable Lengthscales for One-layer GP
+## Separable Lengthscales for One-layer GP
 
-To allow for non-stationarity along axis-alignment, it is common to use a vectorized lengthscale with separate $\theta_h$ for each dimension of $X$ (see @gramacy2020surrogates, Chapter 5).
+To allow for nonstationarity along axis-alignment, it is common to use a vectorized lengthscale with separate $\theta_h$ for each dimension of $X$ (see @gramacy2020surrogates, Chapter 5).
 $$
 \Sigma(X)^{ij} = \Sigma(x_i, x_j) = \tau^2\left(k\left(\sum_{h=1}^d \left(\frac{(x_{ih} - x_{jh})^2}{\theta_h}\right)\right) + g\mathbb{I}_{i=j}\right),
 $$
-While this is not the primary functionality of the `deepgp` package, a one-layer GP with separable lengthscales (sampled through additional Metropolis Hastings) may be a handy benchmark.  Separable (anisotropic) lengthscales are triggered by the argument `sep = TRUE` to `fit_one_layer`.
-
-```{r, eval = FALSE}
-fit1_sep <- fit_one_layer(x, y, nmcmc = 10000, sep = TRUE)
-```
+While this is not the primary functionality of the `deepgp` package, a one-layer GP with separable lengthscales (sampled through additional Metropolis Hastings) may be a handy benchmark.  Separable (anisotropic) lengthscales are triggered by the argument `sep = TRUE` to `fit_one_layer`.  
 
 Note, separable lengthscales are not an option for two- and three-layer models as the latent layers provide enough flexibility to mimic vectorized $\theta$.  Latent layer nodes are modeled isotropically to preserve identifiability and parsimony.
+
+## Gradients
+
+Version 1.2.0 now offers gradient-enhancement and gradient predictions for one-layer GP and
+two-layer DGP models, following @booth2025deep.  Gradients require the `"exp2"` kernel. 
+To demonstrate, we will use a simple step function.
+
+```{r}
+step <- function(x) {
+  y <- pnorm((x - 0.5)/0.04)
+  dy <- dnorm((x - 0.5)/0.04)/0.04
+  return(list(y = y, dy = dy))
+}
+
+# Training data
+x_step <- seq(0, 1, length = 6) 
+y_step <- step(x_step)
+
+# Testing data
+xp_step <- seq(0, 1, length = 100)
+yp_step <- step(xp_step)
+
+par(mfrow = c(1, 2))
+plot(xp_step, yp_step$y, type = "l", col = 4, xlab = "X", ylab = "Y",
+     main = "Step function")
+points(x_step, y_step$y)
+plot(xp_step, yp_step$dy, type = "l", col = 4, xlab = "X", ylab = "Y",
+     main = "Step function Gradient")
+points(x_step, y_step$dy)
+```
+<br>
+Gradient-enhancement is triggered when `dydx` is provided in the
+`fit_one_layer` or `fit_two_layer` functions.  Predictions of the gradient are triggered by specifying `grad = TRUE` in either the `predict` or `post_sample` functions.  These may
+be combined or used separately.
+
+For example, the following code fits a one-layer gradient-enhanced GP, then draws joint posterior samples of the response and the gradient at the testing locations.
+
+```{r}
+gp_step <- fit_one_layer(x_step, y_step$y, y_step$dy, nmcmc = 10000, 
+                          true_g = 1e-6, cov = "exp2", verb = FALSE)
+gp_step <- trim(gp_step, 5000, 50) # leave 100 iterations
+gp_samples <- post_sample(gp_step, xp_step, grad = TRUE)
+
+par(mfrow = c(1, 2))
+matplot(xp_step, t(gp_samples$y), type = "l", xlab = "x", ylab = "y", main = "GP")
+points(x_step, y_step$y, pch = 20)
+matplot(xp_step, t(gp_samples$dy), type = "l", xlab = "x", ylab = "dy", main = "GP")
+points(x_step, y_step$dy, pch = 20)
+```
+
+<br>
+We may do the same with a two-layer DGP.
+
+```{r}
+dgp_step <- fit_two_layer(x_step, y_step$y, y_step$dy, nmcmc = 10000, 
+                          true_g = 1e-6, cov = "exp2", verb = FALSE)
+dgp_step <- trim(dgp_step, 5000, 50) # leave 100 iterations
+dgp_samples <- post_sample(dgp_step, xp_step, grad = TRUE)
+
+par(mfrow = c(1, 2))
+matplot(xp_step, t(dgp_samples$y), type = "l", xlab = "x", ylab = "y", main = "DGP")
+points(x_step, y_step$y, pch = 20)
+matplot(xp_step, t(dgp_samples$dy), type = "l", xlab = "x", ylab = "dy", main = "DGP")
+points(x_step, y_step$dy, pch = 20)
+```
 
 -------
 
 # Active Learning
 
-Active learning  (also called "sequential design") is the process of sequentially selecting training locations using a statistical "surrogate" model to inform acquisitions.  Acquisitions may target specific objectives including optimizing the response or minimizing posterior variance.  The non-stationary flexibility of a DGP, combined with full UQ through Bayesian MCMC, is well-suited for sequential design tasks.  Where a typical stationary GP may end up space-filling, DGPs are able to target areas of high signal/high interest [@sauer2023active].  
+Active learning  (also called "sequential design") is the process of sequentially selecting training locations using a statistical "surrogate" model to inform acquisitions.  Acquisitions may target specific objectives including optimizing the response or minimizing posterior variance.  The nonstationary flexibility of a DGP, combined with full UQ through Bayesian MCMC, is well-suited for sequential design tasks.  Where a typical stationary GP may end up space-filling, DGPs are able to target areas of high signal/high interest [@sauer2023active].  
 
 ## Optimization through Expected Improvement
 
-If the sequential design objective is to minimize the response, the expected improvement criterion [EI, @jones1998efficient] is offered by specifying the argument `EI = TRUE` within the `predict` function.  For the Higdon function example, we can calculate EI using the testing locations `xp` as candidates with
+If the sequential design objective is to minimize the response, the expected improvement criterion [EI, @jones1998efficient] is offered by specifying the argument `EI = TRUE` within the `predict` function.  For the Booth function example, we can calculate EI using the testing locations `xp` as candidates with
 
 ```{r}
-fit2 <- predict(fit2, xp, EI = TRUE)
+dgp_booth <- predict(dgp_booth, xp_booth, EI = TRUE)
 ```
 
 To visualize EI with the corresponding fit, the following code overlays EI (green line) atop the two-layer DGP fit.
 
 ```{r, fig.width = 5, fig.height = 4}
-plot(fit2)
+plot(dgp_booth)
 par(new = TRUE)
-plot(xp, fit2$EI, type = "l", lwd = 2, col = 3, axes = FALSE, xlab = "", ylab = "")
-points(xp[which.max(fit2$EI)], max(fit2$EI), pch = 17, cex = 1.5, col = 3)
+plot(xp_booth, dgp_booth$EI, type = "l", lwd = 2, col = 3, axes = FALSE, 
+     xlab = "", ylab = "")
+points(xp_booth[which.max(dgp_booth$EI)], max(dgp_booth$EI), pch = 17, 
+       cex = 1.5, col = 3)
 ```
 
 <br>
@@ -352,13 +435,16 @@ The next acquisition is chosen as the candidate that maximized EI (highlighted b
 
 ## Contour Location through Entropy
 
-If the sequential design objective is to locate an entire contour or level set in the response surface, the entropy criterion is offered by specification of an `entropy_limit` within the `predict` function.  The `entropy_limit` represents the value of the response that separates pass/fail regions.  For the Higdon function example, if we define a contour at `y = 0` and again use the testing grid as candidates, this yields
+If the sequential design objective is to locate an entire contour or level set in the response surface, the entropy criterion is offered by specification of an `entropy_limit` within the `predict` function.  The `entropy_limit` represents the value of the response that separates pass/fail regions.  For the Booth function example, if we define a contour at `y = 0` and again use the testing grid as candidates, this yields
 
 ```{r, fig.width = 5, fig.height = 4}
-fit2 <- predict(fit2, xp, entropy_limit = 0)
-plot(fit2)
+dgp_booth <- predict(dgp_booth, xp_booth, entropy_limit = 0)
+plot(dgp_booth)
 par(new = TRUE)
-plot(xp, fit2$entropy, type = "l", lwd = 2, col = 3, axes = FALSE, xlab = "", ylab = "")
+plot(xp_booth, dgp_booth$entropy, type = "l", lwd = 2, col = 3, axes = FALSE, 
+     xlab = "", ylab = "")
+points(xp_booth[which.max(dgp_booth$entropy)], max(dgp_booth$entropy), pch = 17, 
+       cex = 1.5, col = 3)
 ```
 
 <br>
@@ -366,67 +452,43 @@ Notice entropy is highest where the predicted mean crosses the limit threshold. 
 
 ## Minimizing Posterior Variance
 
-If instead, we simply want to obtain the best surrogate fit we may choose to conduct sequential design targeting minimal posterior variance.
+If instead, we simply want to obtain the best surrogate fit we may choose to conduct sequential design targeting minimal posterior variance; the `deepgp` package offers two acquisition criteria to target minimal posterior variance.  The current implementation of these criteria requires the `"exp2"` kernel and does not support Vecchia approximation.  To demonstrate, we will revisit the step function, creating some fresh surrogates (without gradient-enhancement).
 
-For the sake of keeping things interesting, let's introduce a new one-dimensional example to use for visualization in this section (and to demonstrate a noise-free situation).  The following code defines a simple step function.
-
-```{r, echo = FALSE}
-set.seed(0)
+```{r, fig.width = 5, fig.height = 4}
+gp_step <- fit_one_layer(x_step, y_step$y, nmcmc = 10000, true_g = 1e-6, 
+                         cov = "exp2", verb = FALSE)
+gp_step <- trim(gp_step, 5000, 2)
+gp_step <- predict(gp_step, xp_step, lite = TRUE)
+plot(gp_step)
 ```
 
 ```{r, fig.width = 5, fig.height = 4}
-f <- function(x) as.numeric(x > 0.5)
-
-# Training data
-x <- seq(0, 1, length = 8) 
-y <- f(x)
-
-# Testing data
-xp <- seq(0, 1, length = 100)
-yp <- f(xp)
-
-plot(xp, yp, type = "l", col = 4, xlab = "X", ylab = "Y", main = "Step function")
-points(x, y)
+dgp_step <- fit_two_layer(x_step, y_step$y, nmcmc = 10000, true_g = 1e-6, 
+                         cov = "exp2", verb = FALSE)
+dgp_step <- trim(dgp_step, 5000, 2)
+dgp_step <- predict(dgp_step, xp_step, lite = TRUE)
+plot(dgp_step)
 ```
 
-<br>
-We then fit one- and two-layer models, this time specifying the squared exponential kernel and fixing the noise parameter to a small value.
-
-```{r, fig.width = 5, fig.height = 4}
-fit1 <- fit_one_layer(x, y, nmcmc = 10000, cov = "exp2", true_g = 1e-4, verb = FALSE)
-fit1 <- trim(fit1, 5000, 5)
-fit1 <- predict(fit1, xp)
-plot(fit1)
-```
-
-```{r, fig.width = 5, fig.height = 4}
-fit2 <- fit_two_layer(x, y, nmcmc = 10000, cov = "exp2", true_g = 1e-4, verb = FALSE)
-fit2 <- trim(fit2, 5000, 5)
-fit2 <- predict(fit2, xp)
-plot(fit2)
-```
-
-<br>
-Notice, the DGP model is better able to fit the stepwise nature of the response surface due to its non-stationarity flexibility.
-
-The `deepgp` package offers two acquisition criteria to target minimal posterior variance.  The Integrated Mean Squared Error (IMSE) acquisition criterion [@sacks1989design] is implemented in the `IMSE` function.  The following code evaluates this criterion for the one- and two-layer models above using the predictive grid as candidates and plots the resulting values.  The next acquisition is chosen as the candidate that produced the minimum IMSE (highlighted by the blue triangle).
+The Integrated Mean Squared Error (IMSE) acquisition criterion [@sacks1989design] is implemented in the `IMSE` function.  The following code evaluates this criterion for the one- and two-layer models to the step function, using the predictive grid as candidates.  The next acquisition is chosen as the candidate that produced the minimum IMSE (highlighted by the blue triangle).
 
 ```{r, fig.width = 7, fig.height = 4}
-imse1 <- IMSE(fit1, xp)
-imse2 <- IMSE(fit2, xp)
+gp_imse <- IMSE(gp_step, xp_step)
+dgp_imse <- IMSE(dgp_step, xp_step)
 par(mfrow = c(1, 2))
-plot(xp, imse1$value, type = "l", ylab = "IMSE", main = "One-layer")
-points(xp[which.min(imse1$value)], min(imse1$value), pch = 17, cex = 1.5, col = 4)
-plot(xp, imse2$value, type = "l", ylab = "IMSE", main = "Two-layer")
-points(xp[which.min(imse2$value)], min(imse2$value), pch = 17, cex = 1.5, col = 4)
+plot(xp_step, gp_imse$value, type = "l", ylab = "IMSE", main = "One-layer")
+points(xp_step[which.min(gp_imse$value)], min(gp_imse$value), pch = 17, 
+       cex = 1.5, col = 4)
+plot(xp_step, dgp_imse$value, type = "l", ylab = "IMSE", main = "Two-layer")
+points(xp_step[which.min(dgp_imse$value)], min(dgp_imse$value), pch = 17, cex = 1.5, col = 4)
 ```
 
 <br>
 Whereas the one-layer model is inclined to space-fill with low IMSE across most of the domain, the two-layer model appropriately targets acquisitions in the middle region, where uncertainty is highest.  The sum approximation to IMSE, referred to as Active learning Cohn \citep[ALC;][]{cohn1994neural} in the ML literature, is similarly implemented in the `ALC` function (although the ALC acquisition is chosen as the candidate that yields the maximum criterion value).
 
 ```{r, eval = FALSE}
-alc1 <- ALC(fit1, xp)
-alc2 <- ALC(fit2, xp)
+gp_alc <- ALC(gp_step, xp_step)
+dgp_alc <- ALC(dgp_step, xp_step)
 ```
 
 When conducting a full sequential design, it is helpful to initialize the DGP chain after an acquisition at the last sampled values of latent layers and kernel hyperparameters.  Initial values of MCMC sampling for a two-layer DGP may be specified by the `theta_y_0`, `theta_w_0`, `g_0`, and `w_0` arguments to `fit_two_layer`.  Similar arguments are implemented for `fit_one_layer` and `fit_three_layer`.  Examples of this are provided in the "active_learning" folder of the git repository (https://bitbucket.org/gramacylab/deepgp-ex/).
@@ -439,11 +501,6 @@ Fully-Bayesian DGPs are hefty models that require a good bit of computation.  Wh
 
 * If you are not using the Vecchia implementation, you may substantially speed-up under-the-hood matrix calculations by using a fast linear algebra library.  <tt>R</tt>'s default BLAS/LAPACK is not optimized for speedy matrix calculations.  I recommend Intel's Math Kernel Library (MKL) when possible.  Other options include [OpenBLAS](https://www.openblas.net/) and the [Accelerate framework](https://developer.apple.com/documentation/accelerate) on OSX.  Check out Appendix A in @gramacy2020surrogates for further discussion and illustration of linear algebra library alternatives.  Even with these, I recommend using `vecchia = TRUE` for data sizes above the low hundreds.
 * If you are using the Vecchia implementation, computation speed is reliant on parallelizaton through <tt>OpenMP</tt>.  When packages are installed from CRAN on a Mac, they are not compiled with <tt>OpenMP</tt> by default. To set up <tt>OpenMP</tt> parallelization on a Mac, download the package source code and install using the <tt>gcc/g++</tt> compiler.  The fit functions will produce a warning message when `vecchia = TRUE` is called if <tt>OpenMP</tt> is not setup. 
-
----
-nocite: |
-  @gramacy2022triangulation
----
 
 -------
 

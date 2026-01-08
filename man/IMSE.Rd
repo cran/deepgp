@@ -21,8 +21,7 @@ IMSE(object, x_new, cores)
 \item{x_new}{matrix of possible input locations, if object has been run 
 through \code{predict} the previously stored \code{x_new} is used}
 
-\item{cores}{number of cores to utilize in parallel, by default no 
-parallelization is used}
+\item{cores}{number of cores to utilize for SNOW parallelization}
 }
 \value{
 list with elements:
@@ -108,6 +107,7 @@ plot(xx, yy, type = "l")
 points(x, y, col = 2)
 
 # Conduct MCMC (can replace fit_three_layer with fit_one_layer/fit_two_layer)
+# nugget estimated
 fit <- fit_three_layer(x, y, D = 1, nmcmc = 2000, cov = "exp2")
 plot(fit)
 fit <- trim(fit, 1000, 2)

@@ -1,10 +1,22 @@
 
+/*
+ * This file contains functions for vecchia calculations
+ * THESE FUNCTIONS HAVE BEEN STREAMLINED FOR VERSION 1.2.0
+ * Internal:
+ *    d2_vector
+ *    d2_matrix
+ * External:
+ *    forward_solve_raw
+ *    U_entries
+ *    U_entries_grad
+ *    U_entries_sep
+ *    U_entries_sep_grad
+ *    check_omp
+ *    row_col_pointers
+ */    
+
 // [[Rcpp::depends(RcppArmadillo)]]
 // [[Rcpp::plugins(openmp)]]
-
-/*
- * Code derived from GPvecchia package (Katzfuss et al.)
- */
 
 #include "cov.h"
 #include <iostream>
@@ -20,34 +32,34 @@ using namespace arma;
 using namespace std;
 
 // [[Rcpp::export]]
-NumericVector forward_solve_raw(NumericMatrix U, NumericVector z,
-                            NumericMatrix NNarray) {
-  // Solves U * y = z for y
-  // Uses raw form of U (in create_U use raw_form = TRUE)
+arma::vec forward_solve_raw(const arma::mat& U, const arma::vec z,
+                            const arma::umat& NNarray) {
+  // Solves t(U) * y = z for y
+  // Uses original form of U from the U_entries function which has NOT been 
+  // turned into a sparse matrix with row_col_pointers yet
   
-  int n = U.nrow();
-  NumericVector y(n);
-  int mp1 = NNarray.ncol(); // m plus 1
-
+  int n = U.n_cols;
+  arma::vec y = zeros(n);
+  int mp1 = NNarray.n_cols; // m plus 1
+  arma::vec Urow_with_na = zeros(mp1);
+  
   y(0) = z(0) / U(0, 0);
   
   for (int i = 1; i < n; i++) {
+    Urow_with_na = reverse(U.col(i)); // grab the ith column, NA values will be leading zeros
+    arma::vec Urow = Urow_with_na.elem(find(Urow_with_na)); // finds nonzero entries
     int B = min(i + 1, mp1);
     y(i) = z(i);
     for (int j = 1; j < B; j++) {
-      y(i) -= U(i, j) * y(NNarray(i, j) - 1);
+      y(i) -= Urow(j) * y(NNarray(i, j) - 1);
     }
-    y(i) = y(i) / U(i, 0);
+    y(i) = y(i) / Urow(0);
   }
   return y;
 }
 
-// [[Rcpp::export]]
-arma::mat rev_matrix(arma::mat x) {
-  return reverse(x, 1);
-}
-
 double d2_vector(arma::rowvec x1, arma::rowvec x2) { 
+  // Gets squared distances between two vectors
   int n = x1.size();
   double d2 = 0.0;
   for(int k = 0; k < n; k++) {
@@ -57,6 +69,7 @@ double d2_vector(arma::rowvec x1, arma::rowvec x2) {
 }
 
 arma::mat d2_matrix(arma::mat x) {
+  // Gets pairwise squared distances for all elements of a matrix
   int outrows = x.n_rows;
   int outcols = x.n_rows;
   arma::mat d2(outrows, outcols);
@@ -69,111 +82,238 @@ arma::mat d2_matrix(arma::mat x) {
 }
 
 // [[Rcpp::export]]
-arma::mat U_entries (const int Ncores, const arma::mat& x, const arma::umat& revNNarray,
-                     const double tau2, const double theta, const double g, const double v){
+arma::mat U_entries(const int cores, const arma::mat& x, const arma::umat& NNarray,
+                     const double tau2, const double theta, const double g, const double v) {
   
-  const int m = revNNarray.n_cols - 1;
+  // This function has been derived from that of the GPvecchia package (Katzfuss et al.)
+  // and the GpGP package (Guinness et al.)
+  // Note: x must be ordered to align with NNarray
+  
+  const int m = NNarray.n_cols - 1;
   const int n = x.n_rows;
   arma::mat Lentries = zeros(n, m + 1);
-  arma::mat covmat;
-  
+
   #ifdef _OPENMP
-    
-  #pragma omp parallel for num_threads(Ncores) shared(Lentries) schedule(static)
-    for (int k = 0; k < n; k++) {
-      arma::uvec inds = revNNarray.row(k).t();
-      arma::uvec inds00 = inds.elem(find(inds)) - 1;
-      uword n0 = inds00.n_elem;
-      arma::mat dist = d2_matrix(x.rows(inds00));
+  #pragma omp parallel for num_threads(cores) shared(Lentries) schedule(static)
+    for (int i = 0; i < n; i++) {
+      // Grab indices of conditioning set for observation i
+      arma::uvec inds_with_na = reverse(NNarray.row(i)).t(); // turns NA into zero
+      arma::uvec inds = inds_with_na.elem(find(inds_with_na)); // finds nonzero entries
+      inds = inds - 1; // convert R indexing which starts at 1 to cpp indexing which starts at 0
+      uword n0 = inds.n_elem; // 1 + size of conditioning set for observation i
+      
+      // Get covariance matrix for point i and its conditioning set
+      arma::mat dist = d2_matrix(x.rows(inds));
       arma::mat covmat(n0, n0);
       if (v == 999) {
         covmat = Exp2(dist, tau2, theta, g);
       } else {
         covmat = Matern(dist, tau2, theta, g, v);
       }
+      
+      // Solve for the entries of L
       arma::vec onevec = zeros(n0);
       onevec[n0 - 1] = 1;
       arma::vec M = solve(chol(covmat, "upper"), onevec);
-      Lentries(k, span(0, n0 - 1)) = M.t();
+      Lentries(i, span(0, n0 - 1)) = M.t();
     }
-    
   #else
-    
-    for (int k = 0; k < n; k++) {
-      arma::uvec inds = revNNarray.row(k).t();
-      arma::uvec inds00 = inds.elem(find(inds)) - 1;
-      uword n0 = inds00.n_elem;
-      arma::mat dist = d2_matrix(x.rows(inds00));
+    for (int i = 0; i < n; i++) {
+      // Grab indices of conditioning set for observation i
+      arma::uvec inds_with_na = reverse(NNarray.row(i)).t(); // turns NA into zero
+      arma::uvec inds = inds_with_na.elem(find(inds_with_na)); // finds nonzero entries
+      inds = inds - 1; // convert R indexing which starts at 1 to cpp indexing which starts at 0
+      uword n0 = inds.n_elem; // 1 + size of conditioning set for observation i
+      
+      // Get covariance matrix for point i and its conditioning set
+      arma::mat dist = d2_matrix(x.rows(inds));
       arma::mat covmat(n0, n0);
       if (v == 999) {
         covmat = Exp2(dist, tau2, theta, g);
       } else {
         covmat = Matern(dist, tau2, theta, g, v);
       }
+      
+      // Solve for the entries of L
       arma::vec onevec = zeros(n0);
       onevec[n0 - 1] = 1;
       arma::vec M = solve(chol(covmat, "upper"), onevec);
-      Lentries(k, span(0, n0 - 1)) = M.t();
+      Lentries(i, span(0, n0 - 1)) = M.t();
     }
-    
   #endif
   
-  return Lentries;
+  return Lentries.t(); // U = transpose of L
 }
 
 // [[Rcpp::export]]
-arma::mat U_entries_sep (const int Ncores, const arma::mat& x, const arma::umat& revNNarray, 
-                     const double tau2, const arma::vec theta, const double g, const double v){
+arma::mat U_entries_grad(const int cores, const arma::mat& x, const arma::umat& NNarray,
+                         const arma::vec grad, const double tau2, 
+                         const double theta, const double g, const double v) {
   
-  const int m = revNNarray.n_cols - 1;
+  // ONLY implemented for "Exp2" with v = 999
+  
+  const int m = NNarray.n_cols - 1;
   const int n = x.n_rows;
   arma::mat Lentries = zeros(n, m + 1);
-  arma::mat covmat;
   
   #ifdef _OPENMP
-    
-  #pragma omp parallel for num_threads(Ncores) shared(Lentries) schedule(static)
-    for (int k = 0; k < n; k++) {
-      arma::uvec inds = revNNarray.row(k).t();
-      arma::uvec inds00 = inds.elem(find(inds)) - 1;
-      uword n0 = inds00.n_elem;
+  #pragma omp parallel for num_threads(cores) shared(Lentries) schedule(static)
+    for (int i = 0; i < n; i++) {
+      // Grab indices of conditioning set for observation i
+      arma::uvec inds_with_na = reverse(NNarray.row(i)).t(); // turns NA into zero
+      arma::uvec inds = inds_with_na.elem(find(inds_with_na)); // finds nonzero entries
+      inds = inds - 1; // convert R indexing which starts at 1 to cpp indexing which starts at 0
+      uword n0 = inds.n_elem; // 1 + size of conditioning set for observation i
+      
+      // Get covariance matrix for point i and its conditioning set
       arma::mat covmat(n0, n0);
-      if (v == 999) {
-        covmat = Exp2Sep(x.rows(inds00), x.rows(inds00), tau2, theta, g);
-      } else {
-        covmat = MaternSep(x.rows(inds00), x.rows(inds00), tau2, theta, g, v);
-      }
+      covmat = Exp2Grad(x.rows(inds), x.rows(inds), grad(inds), grad(inds), tau2, theta, g);
+      
+      // Solve for the entries of L
       arma::vec onevec = zeros(n0);
       onevec[n0 - 1] = 1;
       arma::vec M = solve(chol(covmat, "upper"), onevec);
-      Lentries(k, span(0, n0 - 1)) = M.t();
+      Lentries(i, span(0, n0 - 1)) = M.t();
     }
-    
   #else
-    
-    for (int k = 0; k < n; k++) {
-      arma::uvec inds = revNNarray.row(k).t();
-      arma::uvec inds00 = inds.elem(find(inds)) - 1;
-      uword n0 = inds00.n_elem;
+    for (int i = 0; i < n; i++) {
+      // Grab indices of conditioning set for observation i
+      arma::uvec inds_with_na = reverse(NNarray.row(i)).t(); // turns NA into zero
+      arma::uvec inds = inds_with_na.elem(find(inds_with_na)); // finds nonzero entries
+      inds = inds - 1; // convert R indexing which starts at 1 to cpp indexing which starts at 0
+      uword n0 = inds.n_elem; // 1 + size of conditioning set for observation i
+      
+      // Get covariance matrix for point i and its conditioning set
       arma::mat covmat(n0, n0);
-      if (v == 999) {
-        covmat = Exp2Sep(x.rows(inds00), x.rows(inds00), tau2, theta, g);
-      } else {
-        covmat = MaternSep(x.rows(inds00), x.rows(inds00), tau2, theta, g, v);
-      }
+      covmat = Exp2Grad(x.rows(inds), x.rows(inds), grad(inds), grad(inds), tau2, theta, g);
+      
+      // Solve for the entries of L
       arma::vec onevec = zeros(n0);
       onevec[n0 - 1] = 1;
       arma::vec M = solve(chol(covmat, "upper"), onevec);
-      Lentries(k, span(0, n0 - 1)) = M.t();
+      Lentries(i, span(0, n0 - 1)) = M.t();
     }
-    
   #endif
   
-  return Lentries;
+  return Lentries.t(); // U = transpose of L
 }
 
 // [[Rcpp::export]]
-void check_omp () {
+arma::mat U_entries_sep(const int cores, const arma::mat& x, const arma::umat& NNarray,
+                     const double tau2, const arma::vec theta, const double g, const double v) {
+  
+  // Same as U_entries function, but accepts a vector of theta instead of a scalar
+
+  const int m = NNarray.n_cols - 1;
+  const int n = x.n_rows;
+  arma::mat Lentries = zeros(n, m + 1);
+
+  #ifdef _OPENMP
+  #pragma omp parallel for num_threads(cores) shared(Lentries) schedule(static)
+    for (int i = 0; i < n; i++) {
+      // Grab indices of conditioning set for observation i
+      arma::uvec inds_with_na = reverse(NNarray.row(i)).t(); // turns NA into zero
+      arma::uvec inds = inds_with_na.elem(find(inds_with_na)); // finds nonzero entries
+      inds = inds - 1; // convert R indexing which starts at 1 to cpp indexing which starts at 0
+      uword n0 = inds.n_elem; // 1 + size of conditioning set for observation i
+      
+      // Get covariance matrix for point i and its conditioning set
+      arma::mat covmat(n0, n0);
+      if (v == 999) {
+        covmat = Exp2Sep(x.rows(inds), x.rows(inds), tau2, theta, g);
+      } else {
+        covmat = MaternSep(x.rows(inds), x.rows(inds), tau2, theta, g, v);
+      }
+      
+      // Solve for the entries of L
+      arma::vec onevec = zeros(n0);
+      onevec[n0 - 1] = 1;
+      arma::vec M = solve(chol(covmat, "upper"), onevec);
+      Lentries(i, span(0, n0 - 1)) = M.t();
+    }
+  #else
+    for (int i = 0; i < n; i++) {
+      // Grab indices of conditioning set for observation i
+      arma::uvec inds_with_na = reverse(NNarray.row(i)).t(); // turns NA into zero
+      arma::uvec inds = inds_with_na.elem(find(inds_with_na)); // finds nonzero entries
+      inds = inds - 1; // convert R indexing which starts at 1 to cpp indexing which starts at 0
+      uword n0 = inds.n_elem; // 1 + size of conditioning set for observation i
+      
+      // Get covariance matrix for point i and its conditioning set
+      arma::mat covmat(n0, n0);
+      if (v == 999) {
+        covmat = Exp2Sep(x.rows(inds), x.rows(inds), tau2, theta, g);
+      } else {
+        covmat = MaternSep(x.rows(inds), x.rows(inds), tau2, theta, g, v);
+      }
+      
+      // Solve for the entries of L
+      arma::vec onevec = zeros(n0);
+      onevec[n0 - 1] = 1;
+      arma::vec M = solve(chol(covmat, "upper"), onevec);
+      Lentries(i, span(0, n0 - 1)) = M.t();
+    }
+  #endif
+  
+  return Lentries.t(); // U = transpose of L
+}
+
+// [[Rcpp::export]]
+arma::mat U_entries_sep_grad(const int cores, const arma::mat& x, const arma::umat& NNarray,
+                             const arma::vec grad, const double tau2, 
+                             const arma::vec theta, const double g, const double v) {
+  
+  // ONLY implemented for "Exp2" with v = 999
+  // Same as U_entries_grad function, but accepts a vector of theta instead of a scalar
+  
+  const int m = NNarray.n_cols - 1;
+  const int n = x.n_rows;
+  arma::mat Lentries = zeros(n, m + 1);
+  
+  #ifdef _OPENMP
+  #pragma omp parallel for num_threads(cores) shared(Lentries) schedule(static)
+    for (int i = 0; i < n; i++) {
+      // Grab indices of conditioning set for observation i
+      arma::uvec inds_with_na = reverse(NNarray.row(i)).t(); // turns NA into zero
+      arma::uvec inds = inds_with_na.elem(find(inds_with_na)); // finds nonzero entries
+      inds = inds - 1; // convert R indexing which starts at 1 to cpp indexing which starts at 0
+      uword n0 = inds.n_elem; // 1 + size of conditioning set for observation i
+      
+      // Get covariance matrix for point i and its conditioning set
+      arma::mat covmat(n0, n0);
+      covmat = Exp2SepGrad(x.rows(inds), x.rows(inds), grad(inds), grad(inds), tau2, theta, g);
+      
+      // Solve for the entries of L
+      arma::vec onevec = zeros(n0);
+      onevec[n0 - 1] = 1;
+      arma::vec M = solve(chol(covmat, "upper"), onevec);
+      Lentries(i, span(0, n0 - 1)) = M.t();
+    }
+  #else
+    for (int i = 0; i < n; i++) {
+      // Grab indices of conditioning set for observation i
+      arma::uvec inds_with_na = reverse(NNarray.row(i)).t(); // turns NA into zero
+      arma::uvec inds = inds_with_na.elem(find(inds_with_na)); // finds nonzero entries
+      inds = inds - 1; // convert R indexing which starts at 1 to cpp indexing which starts at 0
+      uword n0 = inds.n_elem; // 1 + size of conditioning set for observation i
+      
+      // Get covariance matrix for point i and its conditioning set
+      arma::mat covmat(n0, n0);
+      covmat = Exp2SepGrad(x.rows(inds), x.rows(inds), grad(inds), grad(inds), tau2, theta, g);
+      
+      // Solve for the entries of L
+      arma::vec onevec = zeros(n0);
+      onevec[n0 - 1] = 1;
+      arma::vec M = solve(chol(covmat, "upper"), onevec);
+      Lentries(i, span(0, n0 - 1)) = M.t();
+    }
+  #endif
+  
+  return Lentries.t(); // U = transpose of L
+}
+
+// [[Rcpp::export]]
+void check_omp() {
   #ifdef _OPENMP
     // DO NOTHING
   #else 
@@ -184,11 +324,13 @@ void check_omp () {
 // [[Rcpp::export]]
 arma::mat row_col_pointers(const arma::umat& NNarray) {
     
-  const int m = NNarray.n_cols- 1;
+  // Returns row and column pointers for the entries of U to be placed in a sparse matrix
+  
+  const int m = NNarray.n_cols - 1;
   const int n = NNarray.n_rows;
   int start, col_count;
     
-  int length = (n - m) * (m + 1);
+  int length = (n-m) * (m+1);
   for (int i = 1; i <= m; i ++)
     length += i;
     
@@ -199,16 +341,16 @@ arma::mat row_col_pointers(const arma::umat& NNarray) {
     if (i <= m) {
       col_count = i - 1;
       for (int j = start; j < start + i; j++) {
-        pointers(j, 0) = i;
-        pointers(j, 1) = NNarray(i - 1, col_count);
+        pointers(j, 0) = NNarray(i - 1, col_count);
+        pointers(j, 1) = i;
         col_count -= 1;
       }
       start += i;
     } else {
       col_count = m;
       for (int j = start; j < start + m + 1; j++) {
-        pointers(j, 0) = i;
-        pointers(j, 1) = NNarray(i - 1, col_count);
+        pointers(j, 0) = NNarray(i - 1, col_count);
+        pointers(j, 1) = i;
         col_count -= 1;
       }
       start += m + 1;

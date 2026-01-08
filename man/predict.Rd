@@ -14,6 +14,7 @@
   object,
   x_new,
   lite = TRUE,
+  grad = FALSE,
   return_all = FALSE,
   EI = FALSE,
   entropy_limit = NULL,
@@ -25,6 +26,7 @@
   object,
   x_new,
   lite = TRUE,
+  grad = FALSE,
   store_latent = FALSE,
   mean_map = TRUE,
   return_all = FALSE,
@@ -50,9 +52,10 @@
 \method{predict}{gpvec}(
   object,
   x_new,
-  m = object$m,
-  ordering_new = NULL,
+  m = NULL,
+  ord_new = NULL,
   lite = TRUE,
+  grad = FALSE,
   return_all = FALSE,
   EI = FALSE,
   entropy_limit = NULL,
@@ -63,9 +66,10 @@
 \method{predict}{dgp2vec}(
   object,
   x_new,
-  m = object$m,
-  ordering_new = NULL,
+  m = NULL,
+  ord_new = NULL,
   lite = TRUE,
+  grad = FALSE,
   store_latent = FALSE,
   mean_map = TRUE,
   return_all = FALSE,
@@ -78,8 +82,8 @@
 \method{predict}{dgp3vec}(
   object,
   x_new,
-  m = object$m,
-  ordering_new = NULL,
+  m = NULL,
+  ord_new = NULL,
   lite = TRUE,
   store_latent = FALSE,
   mean_map = TRUE,
@@ -94,11 +98,14 @@
 \item{object}{object from \code{fit_one_layer}, \code{fit_two_layer}, or 
 \code{fit_three_layer} with burn-in already removed}
 
-\item{x_new}{matrix of predictive input locations}
+\item{x_new}{vector or matrix of predictive input locations}
 
 \item{lite}{logical indicating whether to calculate only point-wise 
 variances (\code{lite = TRUE}) or full covariance 
 (\code{lite = FALSE})}
+
+\item{grad}{logical indicating whether to additionally calculate/return 
+predictions of the gradient (one and two layer models only)}
 
 \item{return_all}{logical indicating whether to return mean and point-wise
 variance prediction for ALL samples (only available for \code{lite = TRUE})}
@@ -110,7 +117,7 @@ variance prediction for ALL samples (only available for \code{lite = TRUE})}
 passes and failures), default value of \code{NULL} bypasses entropy
 calculations}
 
-\item{cores}{number of cores to utilize in parallel}
+\item{cores}{number of cores to utilize for SNOW parallelization}
 
 \item{...}{N/A}
 
@@ -119,16 +126,15 @@ values of latent layers (two or three layer models only)}
 
 \item{mean_map}{logical indicating whether to map hidden layers using 
 conditional mean (\code{mean_map = TRUE}) or using a random sample
-from the full MVN distribution (two or three layer models only),
-\code{mean_map = FALSE} is not yet implemented for fits with 
-\code{vecchia = TRUE}}
+from the full MVN distribution (two or three layer models only)}
 
-\item{m}{size of Vecchia conditioning sets (only for fits with 
-\code{vecchia = TRUE}), defaults to the \code{m} used for MCMC}
+\item{m}{size of Vecchia conditioning sets, defaults to the lower of twice the 
+\code{m} used for MCMC or the maximum available (only for fits with 
+\code{vecchia = TRUE}),}
 
-\item{ordering_new}{optional ordering for Vecchia approximation, must correspond
-to rows of \code{x_new}, defaults to random, is applied to all layers
-in deeper models}
+\item{ord_new}{optional ordering for Vecchia approximation with \code{lite = FALSE}, 
+must correspond to rows of \code{x_new}, defaults to random, is 
+applied to all layers in deeper models}
 }
 \value{
 object of the same class with the following additional elements:
@@ -138,29 +144,35 @@ object of the same class with the following additional elements:
         \code{x_new} locations
   \item \code{s2}: predicted point-wise variances, indices correspond to 
         \code{x_new} locations (only returned when \code{lite = TRUE})
-  \item \code{mean_all}: predicted posterior mean for each sample (column
-        indices), only returned when \code{return_all = TRUE}
-  \item \code{s2_all} predicted point-wise variances for each sample (column
-        indices), only returned when \code{return-all = TRUE}
+  \item \code{mean_all}: predicted posterior mean for each sample (rows correspond
+        to iterations), only returned when \code{return_all = TRUE}
+  \item \code{s2_all}: predicted point-wise variances for each sample (rows correspond
+        to iterations), only returned when \code{return_all = TRUE}
   \item \code{Sigma}: predicted posterior covariance, indices correspond to 
         \code{x_new} locations (only returned when \code{lite = FALSE})
+  \item \code{grad_mean}: predicted posterior mean of the gradient (rows correspond
+        to \code{x_new}, columns correspond to dimension, only returned when
+        \code{grad = TRUE})
+  \item \code{grad_s2}: predicted point-wise variances of the gradient (rows correspond
+        to \code{x_new}, columns correspond to dimension, only returned when
+        \code{grad = TRUE})
   \item \code{EI}: vector of expected improvement values, indices correspond 
         to \code{x_new} locations (only returned when \code{EI = TRUE})
   \item \code{entropy}: vector of entropy values, indices correspond to 
         \code{x_new} locations (only returned when \code{entropy_limit} is
         numeric)
-  \item \code{w_new}: list of hidden layer mappings (only returned when 
-        \code{store_latent = TRUE}), list index corresponds to iteration and 
-        row index corresponds to \code{x_new} location (two or three layer 
-        models only)
-  \item \code{z_new}: list of hidden layer mappings (only returned when 
-        \code{store_latent = TRUE}), list index corresponds to iteration and 
-        row index corresponds to \code{x_new} location (three layer models only) 
+  \item \code{w_new}: array of hidden layer mappings, with dimensions corresponding
+        to iteration, then \code{x_new} location, then dimension (only returned when 
+        \code{store_latent = TRUE})
+  \item \code{z_new}: array of hidden layer mappings, with dimensions corresponding
+        to iteration, then \code{x_new} location, then dimension (only returned when 
+        \code{store_latent = TRUE})
 }
 Computation time is added to the computation time of the existing object.
 }
 \description{
-Acts on a \code{gp}, \code{dgp2}, or \code{dgp3} object.
+Acts on a \code{gp}, \code{gpvec}, \code{dgp2}, \code{dgp2vec},
+    \code{dgp3}, or \code{dgp3vec} object.
     Calculates posterior mean and variance/covariance over specified input 
     locations.  Optionally calculates expected improvement (EI) or entropy 
     over candidate inputs.  Optionally utilizes SNOW parallelization.
@@ -188,6 +200,9 @@ All iterations in the object are used for prediction, so samples
 \references{
 Sauer, A. (2023). Deep Gaussian process surrogates for computer experiments. 
      *Ph.D. Dissertation, Department of Statistics, Virginia Polytechnic Institute and State University.*
+     \url{http://hdl.handle.net/10919/114845}
+     \cr\cr
+Booth, A. S. (2025). Deep Gaussian processes with gradients. arXiv:2512.18066
      \cr\cr
 Sauer, A., Gramacy, R.B., & Higdon, D. (2023). Active learning for deep 
      Gaussian process surrogates. *Technometrics, 65,* 4-18.  arXiv:2012.08015
@@ -196,6 +211,15 @@ Sauer, A., Cooper, A., & Gramacy, R. B. (2023). Vecchia-approximated deep Gaussi
      processes for computer experiments. 
      *Journal of Computational and Graphical Statistics, 32*(3), 824-837.  arXiv:2204.02904
      \cr\cr
-Barnett, S., Beesley, L. J., Booth, A. S., Gramacy, R. B., & Osthus D. (2024). Monotonic 
-     warpings for additive and deep Gaussian processes. *In Review.* arXiv:2408.01540
+Gramacy, R. B., Sauer, A. & Wycoff, N. (2022). Triangulation candidates for Bayesian 
+    optimization.  *Advances in Neural Information Processing Systems (NeurIPS), 35,* 
+    35933-35945.  arXiv:2112.07457
+    \cr\cr
+Booth, A., Renganathan, S. A. & Gramacy, R. B. (2025). Contour location for 
+    reliability in airfoil simulation experiments using deep Gaussian 
+    processes. *Annals of Applied Statistics, 19*(1), 191-211. arXiv:2308.04420
+    \cr\cr
+Barnett, S., Beesley, L. J., Booth, A. S., Gramacy, R. B., & Osthus D. (2025). 
+    Monotonic warpings for additive and deep Gaussian processes. 
+    *Statistics and Computing, 35*(3), 65. arXiv:2408.01540
 }

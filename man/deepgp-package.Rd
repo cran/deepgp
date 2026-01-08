@@ -2,6 +2,7 @@
 % Please edit documentation in R/deepgp-package.R
 \docType{package}
 \name{deepgp-package}
+\alias{deepgp}
 \alias{deepgp-package}
 \title{Package deepgp}
 \description{
@@ -11,15 +12,16 @@ See Sauer (2023) for comprehensive
 methodological details and \url{https://bitbucket.org/gramacylab/deepgp-ex/} for 
 a variety of coding examples. Models are trained through MCMC including 
 elliptical slice sampling of latent Gaussian layers and Metropolis-Hastings 
-sampling of kernel hyperparameters.  Vecchia-approximation for faster 
+sampling of kernel hyperparameters.  Gradient-enhancement and gradient
+predictions are offered following Booth (2025).  Vecchia approximation for faster 
 computation is implemented following Sauer, Cooper, and Gramacy 
 (2023).  Optional monotonic warpings are implemented following 
-Barnett et al. (2024).  Downstream tasks include sequential design 
+Barnett et al. (2025).  Downstream tasks include sequential design 
 through active learning Cohn/integrated mean squared error (ALC/IMSE; Sauer, 
 Gramacy, and Higdon, 2023), optimization through expected improvement 
 (EI; Gramacy, Sauer, and Wycoff, 2022), and contour 
 location through entropy (Booth, Renganathan, and Gramacy, 
-2024).  Models extend up to three layers deep; a one 
+2025).  Models extend up to three layers deep; a one 
 layer model is equivalent to typical Gaussian process regression.  
 Incorporates OpenMP and SNOW parallelization and utilizes C/C++ under 
 the hood.
@@ -59,6 +61,8 @@ Sauer, A. (2023). Deep Gaussian process surrogates for computer experiments.
      *Ph.D. Dissertation, Department of Statistics, Virginia Polytechnic Institute and State University.*
      \url{http://hdl.handle.net/10919/114845}
      \cr\cr
+Booth, A. S. (2025). Deep Gaussian processes with gradients. arXiv:2512.18066
+     \cr\cr
 Sauer, A., Gramacy, R.B., & Higdon, D. (2023). Active learning for deep 
      Gaussian process surrogates. *Technometrics, 65,* 4-18.  arXiv:2012.08015
      \cr\cr
@@ -70,12 +74,13 @@ Gramacy, R. B., Sauer, A. & Wycoff, N. (2022). Triangulation candidates for Baye
     optimization.  *Advances in Neural Information Processing Systems (NeurIPS), 35,* 
     35933-35945.  arXiv:2112.07457
     \cr\cr
-Booth, A., Renganathan, S. A. & Gramacy, R. B. (2024). Contour location for 
+Booth, A., Renganathan, S. A. & Gramacy, R. B. (2025). Contour location for 
     reliability in airfoil simulation experiments using deep Gaussian 
-    processes. *In Review.* arXiv:2308.04420
-
-Barnett, S., Beesley, L. J., Booth, A. S., Gramacy, R. B., & Osthus D. (2024). 
-    Monotonic warpings for additive and deep Gaussian processes. *In Review.* arXiv:2408.01540
+    processes. *Annals of Applied Statistics, 19*(1), 191-211. arXiv:2308.04420
+   \cr\cr
+Barnett, S., Beesley, L. J., Booth, A. S., Gramacy, R. B., & Osthus D. (2025). 
+    Monotonic warpings for additive and deep Gaussian processes. 
+    *Statistics and Computing, 35*(3), 65. arXiv:2408.01540
 }
 \author{
 Annie S. Booth \email{annie_booth@ncsu.edu}

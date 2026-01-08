@@ -7,24 +7,30 @@
 fit_one_layer(
   x,
   y,
+  dydx = NULL,
   nmcmc = 10000,
   sep = FALSE,
   verb = TRUE,
+  theta_0 = 0.01,
   g_0 = 0.001,
-  theta_0 = 0.1,
   true_g = NULL,
+  v = 2.5,
   settings = NULL,
   cov = c("matern", "exp2"),
-  v = 2.5,
   vecchia = FALSE,
-  m = min(25, length(y) - 1),
-  ordering = NULL
+  m = NULL,
+  ord = NULL,
+  cores = NULL
 )
 }
 \arguments{
 \item{x}{vector or matrix of input locations}
 
 \item{y}{vector of response values}
+
+\item{dydx}{optional matrix of observed gradients, rows correspond to
+\code{x} locations, columns contain partial derivatives with 
+respect to that input dimension (\code{dim(dy)} must match \code{dim(x)})}
 
 \item{nmcmc}{number of MCMC iterations}
 
@@ -33,28 +39,32 @@ or isotropic (\code{sep = FALSE}) lengthscales}
 
 \item{verb}{logical indicating whether to print iteration progress}
 
-\item{g_0}{initial value for \code{g}}
-
 \item{theta_0}{initial value for \code{theta}}
+
+\item{g_0}{initial value for \code{g} (only used if \code{true_g = NULL})}
 
 \item{true_g}{if true nugget is known it may be specified here (set to a 
 small value to make fit deterministic).  Note - values that are too 
 small may cause numerical issues in matrix inversions.}
 
+\item{v}{Matern smoothness parameter (only used if \code{cov = "matern"})}
+
 \item{settings}{hyperparameters for proposals and priors (see details)}
 
-\item{cov}{covariance kernel, either Matern or squared exponential 
-(\code{"exp2"})}
-
-\item{v}{Matern smoothness parameter (only used if \code{cov = "matern"})}
+\item{cov}{covariance kernel, either Matern (\code{"matern"}) or squared 
+exponential (\code{"exp2"})}
 
 \item{vecchia}{logical indicating whether to use Vecchia approximation}
 
-\item{m}{size of Vecchia conditioning sets (only used if 
-\code{vecchia = TRUE})}
+\item{m}{size of Vecchia conditioning sets, defaults to the lower of 25 or
+the maximum available (only used if \code{vecchia = TRUE})}
 
-\item{ordering}{optional ordering for Vecchia approximation, must correspond
+\item{ord}{optional ordering for Vecchia approximation, must correspond
 to rows of \code{x}, defaults to random}
+
+\item{cores}{number of cores to use for OpenMP parallelization 
+(\code{vecchia = TRUE} only).  Defaults to \code{min(4, maxcores - 1)} 
+where \code{maxcores} is the number of detectable available cores.}
 }
 \value{
 a list of the S3 class \code{gp} or \code{gpvec} with elements:
@@ -65,10 +75,12 @@ a list of the S3 class \code{gp} or \code{gpvec} with elements:
   \item \code{settings}: copy of proposal/prior settings
   \item \code{v}: copy of Matern smoothness parameter (\code{v = 999} 
         indicates \code{cov = "exp2"})
+  \item \code{dydx}: copy of dydx (if not NULL)
+  \item \code{grad_indx}: stacked partial derivative indices (only if \code{dydx} is provided)
   \item \code{g}: vector of MCMC samples for \code{g}
   \item \code{theta}: vector of MCMC samples for \code{theta}
-  \item \code{tau2}: vector of MLE estimates for \code{tau2} 
-        (scale parameter)
+  \item \code{tau2}: vector of MLE estimates for \code{tau2} (scale parameter)
+  \item \code{x_approx}: Vecchia approximation object (\code{vecchia = TRUE} only)
   \item \code{ll}: vector of MVN log likelihood for each Gibbs iteration
   \item \code{time}: computation time in seconds
 }
@@ -85,8 +97,7 @@ Utilizes Metropolis Hastings sampling of the length scale and
     \code{settings}.  When \code{true_g} is set to a specific value, the 
     nugget is not estimated.  When \code{vecchia = TRUE}, all calculations 
     leverage the Vecchia approximation with specified conditioning set size 
-    \code{m}.  Vecchia approximation is only implemented for 
-    \code{cov = "matern"}.
+    \code{m}.
     
     NOTE on OpenMP: The Vecchia implementation relies on OpenMP parallelization
     for efficient computation.  This function will produce a warning message 
@@ -96,25 +107,25 @@ Utilizes Metropolis Hastings sampling of the length scale and
     using the gcc/g++ compiler.  
     
     Proposals for \code{g} and \code{theta} follow a uniform sliding window 
-    scheme, e.g. 
+    scheme, e.g.,
     
     \code{g_star <- runif(1, l * g_t / u, u * g_t / l)}, 
     
     with defaults \code{l = 1} and \code{u = 2} provided in \code{settings}.
     To adjust these, set \code{settings = list(l = new_l, u = new_u)}.
+
     Priors on \code{g} and \code{theta} follow Gamma distributions with 
     shape parameters (\code{alpha}) and rate parameters (\code{beta}) 
     controlled within the \code{settings} list object.  
-    Defaults have been updated with package version 1.1.3.  Default priors differ
-    for noisy/deterministic settings and depend on whether \code{monowarp = TRUE}.  
+    Default priors differ for noisy/deterministic settings.  
     All default values are visible in the internal
     \code{deepgp:::check_settings} function.
     These priors are designed for \code{x} scaled 
     to [0, 1] and \code{y} scaled to have mean 0 and variance 1.  These may
     be adjusted using the \code{settings} input.
     
-    The output object of class \code{gp} is designed for use with 
-    \code{continue}, \code{trim}, and \code{predict}.
+    The output object of class \code{gp} is designed for use with
+    \code{continue}, \code{trim}, \code{plot}, and \code{predict}.
 }
 \examples{
 # Additional examples including real-world computer experiments are available at: 
@@ -133,31 +144,30 @@ x <- seq(0, 1, length = 25)
 y <- f(x)
 
 # Testing data
-xx <- seq(0, 1, length = 200)
+xx <- seq(0, 1, length = 100)
 yy <- f(xx)
 
 plot(xx, yy, type = "l")
 points(x, y, col = 2)
 
-# Example 1: full model (nugget fixed)
+# Example 1: nugget fixed, calculating EI
 fit <- fit_one_layer(x, y, nmcmc = 2000, true_g = 1e-6)
 plot(fit)
-fit <- trim(fit, 1000, 2)
-fit <- predict(fit, xx, cores = 1)
-plot(fit)
-
-# Example 2: full model (nugget estimated, EI calculated)
-fit <- fit_one_layer(x, y, nmcmc = 2000)
-plot(fit) 
 fit <- trim(fit, 1000, 2)
 fit <- predict(fit, xx, cores = 1, EI = TRUE)
 plot(fit)
 par(new = TRUE) # overlay EI
 plot(xx[order(xx)], fit$EI[order(xx)], type = 'l', lty = 2, 
-axes = FALSE, xlab = '', ylab = '')
+   axes = FALSE, xlab = '', ylab = '')
 
-# Example 3: Vecchia approximated model (nugget estimated)
-fit <- fit_one_layer(x, y, nmcmc = 2000, vecchia = TRUE, m = 10)
+# Example 2: convert fit to Vecchia object before predicting
+# (this is faster if the training data set is large)
+fit <- to_vec(fit)
+fit <- predict(fit, xx, cores = 1)
+plot(fit)
+
+# Example 3: using Vecchia for training and testing
+fit <- fit_one_layer(x, y, nmcmc = 2000, true_g = 1e-6, vecchia = TRUE, m = 10)
 plot(fit)
 fit <- trim(fit, 1000, 2)
 fit <- predict(fit, xx, cores = 1)
@@ -172,6 +182,8 @@ Sauer, A. (2023). Deep Gaussian process surrogates for computer experiments.
 Sauer, A., Gramacy, R.B., & Higdon, D. (2023). Active learning for deep 
     Gaussian process surrogates. *Technometrics, 65,* 4-18.  arXiv:2012.08015
     \cr\cr
+Booth, A. S. (2025). Deep Gaussian processes with gradients. arXiv:2512.18066
+     \cr\cr
 Sauer, A., Cooper, A., & Gramacy, R. B. (2023). Vecchia-approximated deep Gaussian 
    processes for computer experiments. 
    *Journal of Computational and Graphical Statistics, 32*(3), 824-837.  arXiv:2204.02904

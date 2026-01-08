@@ -42,8 +42,8 @@ Acts on a \code{gp}, \code{gpvec}, \code{dgp2}, \code{dgp2vec},
     \code{dgp3}, or \code{dgp3vec} object.  
     Generates trace plots for outer log likelihood, length scale,
     and nugget hyperparameters.
-    Generates plots of hidden layers for one-dimensional inputs or monotonic
-    warpings.  Generates
+    Generates plots of hidden layers for low dimensions or 
+    monotonic warpings.  Generates
     plots of the posterior mean and estimated 90\% prediction intervals for 
     one-dimensional inputs; generates heat maps of the posterior mean and 
     point-wise variance for two-dimensional inputs.
@@ -53,10 +53,11 @@ Trace plots are useful in assessing burn-in.  If there are too
     many hyperparameters to plot them all, then it is most useful to 
     visualize the log likelihood (e.g., \code{plot(fit$ll, type = "l")}).
 
+    In one dimension, hidden layer plots show 100 evenly distributed samples.
+    In two dimensions (two layer only), hidden layer plots show 3 samples.
     Hidden layer plots are colored on a gradient - red lines represent 
     earlier iterations and yellow lines represent later iterations - to 
-    help assess burn-in of the hidden layers.  Only every 100th sample
-    is plotted.
+    help assess burn-in of the hidden layers.
 }
 \examples{
 # See ?fit_one_layer, ?fit_two_layer, or ?fit_three_layer

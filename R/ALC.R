@@ -5,9 +5,9 @@
 # External (see documentation below):
 #   ALC (S3 method for gp, dgp2, dgp3 classes)
 
-# ALC C -----------------------------------------------------------------------
+# alc.C -----------------------------------------------------------------------
 
-alc.C <- function(X, Ki, theta, g, Xcand, Xref, tau2, verb = 0) {
+alc.C <- function(X, Ki, tau2, theta, g, Xcand, Xref, verb = 0) {
   result <- .C("alcGP_R",
                X = as.double(t(X)),
                n = as.integer(nrow(X)),
@@ -26,7 +26,7 @@ alc.C <- function(X, Ki, theta, g, Xcand, Xref, tau2, verb = 0) {
   return(result$alc)
 }
 
-# Define ALC for S3 Objects ---------------------------------------------------
+# ALC S3 class ----------------------------------------------------------------
 #' @title Active Learning Cohn for Sequential Design
 #' @description Acts on a \code{gp}, \code{dgp2}, or \code{dgp3} object. 
 #'    Current version requires squared exponential covariance 
@@ -64,8 +64,7 @@ alc.C <- function(X, Ki, theta, g, Xcand, Xref, tau2, verb = 0) {
 #'        through \code{predict} the previously stored \code{x_new} is used
 #' @param ref optional reference grid for ALC approximation, if \code{ref = NULL} 
 #'        then \code{x_new} is used
-#' @param cores number of cores to utilize in parallel, by default no 
-#'        parallelization is used
+#' @param cores number of cores to utilize for SNOW parallelization
 #' @return list with elements:
 #' \itemize{
 #'   \item \code{value}: vector of ALC values, indices correspond to \code{x_new}
@@ -128,6 +127,7 @@ alc.C <- function(X, Ki, theta, g, Xcand, Xref, tau2, verb = 0) {
 #' points(x, y, col = 2)
 #' 
 #' # Conduct MCMC (can replace fit_two_layer with fit_one_layer/fit_three_layer)
+#' # nugget estimated
 #' fit <- fit_two_layer(x, y, D = 1, nmcmc = 2000, cov = "exp2")
 #' plot(fit)
 #' fit <- trim(fit, 1000, 2)
@@ -154,13 +154,14 @@ alc.C <- function(X, Ki, theta, g, Xcand, Xref, tau2, verb = 0) {
 ALC <- function(object, x_new, ref, cores)
   UseMethod("ALC", object)
 
-# ALC One Layer ---------------------------------------------------------------
+# ALC.gp ----------------------------------------------------------------------
 #' @rdname ALC
 #' @export
 
 ALC.gp <- function(object, x_new = NULL, ref = NULL, cores = 1) {
   
   tic <- proc.time()[[3]]
+  cores <- check_cores(cores)
   
   if (object$v != 999) 
     stop("ALC is only implemented for the un-approximated squared exponential 
@@ -172,28 +173,34 @@ ALC.gp <- function(object, x_new = NULL, ref = NULL, cores = 1) {
       stop("x_new has not been specified")
     } else x_new <- object$x_new
   }
-  if (is.numeric(x_new)) x_new <- as.matrix(x_new)
+  if (is.vector(x_new)) x_new <- as.matrix(x_new)
   if (!is.null(ref) & !is.matrix(ref)) stop("ref must be a matrix")
   if (is.null(ref)) ref <- x_new
   
-  dx <- sq_dist(object$x)
+  xdmat <- sq_dist(object$x)
   n_new <- nrow(x_new)
   
   if (cores == 1) { # run serial for loop 
     
     alc <- rep(0, times = n_new)
     for (t in 1:object$nmcmc) {
-      K <- Exp2(dx, 1, object$theta[t], object$g[t])
+      g <- ifel(length(object$g) == 1, object$g, object$g[t])
+      K <- Exp2(xdmat, 1, object$theta[t], g)
       Ki <- invdet(K)$Mi
-      alc <- alc + alc.C(object$x, Ki, object$theta[t], object$g[t], 
-                         x_new, ref, object$tau2[t])
+      alc <- alc + alc.C(object$x, Ki, object$tau2_y[t], object$theta[t], g, 
+                         x_new, ref)
     } # end of t for loop
 
   } else { # run in parallel using foreach
 
     iters <- 1:object$nmcmc
     chunks <- split(iters, sort(cut(iters, cores, labels = FALSE)))
-    if (cores > detectCores()) warning("cores is greater than available nodes")
+    if (cores > detectCores()) 
+      message("Warning: cores is greater than available nodes")
+    if (cores > object$nmcmc) {
+      message("cores is greater than nmcmc, overwriting with nmcmc")
+      cores <- object$nmcmc
+    }
     
     cl <- makeCluster(cores)
     registerDoParallel(cl)
@@ -203,10 +210,11 @@ ALC.gp <- function(object, x_new = NULL, ref = NULL, cores = 1) {
       alc_sum <- rep(0, times = n_new)
         
       for (t in chunks[[thread]]) {
-        K <- Exp2(dx, 1, object$theta[t], object$g[t])
+        g <- ifel(length(object$g) == 1, object$g, object$g[t])
+        K <- Exp2(xdmat, 1, object$theta[t], g)
         Ki <- invdet(K)$Mi
-        alc_sum <- alc_sum + alc.C(object$x, Ki, object$theta[t], object$g[t], 
-                                   x_new, ref, object$tau2[t])
+        alc_sum <- alc_sum + alc.C(object$x, Ki, object$tau2_y[t], object$theta[t], 
+                                   g, x_new, ref)
       } # end of t for loop
       return(alc_sum)
     } # end of foreach statement
@@ -219,13 +227,14 @@ ALC.gp <- function(object, x_new = NULL, ref = NULL, cores = 1) {
   return(list(value = alc / object$nmcmc, time = unname(toc - tic)))
 }
 
-# ALC Two Layer Function ------------------------------------------------------
+# ALC.dgp2 --------------------------------------------------------------------
 #' @rdname ALC
 #' @export
 
 ALC.dgp2 <- function(object, x_new = NULL, ref = NULL, cores = 1) {
   
   tic <- proc.time()[[3]]
+  cores <- check_cores(cores)
   
   if (object$v != 999) 
     stop("ALC is only implemented for the un-approximated squared exponential 
@@ -244,47 +253,57 @@ ALC.dgp2 <- function(object, x_new = NULL, ref = NULL, cores = 1) {
       } else predicted <- TRUE
     }
   } else predicted <- FALSE
-  if (is.numeric(x_new)) x_new <- as.matrix(x_new)
+  if (is.vector(x_new)) x_new <- as.matrix(x_new)
   if (!is.null(ref) & !is.matrix(ref)) stop("ref must be a matrix")
   
   # Specify pre-calculations if predicted is FALSE
   n_new <- nrow(x_new)
   if (!predicted) {
-    D <- ncol(object$w[[1]])
-    dx <- sq_dist(object$x)
-    d_cross <- sq_dist(x_new, object$x)
+    D <- dim(object$w)[3]
+    xdmat <- sq_dist(object$x)
+    xdmat_cross <- sq_dist(x_new, object$x)
   }
   
   if (cores == 1) { # run serial for loop 
     
     alc <- rep(0, times = n_new)
     for (t in 1:object$nmcmc) {
-      w <- object$w[[t]]
+      g <- ifel(length(object$g) == 1, object$g, object$g[t])
+      w <- as.matrix(object$w[t, , ])
         
       if (predicted) {
-        w_new <- object$w_new[[t]]
+        w_new <- as.matrix(object$w_new[t, , ])
       } else {
         w_new <- matrix(nrow = n_new, ncol = D)
         for (i in 1:D)
-          w_new[, i] <- krig(w[, i], dx, NULL, d_cross, object$theta_w[t, i], 
-                             g = eps, v = 999)$mean
+          w_new[, i] <- krig(w[, i], xdmat, NULL, xdmat_cross, 
+                             tau2 = object$settings$tau2_w,
+                             theta = object$theta_w[t, i], 
+                             g = eps, 
+                             v = 999,
+                             prior_mean = ifel(object$settings$pmx, object$x[, i], 0),
+                             prior_mean_new = ifel(object$settings$pmx, x_new[, i], 0))$mean
       } 
         
       if (is.null(ref)) ref <- w_new
         
-      K <- Exp2(sq_dist(w), 1, object$theta_y[t], object$g[t])
+      K <- Exp2(sq_dist(w), 1, object$theta_y[t], g)
       Ki <- invdet(K)$Mi
-      alc <- alc + alc.C(w, Ki, object$theta_y[t], object$g[t], w_new, 
-                         ref, object$tau2[t])
+      alc <- alc + alc.C(w, Ki, object$tau2_y[t], object$theta_y[t], g, w_new, ref)
     } # end of t for loop
     
   } else { # run in parallel using foreach 
     
-    message("WARNING - recommend cores = 1.  Odd behavior noticed when cores > 1")
+    message("Warning: recommend cores = 1.  Odd behavior noticed when cores > 1")
     
     iters <- 1:object$nmcmc
     chunks <- split(iters, sort(cut(iters, cores, labels = FALSE)))
-    if (cores > detectCores()) warning("cores is greater than available nodes")
+    if (cores > detectCores()) 
+      message("Warning: cores is greater than available nodes")
+    if (cores > object$nmcmc) {
+      message("cores is greater than nmcmc, overwriting with nmcmc")
+      cores <- object$nmcmc
+    }
     
     cl <- makeCluster(cores)
     registerDoParallel(cl)
@@ -294,23 +313,29 @@ ALC.dgp2 <- function(object, x_new = NULL, ref = NULL, cores = 1) {
       alc_sum <- rep(0, times = n_new)
       
       for (t in chunks[[thread]]) {
-        w <- object$w[[t]]
+        g <- ifel(length(object$g) == 1, object$g, object$g[t])
+        w <- as.matrix(object$w[t, , ])
         
         if (predicted) {
-          w_new <- object$w_new[[t]]
+          w_new <- as.matrix(object$w_new[t, , ])
         } else {
           w_new <- matrix(nrow = n_new, ncol = D)
           for (i in 1:D)
-            w_new[, i] <- krig(w[, i], dx, NULL, d_cross, object$theta_w[t, i], 
-                               g = eps, v = 999)$mean
+            w_new[, i] <- krig(w[, i], xdmat, NULL, xdmat_cross,
+                               tau2 = object$settings$tau2_w,
+                               theta = object$theta_w[t, i], 
+                               g = eps, 
+                               v = 999,
+                               prior_mean = ifel(object$settings$pmx, object$x[, i], 0),
+                               prior_mean_new = ifel(object$settings$pmx, x_new[, i], 0))$mean
         } 
         
         if (is.null(ref)) ref <- w_new
         
-        K <- Exp2(sq_dist(w), 1, object$theta_y[t], object$g[t])
+        K <- Exp2(sq_dist(w), 1, object$theta_y[t], g)
         Ki <- invdet(K)$Mi
-        alc_sum <- alc_sum + alc.C(w, Ki, object$theta_y[t], object$g[t], w_new, 
-                                   ref, object$tau2[t])
+        alc_sum <- alc_sum + alc.C(w, Ki, object$tau2_y[t], object$theta_y[t], 
+                                   g, w_new, ref)
       } # end of t for loop
       return(alc_sum)
     } # end of foreach statement
@@ -323,13 +348,14 @@ ALC.dgp2 <- function(object, x_new = NULL, ref = NULL, cores = 1) {
   return(list(value = alc / object$nmcmc, time = unname(toc - tic)))
 }
 
-# ALC Three Layer Function ----------------------------------------------------
+# ALC.dgp3 --------------------------------------------------------------------
 #' @rdname ALC
 #' @export
 
 ALC.dgp3 <- function(object, x_new = NULL, ref = NULL, cores = 1) {
   
   tic <- proc.time()[[3]]
+  cores <- check_cores(cores)
   
   if (object$v != 999) 
     stop("ALC is only implemented for the un-approximated squared exponential 
@@ -348,52 +374,63 @@ ALC.dgp3 <- function(object, x_new = NULL, ref = NULL, cores = 1) {
       } else predicted <- TRUE
     } 
   } else predicted <- FALSE
-  if (is.numeric(x_new)) x_new <- as.matrix(x_new)
+  if (is.vector(x_new)) x_new <- as.matrix(x_new)
   if (!is.null(ref) & !is.matrix(ref)) stop("ref must be a matrix")
   
   # Specify pre-calculations if predicted is FALSE
   n_new <- nrow(x_new)
   if (!predicted) {
-    D <- ncol(object$w[[1]])
-    dx <- sq_dist(object$x)
-    d_cross <- sq_dist(x_new, object$x)
+    D <- dim(object$w)[3]
+    xdmat <- sq_dist(object$x)
+    xdmat_cross <- sq_dist(x_new, object$x)
   }
   
   if (cores == 1) { # run serial for loop
     
     alc <- rep(0, times = n_new)
     for (t in 1:object$nmcmc) {
-      w <- object$w[[t]]
+      g <- ifel(length(object$g) == 1, object$g, object$g[t])
+      w <- as.matrix(object$w[t, , ])
         
       if (predicted) {
-        w_new <- object$w_new[[t]]
+        w_new <- as.matrix(object$w_new[t, , ])
       } else {
-        z <- object$z[[t]]
+        z <- as.matrix(object$z[t, , ])
         z_new <- matrix(nrow = n_new, ncol = D)
         for (i in 1:D)
-          z_new[, i] <- krig(z[, i], dx, NULL, d_cross, object$theta_z[t, i], 
-                             g = eps, v = 999)$mean
+          z_new[, i] <- krig(z[, i], xdmat, NULL, xdmat_cross, 
+                             tau2 = object$settings$tau2_z,
+                             theta = object$theta_z[t, i], 
+                             g = eps, 
+                             v = 999)$mean
         w_new <- matrix(nrow = n_new, ncol = D)
         for (i in 1:D) 
           w_new[, i] <- krig(w[, i], sq_dist(z), NULL, sq_dist(z_new, z), 
-                             object$theta_w[t, i], g = eps, v = 999)$mean
+                             tau2 = object$settings$tau2_w,
+                             theta = object$theta_w[t, i], 
+                             g = eps, 
+                             v = 999)$mean
       } 
         
       if (is.null(ref)) ref <- w_new
         
-      K <- Exp2(sq_dist(w), 1, object$theta_y[t], object$g[t])
+      K <- Exp2(sq_dist(w), 1, object$theta_y[t], g)
       Ki <- invdet(K)$Mi
-      alc <- alc + alc.C(w, Ki, object$theta_y[t], object$g[t], w_new, 
-                         ref, object$tau2[t])
+      alc <- alc + alc.C(w, Ki, object$tau2_y[t], object$theta_y[t], g, w_new, ref)
     } # end of t for loop
      
   } else { # run in parallel using foreach
     
-    message("WARNING - recommend cores = 1.  Odd behavior noticed when cores > 1")
+    message("Warning: recommend cores = 1.  Odd behavior noticed when cores > 1")
     
     iters <- 1:object$nmcmc
     chunks <- split(iters, sort(cut(iters, cores, labels = FALSE)))
-    if (cores > detectCores()) warning("cores is greater than available nodes")
+    if (cores > detectCores()) 
+      message("Warning: cores is greater than available nodes")
+    if (cores > object$nmcmc) {
+      message("cores is greater than nmcmc, overwriting with nmcmc")
+      cores <- object$nmcmc
+    }
     
     cl <- makeCluster(cores)
     registerDoParallel(cl)
@@ -403,28 +440,35 @@ ALC.dgp3 <- function(object, x_new = NULL, ref = NULL, cores = 1) {
       alc_sum <- rep(0, times = n_new)
       
       for (t in chunks[[thread]]) {
-        w <- object$w[[t]]
+        g <- ifel(length(object$g) == 1, object$g, object$g[t])
+        w <- as.matrix(object$w[t, , ])
         
         if (predicted) {
-          w_new <- object$w_new[[t]]
+          w_new <- as.matrix(object$w_new[t, , ])
         } else {
-          z <- object$z[[t]]
+          z <- as.matrix(object$z[t, , ])
           z_new <- matrix(nrow = n_new, ncol = D)
           for (i in 1:D)
-            z_new[, i] <- krig(z[, i], dx, NULL, d_cross, object$theta_z[t, i], 
-                               g = eps, v = 999)$mean
+            z_new[, i] <- krig(z[, i], xdmat, NULL, xdmat_cross, 
+                               tau2 = object$settings$tau2_z,
+                               theta = object$theta_z[t, i], 
+                               g = eps, 
+                               v = 999)$mean
           w_new <- matrix(nrow = n_new, ncol = D)
           for (i in 1:D) 
             w_new[, i] <- krig(w[, i], sq_dist(z), NULL, sq_dist(z_new, z), 
-                               object$theta_w[t, i], g = eps, v = 999)$mean
+                               tau2 = object$settings$tau2_w,
+                               theta = object$theta_w[t, i], 
+                               g = eps, 
+                               v = 999)$mean
         } 
         
         if (is.null(ref)) ref <- w_new
         
-        K <- Exp2(sq_dist(w), 1, object$theta_y[t], object$g[t])
+        K <- Exp2(sq_dist(w), 1, object$theta_y[t], g)
         Ki <- invdet(K)$Mi
-        alc_sum <- alc_sum + alc.C(w, Ki, object$theta_y[t], object$g[t], w_new, 
-                                   ref, object$tau2[t])
+        alc_sum <- alc_sum + alc.C(w, Ki, object$tau2_y[t], object$theta_y[t], 
+                                   g, w_new, ref)
       } # end of t for loop
       return(alc_sum)
     } # end of foreach statement

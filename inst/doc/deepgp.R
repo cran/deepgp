@@ -1,4 +1,4 @@
-## ---- include = FALSE---------------------------------------------------------
+## ----include = FALSE----------------------------------------------------------
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
@@ -14,80 +14,87 @@ set.seed(0)
 library(deepgp)
 
 ## -----------------------------------------------------------------------------
-higdon <- function(x) {
-  i <- which(x <= 0.6)
-  x[i] <- 2 * sin(pi * 0.8 * x[i] * 4) + 0.4 * cos(pi * 0.8 * x[i] * 16)
-  x[-i] <- 2 * x[-i] - 1
-  return(x)
+booth <- function(x) {
+  y <- rep(NA, length(x))
+  for (i in 1:length(x)) {
+    if (x[i] <= 0.58) {
+      y[i] <- sin(pi * x[i] * 6) + cos(pi * x[i] * 12)
+    } else y[i] <- 5 * x[i] - 4.9
+  }
+  return(y)
 }
 
-## ---- fig.width = 6, fig.height = 4.5-----------------------------------------
+## ----fig.width = 6, fig.height = 4.5------------------------------------------
 # Training data
-n <- 24
-x <- seq(0, 1, length = n)
-y <- higdon(x)
+n <- 20
+x_booth <- seq(0, 1, length = n)
+y_booth <- booth(x_booth)
 
 # Testing data
 np <- 100
-xp <- seq(0, 1, length = np)
-yp <- higdon(xp)
+xp_booth <- seq(0, 1, length = np)
+yp_booth <- booth(xp_booth)
 
-plot(xp, yp, type = "l", col = 4, xlab = "X", ylab = "Y", main = "Higdon function")
-points(x, y)
+plot(xp_booth, yp_booth, type = "l", col = 4, xlab = "X", ylab = "Y", 
+     main = "Booth function")
+points(x_booth, y_booth)
 
-## ---- fig.height = 3.5, fig.width = 6-----------------------------------------
-fit1 <- fit_one_layer(x, y, nmcmc = 10000, verb = FALSE)
-plot(fit1)
-
-## -----------------------------------------------------------------------------
-fit1 <- trim(fit1, 5000, 2) # remove 5000 as burn-in, thin by half
-
-## ---- fig.width = 6, fig.height = 4.5-----------------------------------------
-fit1 <- predict(fit1, xp, lite = FALSE)
-plot(fit1)
-
-## ---- fig.height = 3----------------------------------------------------------
-fit2 <- fit_two_layer(x, y, nmcmc = 8000, verb = FALSE)
-plot(fit2)
-
-## ---- fig.height = 4----------------------------------------------------------
-fit2 <- continue(fit2, 2000, verb = FALSE)
+## ----fig.height = 3.5, fig.width = 6------------------------------------------
+gp_booth <- fit_one_layer(x_booth, y_booth, nmcmc = 10000, true_g = 1e-6, 
+                          verb = FALSE)
+plot(gp_booth)
 
 ## -----------------------------------------------------------------------------
-fit2$nmcmc
+gp_booth <- trim(gp_booth, 5000, 2) # remove 5000 as burn-in, thin by half
 
-## ---- fig.width = 6, fig.height = 4-------------------------------------------
-plot(fit2, trace = FALSE, hidden = TRUE) 
+## ----fig.width = 6, fig.height = 4.5------------------------------------------
+gp_booth <- predict(gp_booth, xp_booth, lite = FALSE)
+plot(gp_booth)
 
-## ---- fig.width = 6, fig.height = 4.5-----------------------------------------
-fit2 <- trim(fit2, 5000, 2)
-fit2 <- predict(fit2, xp, lite = FALSE)
-plot(fit2)
+## ----fig.height = 3-----------------------------------------------------------
+dgp_booth <- fit_two_layer(x_booth, y_booth, nmcmc = 8000, true_g = 1e-6, 
+                           verb = FALSE)
+plot(dgp_booth)
 
-## ---- fig.width = 6, fig.height = 4.5-----------------------------------------
-fit3 <- fit_three_layer(x, y, nmcmc = 10000, verb = FALSE)
-fit3 <- trim(fit3, 5000, 2)
-fit3 <- predict(fit3, xp, lite = FALSE)
-plot(fit3)
+## ----fig.height = 4-----------------------------------------------------------
+dgp_booth <- continue(dgp_booth, 2000, verb = FALSE)
 
 ## -----------------------------------------------------------------------------
-metrics <- data.frame("RMSE" = c(rmse(yp, fit1$mean), 
-                                 rmse(yp, fit2$mean),
-                                 rmse(yp, fit3$mean)),
-                      "CRPS" = c(crps(yp, fit1$mean, diag(fit1$Sigma)),
-                                 crps(yp, fit2$mean, diag(fit2$Sigma)),
-                                 crps(yp, fit3$mean, diag(fit3$Sigma))),
-                      "SCORE" = c(score(yp, fit1$mean, fit1$Sigma),
-                                  score(yp, fit2$mean, fit2$Sigma),
-                                  score(yp, fit3$mean, fit3$Sigma)))
+dgp_booth$nmcmc
+
+## ----fig.width = 6, fig.height = 4--------------------------------------------
+plot(dgp_booth, trace = FALSE, hidden = TRUE) 
+
+## ----fig.width = 6, fig.height = 4.5------------------------------------------
+dgp_booth <- trim(dgp_booth, 5000, 2)
+dgp_booth <- predict(dgp_booth, xp_booth, lite = FALSE)
+plot(dgp_booth)
+
+## ----fig.width = 6, fig.height = 4.5------------------------------------------
+dgp3_booth <- fit_three_layer(x_booth, y_booth, nmcmc = 10000, true_g = 1e-6, 
+                              verb = FALSE)
+dgp3_booth <- trim(dgp3_booth, 5000, 2)
+dgp3_booth <- predict(dgp3_booth, xp_booth, lite = FALSE)
+plot(dgp3_booth)
+
+## -----------------------------------------------------------------------------
+metrics <- data.frame("RMSE" = c(rmse(yp_booth, gp_booth$mean), 
+                                 rmse(yp_booth, dgp_booth$mean),
+                                 rmse(yp_booth, dgp3_booth$mean)),
+                      "CRPS" = c(crps(yp_booth, gp_booth$mean, diag(gp_booth$Sigma)),
+                                 crps(yp_booth, dgp_booth$mean, diag(dgp_booth$Sigma)),
+                                 crps(yp_booth, dgp3_booth$mean, diag(dgp3_booth$Sigma))),
+                      "SCORE" = c(score(yp_booth, gp_booth$mean, gp_booth$Sigma),
+                                  score(yp_booth, dgp_booth$mean, dgp_booth$Sigma),
+                                  score(yp_booth, dgp3_booth$mean, dgp3_booth$Sigma)))
 rownames(metrics) <- c("One-layer GP", "Two-layer DGP", "Three-layer DGP")
 metrics
 
-## ---- eval = FALSE------------------------------------------------------------
-#  fit2_vec <- fit_two_layer(x, y, nmcmc = 10000, vecchia = TRUE, m = 20)
-
-## ---- eval = FALSE------------------------------------------------------------
-#  fit2_no_g <- fit_two_layer(x, y, nmcmc = 10000, true_g = 1e-4)
+## ----fig.width = 6, fig.height = 4.5------------------------------------------
+dgp_booth_noisy <- fit_two_layer(x_booth, y_booth, nmcmc = 10000, verb = FALSE)
+dgp_booth_noisy <- trim(dgp_booth_noisy, 5000, 2)
+dgp_booth_noisy <- predict(dgp_booth_noisy, xp_booth, lite = FALSE)
+plot(dgp_booth_noisy)
 
 ## -----------------------------------------------------------------------------
 tray <- function(x) {
@@ -109,72 +116,109 @@ persp(grid, grid, matrix(yp_tray, nrow = length(grid)), xlab = "x1", ylab = "x2"
 ## -----------------------------------------------------------------------------
 x_tray <- matrix(runif(50 * 2), ncol = 2)
 y_tray <- tray(x_tray)
-fit <- fit_two_layer(x_tray, y_tray, nmcmc = 10000, monowarp = TRUE, verb = FALSE)
+dgp_tray <- fit_two_layer(x_tray, y_tray, nmcmc = 10000, monowarp = TRUE, 
+                          true_g = 1e-6, verb = FALSE)
+dgp_tray <- trim(dgp_tray, 5000, 2)
 
-## ---- fig.height = 3.5--------------------------------------------------------
-plot(fit, trace = FALSE, hidden = TRUE)
+## ----fig.height = 3.5---------------------------------------------------------
+plot(dgp_tray, trace = FALSE, hidden = TRUE)
 
-## ---- fig.height = 4----------------------------------------------------------
-fit <- predict(fit, xp_tray, lite = TRUE)
-plot(fit)
-
-## ---- eval = FALSE------------------------------------------------------------
-#  fit1_sep <- fit_one_layer(x, y, nmcmc = 10000, sep = TRUE)
+## ----fig.height = 4-----------------------------------------------------------
+dgp_tray <- predict(dgp_tray, xp_tray, lite = TRUE)
+plot(dgp_tray)
 
 ## -----------------------------------------------------------------------------
-fit2 <- predict(fit2, xp, EI = TRUE)
-
-## ---- fig.width = 5, fig.height = 4-------------------------------------------
-plot(fit2)
-par(new = TRUE)
-plot(xp, fit2$EI, type = "l", lwd = 2, col = 3, axes = FALSE, xlab = "", ylab = "")
-points(xp[which.max(fit2$EI)], max(fit2$EI), pch = 17, cex = 1.5, col = 3)
-
-## ---- fig.width = 5, fig.height = 4-------------------------------------------
-fit2 <- predict(fit2, xp, entropy_limit = 0)
-plot(fit2)
-par(new = TRUE)
-plot(xp, fit2$entropy, type = "l", lwd = 2, col = 3, axes = FALSE, xlab = "", ylab = "")
-
-## ---- echo = FALSE------------------------------------------------------------
-set.seed(0)
-
-## ---- fig.width = 5, fig.height = 4-------------------------------------------
-f <- function(x) as.numeric(x > 0.5)
+step <- function(x) {
+  y <- pnorm((x - 0.5)/0.04)
+  dy <- dnorm((x - 0.5)/0.04)/0.04
+  return(list(y = y, dy = dy))
+}
 
 # Training data
-x <- seq(0, 1, length = 8) 
-y <- f(x)
+x_step <- seq(0, 1, length = 6) 
+y_step <- step(x_step)
 
 # Testing data
-xp <- seq(0, 1, length = 100)
-yp <- f(xp)
+xp_step <- seq(0, 1, length = 100)
+yp_step <- step(xp_step)
 
-plot(xp, yp, type = "l", col = 4, xlab = "X", ylab = "Y", main = "Step function")
-points(x, y)
-
-## ---- fig.width = 5, fig.height = 4-------------------------------------------
-fit1 <- fit_one_layer(x, y, nmcmc = 10000, cov = "exp2", true_g = 1e-4, verb = FALSE)
-fit1 <- trim(fit1, 5000, 5)
-fit1 <- predict(fit1, xp)
-plot(fit1)
-
-## ---- fig.width = 5, fig.height = 4-------------------------------------------
-fit2 <- fit_two_layer(x, y, nmcmc = 10000, cov = "exp2", true_g = 1e-4, verb = FALSE)
-fit2 <- trim(fit2, 5000, 5)
-fit2 <- predict(fit2, xp)
-plot(fit2)
-
-## ---- fig.width = 7, fig.height = 4-------------------------------------------
-imse1 <- IMSE(fit1, xp)
-imse2 <- IMSE(fit2, xp)
 par(mfrow = c(1, 2))
-plot(xp, imse1$value, type = "l", ylab = "IMSE", main = "One-layer")
-points(xp[which.min(imse1$value)], min(imse1$value), pch = 17, cex = 1.5, col = 4)
-plot(xp, imse2$value, type = "l", ylab = "IMSE", main = "Two-layer")
-points(xp[which.min(imse2$value)], min(imse2$value), pch = 17, cex = 1.5, col = 4)
+plot(xp_step, yp_step$y, type = "l", col = 4, xlab = "X", ylab = "Y",
+     main = "Step function")
+points(x_step, y_step$y)
+plot(xp_step, yp_step$dy, type = "l", col = 4, xlab = "X", ylab = "Y",
+     main = "Step function Gradient")
+points(x_step, y_step$dy)
 
-## ---- eval = FALSE------------------------------------------------------------
-#  alc1 <- ALC(fit1, xp)
-#  alc2 <- ALC(fit2, xp)
+## -----------------------------------------------------------------------------
+gp_step <- fit_one_layer(x_step, y_step$y, y_step$dy, nmcmc = 10000, 
+                          true_g = 1e-6, cov = "exp2", verb = FALSE)
+gp_step <- trim(gp_step, 5000, 50) # leave 100 iterations
+gp_samples <- post_sample(gp_step, xp_step, grad = TRUE)
+
+par(mfrow = c(1, 2))
+matplot(xp_step, t(gp_samples$y), type = "l", xlab = "x", ylab = "y", main = "GP")
+points(x_step, y_step$y, pch = 20)
+matplot(xp_step, t(gp_samples$dy), type = "l", xlab = "x", ylab = "dy", main = "GP")
+points(x_step, y_step$dy, pch = 20)
+
+## -----------------------------------------------------------------------------
+dgp_step <- fit_two_layer(x_step, y_step$y, y_step$dy, nmcmc = 10000, 
+                          true_g = 1e-6, cov = "exp2", verb = FALSE)
+dgp_step <- trim(dgp_step, 5000, 50) # leave 100 iterations
+dgp_samples <- post_sample(dgp_step, xp_step, grad = TRUE)
+
+par(mfrow = c(1, 2))
+matplot(xp_step, t(dgp_samples$y), type = "l", xlab = "x", ylab = "y", main = "DGP")
+points(x_step, y_step$y, pch = 20)
+matplot(xp_step, t(dgp_samples$dy), type = "l", xlab = "x", ylab = "dy", main = "DGP")
+points(x_step, y_step$dy, pch = 20)
+
+## -----------------------------------------------------------------------------
+dgp_booth <- predict(dgp_booth, xp_booth, EI = TRUE)
+
+## ----fig.width = 5, fig.height = 4--------------------------------------------
+plot(dgp_booth)
+par(new = TRUE)
+plot(xp_booth, dgp_booth$EI, type = "l", lwd = 2, col = 3, axes = FALSE, 
+     xlab = "", ylab = "")
+points(xp_booth[which.max(dgp_booth$EI)], max(dgp_booth$EI), pch = 17, 
+       cex = 1.5, col = 3)
+
+## ----fig.width = 5, fig.height = 4--------------------------------------------
+dgp_booth <- predict(dgp_booth, xp_booth, entropy_limit = 0)
+plot(dgp_booth)
+par(new = TRUE)
+plot(xp_booth, dgp_booth$entropy, type = "l", lwd = 2, col = 3, axes = FALSE, 
+     xlab = "", ylab = "")
+points(xp_booth[which.max(dgp_booth$entropy)], max(dgp_booth$entropy), pch = 17, 
+       cex = 1.5, col = 3)
+
+## ----fig.width = 5, fig.height = 4--------------------------------------------
+gp_step <- fit_one_layer(x_step, y_step$y, nmcmc = 10000, true_g = 1e-6, 
+                         cov = "exp2", verb = FALSE)
+gp_step <- trim(gp_step, 5000, 2)
+gp_step <- predict(gp_step, xp_step, lite = TRUE)
+plot(gp_step)
+
+## ----fig.width = 5, fig.height = 4--------------------------------------------
+dgp_step <- fit_two_layer(x_step, y_step$y, nmcmc = 10000, true_g = 1e-6, 
+                         cov = "exp2", verb = FALSE)
+dgp_step <- trim(dgp_step, 5000, 2)
+dgp_step <- predict(dgp_step, xp_step, lite = TRUE)
+plot(dgp_step)
+
+## ----fig.width = 7, fig.height = 4--------------------------------------------
+gp_imse <- IMSE(gp_step, xp_step)
+dgp_imse <- IMSE(dgp_step, xp_step)
+par(mfrow = c(1, 2))
+plot(xp_step, gp_imse$value, type = "l", ylab = "IMSE", main = "One-layer")
+points(xp_step[which.min(gp_imse$value)], min(gp_imse$value), pch = 17, 
+       cex = 1.5, col = 4)
+plot(xp_step, dgp_imse$value, type = "l", ylab = "IMSE", main = "Two-layer")
+points(xp_step[which.min(dgp_imse$value)], min(dgp_imse$value), pch = 17, cex = 1.5, col = 4)
+
+## ----eval = FALSE-------------------------------------------------------------
+# gp_alc <- ALC(gp_step, xp_step)
+# dgp_alc <- ALC(dgp_step, xp_step)
 

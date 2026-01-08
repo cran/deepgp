@@ -7,22 +7,24 @@
 fit_two_layer(
   x,
   y,
+  dydx = NULL,
   nmcmc = 10000,
   D = ifelse(is.matrix(x), ncol(x), 1),
   monowarp = FALSE,
   pmx = FALSE,
   verb = TRUE,
   w_0 = NULL,
-  g_0 = 0.001,
-  theta_y_0 = 0.1,
+  theta_y_0 = 0.01,
   theta_w_0 = 0.1,
+  g_0 = 0.001,
   true_g = NULL,
+  v = 2.5,
   settings = NULL,
   cov = c("matern", "exp2"),
-  v = 2.5,
   vecchia = FALSE,
-  m = min(25, length(y) - 1),
-  ordering = NULL
+  m = NULL,
+  ord = NULL,
+  cores = NULL
 )
 }
 \arguments{
@@ -30,33 +32,31 @@ fit_two_layer(
 
 \item{y}{vector of response values}
 
+\item{dydx}{optional matrix of observed gradients, rows correspond to
+\code{x} locations, columns contain partial derivatives with 
+respect to that input dimension (\code{dim(dy)} must match \code{dim(x)})}
+
 \item{nmcmc}{number of MCMC iterations}
 
 \item{D}{integer designating dimension of hidden layer, defaults to 
 dimension of \code{x}}
 
-\item{monowarp}{indicates whether warpings should be forced to be 
-monotonic.  Input may be a matrix of
-grid points (or a vector which will be applied to every dimension)
-for interpolation of the cumulative sum, an integer
-specifying the number of grid points to use over the range [0, 1],
-or simply the boolean \code{TRUE} which triggers 50 grid points
-over the range [0, 1].}
+\item{monowarp}{logical or numeric.  If \code{FALSE}, warpings are not forced to
+be monotonic.  If \code{TRUE}, each input dimension is individually monotonically
+warped with a default grid size of 50.  If numeric, triggers monotonic 
+warpings with the provided grid size.}
 
 \item{pmx}{"prior mean x", logical indicating whether \code{w} should have 
 prior mean of \code{x} (\code{TRUE}, requires \code{D = ncol(x)}) or prior 
 mean zero (\code{FALSE}).  \code{pmx = TRUE} is recommended for
-higher dimensions.  May be numeric, in which case the specified
-argument is used as the scale (\code{tau2}) in the latent \code{w}
-layer (default is 1).  Small values encourage identity mappings.}
+higher dimensions.}
 
 \item{verb}{logical indicating whether to print iteration progress}
 
-\item{w_0}{initial value for hidden layer \code{w} (must be matrix 
-of dimension \code{nrow(x)} by \code{D} or  dimension 
-\code{nrow(x) - 1} by \code{D}).  Defaults to the identity mapping.}
-
-\item{g_0}{initial value for \code{g}}
+\item{w_0}{initial value for hidden layer \code{w} (rows must correspond to
+rows of \code{x}, requires \code{ncol(w_0) = D}.  Defaults to the 
+identity mapping.  If \code{nrow(w_0) < nrow(x)}, missing initial values
+are filled-in with the GP posterior mean.}
 
 \item{theta_y_0}{initial value for \code{theta_y} (length scale of outer 
 layer)}
@@ -64,25 +64,31 @@ layer)}
 \item{theta_w_0}{initial value for \code{theta_w} (length scale of inner 
 layer), may be single value or vector of length \code{D}}
 
+\item{g_0}{initial value for \code{g} (only used if \code{true_g = NULL})}
+
 \item{true_g}{if true nugget is known it may be specified here (set to a 
 small value to make fit deterministic).  Note - values that are too 
 small may cause numerical issues in matrix inversions.}
 
+\item{v}{Matern smoothness parameter (only used if \code{cov = "matern"})}
+
 \item{settings}{hyperparameters for proposals and priors (see details)}
 
-\item{cov}{covariance kernel, either Matern or squared exponential 
-(\code{"exp2"})}
-
-\item{v}{Matern smoothness parameter (only used if \code{cov = "matern"})}
+\item{cov}{covariance kernel, either Matern (\code{"matern"}) or squared 
+exponential (\code{"exp2"})}
 
 \item{vecchia}{logical indicating whether to use Vecchia approximation}
 
-\item{m}{size of Vecchia conditioning sets (only used if 
-\code{vecchia = TRUE})}
+\item{m}{size of Vecchia conditioning sets, defaults to the lower of 25 or
+the maximum available (only used if \code{vecchia = TRUE})}
 
-\item{ordering}{optional ordering for Vecchia approximation, must correspond
-to rows of \code{x}, defaults to random, is applied to \code{x}
+\item{ord}{optional ordering for Vecchia approximation, must correspond
+to rows of \code{x}, defaults to random, is applied to both \code{x}
 and \code{w}}
+
+\item{cores}{number of cores to use for OpenMP parallelization 
+(\code{vecchia = TRUE} only).  Defaults to \code{min(4, maxcores - 1)} 
+where \code{maxcores} is the number of detectable available cores.}
 }
 \value{
 a list of the S3 class \code{dgp2} or \code{dgp2vec} with elements:
@@ -93,14 +99,21 @@ a list of the S3 class \code{dgp2} or \code{dgp2vec} with elements:
   \item \code{settings}: copy of proposal/prior settings
   \item \code{v}: copy of Matern smoothness parameter (\code{v = 999} 
         indicates \code{cov = "exp2"}) 
+  \item \code{x_grid}: grid used for monotonic warpings (\code{monowarp = TRUE} only)
+  \item \code{dydx}: copy of dydx (if not NULL)
+  \item \code{grad_indx}: stacked partial derivative indices (only if \code{dydx} is provided)
   \item \code{g}: vector of MCMC samples for \code{g}
+  \item \code{tau2_y}: vector of MLE estimates for \code{tau2} on the outer layer
   \item \code{theta_y}: vector of MCMC samples for \code{theta_y} (length
         scale of outer layer)
+  \item \code{tau2_w}: matrix of MLE estimates for \code{tau2} on inner layer
+        (only returned if \code{monowarp = TRUE}, otherwise this is fixed in \code{settings})
   \item \code{theta_w}: matrix of MCMC samples for \code{theta_w} (length 
         scale of inner layer)
-  \item \code{tau2}: vector of MLE estimates for \code{tau2} (scale 
-        parameter of outer layer)
   \item \code{w}: list of MCMC samples for hidden layer \code{w}
+  \item \code{w_grid}: \code{w} values at \code{x_grid} locations (\code{monowarp = TRUE} only)
+  \item \code{w_approx}: Vecchia approximation object for outer layer (\code{vecchia = TRUE} only)
+  \item \code{x_approx}: Vecchia approximation object for inner layer (\code{vecchia = TRUE} only)
   \item \code{ll}: vector of MVN log likelihood of the outer layer 
         for reach Gibbs iteration
   \item \code{time}: computation time in seconds
@@ -116,29 +129,25 @@ Conducts MCMC sampling of hyperparameters and hidden layer
 }
 \details{
 Maps inputs \code{x} through hidden layer \code{w} to outputs 
-    \code{y}.  Conducts sampling of the hidden layer using Elliptical 
-    Slice sampling.  Utilizes Metropolis Hastings sampling of the length 
+    \code{y}.  Conducts sampling of the hidden layer using elliptical 
+    slice sampling.  Utilizes Metropolis Hastings sampling of the length 
     scale and nugget parameters with proposals and priors controlled by 
     \code{settings}.  When \code{true_g} is set to a specific value, the 
     nugget is not estimated.  When \code{vecchia = TRUE}, all calculations
     leverage the Vecchia approximation with specified conditioning set size
-    \code{m}.  Vecchia approximation is only implemented for 
-    \code{cov = "matern"}.
+    \code{m}.
   
     When \code{monowarp = TRUE}, each input dimension is warped separately and
-    monotonically.  This requires \code{D = ncol(x)}.  Monotonic warpings trigger
-    separable lengthscales on the outer layer (\code{theta_y}).  As a default, monotonic 
+    monotonically.  This requires \code{D = ncol(x)} with \code{x} scaled to the 
+    unit cube.  New in version 1.2.0 - monotonic warpings estimate separate
+    scale parameters (\code{tau2_w}) on each latent node and use an isotropic 
+    lengthscale on the outer layer.  As a default, monotonic 
     warpings use the reference grid: \code{seq(0, 1, length = 50)}.  The grid size 
     may be controlled by passing a numeric integer to \code{monowarp}
     (i.e., \code{monowarp = 100} uses the grid \code{seq(0, 1, length = 100)}).
-    Alternatively, any user-specified grid may be passed as the argument to 
-    \code{monowarp}.
     
     When \code{pmx = TRUE}, the prior on the latent layer is set at \code{x} 
-    (rather than the default of zero).  This requires \code{D = ncol(x)}.  If
-    \code{pmx} is set to a numeric value, then that value is used as the scale
-    parameter on the latent layer.  Specifying a small value here encourages
-    an identity mapping.
+    (rather than the default of zero).  This requires \code{D = ncol(x)}.
     
     NOTE on OpenMP: The Vecchia implementation relies on OpenMP parallelization
     for efficient computation.  This function will produce a warning message 
@@ -148,7 +157,7 @@ Maps inputs \code{x} through hidden layer \code{w} to outputs
     using the gcc/g++ compiler.  
     
     Proposals for \code{g}, \code{theta_y}, and 
-    \code{theta_w} follow a uniform sliding window scheme, e.g.
+    \code{theta_w} follow a uniform sliding window scheme, e.g.,
     
     \code{g_star <- runif(1, l * g_t / u, u * g_t / l)}, 
     
@@ -157,17 +166,21 @@ Maps inputs \code{x} through hidden layer \code{w} to outputs
     Priors on \code{g}, \code{theta_y}, and \code{theta_w} follow Gamma 
     distributions with shape parameters (\code{alpha}) and rate parameters 
     (\code{beta}) controlled within the \code{settings} list object.  
-    Defaults have been updated with package version 1.1.3.  Default priors differ
-    for noisy/deterministic settings and depend on whether \code{monowarp = TRUE}.  
+    Default priors differ for noisy/deterministic settings and depend on 
+    whether \code{monowarp = TRUE}.  
     All default values are visible in the internal
     \code{deepgp:::check_settings} function.
     These priors are designed for \code{x} scaled to 
     [0, 1] and \code{y} scaled to have mean 0 and variance 1.  These may be 
     adjusted using the \code{settings} input.
+
+    The scale on the latent layer (\code{tau2_w}) may also be specified in 
+    \code{settings}.  Defaults to 1. 
     
     When \code{w_0 = NULL}, the hidden layer is initialized at \code{x} 
-    (i.e. the identity mapping).  If \code{w_0} is of dimension 
-    \code{nrow(x) - 1} by \code{D}, the final row is predicted using kriging. 
+    (i.e., the identity mapping).  If \code{w_0} is of dimension 
+    \code{nrow(x) - 1} by \code{D}, the final row is filled-in using the GP
+    posterior mean. 
     This is helpful in sequential design when adding a new input location 
     and starting the MCMC at the place where the previous MCMC left off.
     
@@ -191,14 +204,14 @@ x <- seq(0, 1, length = 25)
 y <- f(x)
 
 # Testing data
-xx <- seq(0, 1, length = 200)
+xx <- seq(0, 1, length = 100)
 yy <- f(xx)
 
 plot(xx, yy, type = "l")
 points(x, y, col = 2)
 
-# Example 1: full model (nugget estimated, using continue)
-fit <- fit_two_layer(x, y, nmcmc = 1000)
+# Example 1: nugget fixed, using continue
+fit <- fit_two_layer(x, y, nmcmc = 1000, true_g = 1e-6)
 plot(fit)
 fit <- continue(fit, 1000) 
 plot(fit, hidden = TRUE) # trace plots and ESS samples 
@@ -206,24 +219,16 @@ fit <- trim(fit, 1000, 2)
 fit <- predict(fit, xx, cores = 1)
 plot(fit)
 
-# Example 2: Vecchia approximated model (nugget estimated)
-# (Vecchia approximation is faster for larger data sizes)
-fit <- fit_two_layer(x, y, nmcmc = 2000, vecchia = TRUE, m = 10)
-plot(fit, hidden = TRUE) # trace plots and ESS samples
-fit <- trim(fit, 1000, 2)
-fit <- predict(fit, xx, cores = 1)
-plot(fit)
-
-# Example 3: Vecchia approximated model, re-approximated after burn-in 
-fit <- fit_two_layer(x, y, nmcmc = 1000, vecchia = TRUE, m = 10)
+# Example 2: using Vecchia, re-approximated after burn-in 
+fit <- fit_two_layer(x, y, nmcmc = 1000, true_g = 1e-6, vecchia = TRUE, m = 10)
 fit <- continue(fit, 1000, re_approx = TRUE)
 plot(fit, hidden = TRUE) # trace plots and ESS samples
 fit <- trim(fit, 1000, 2)
 fit <- predict(fit, xx, cores = 1)
 plot(fit)
 
-# Example 4: full model with monotonic warpings (nugget estimated)
-fit <- fit_two_layer(x, y, nmcmc = 2000, monowarp = TRUE)
+# Example 3: using monotonic warpings
+fit <- fit_two_layer(x, y, nmcmc = 2000, true_g = 1e-6, monowarp = TRUE)
 plot(fit, hidden = TRUE) # trace plots and ESS samples
 fit <- trim(fit, 1000, 2)
 fit <- predict(fit, xx, cores = 1)
@@ -233,15 +238,19 @@ plot(fit)
 }
 \references{
 Sauer, A. (2023). Deep Gaussian process surrogates for computer experiments. 
-    *Ph.D. Dissertation, Department of Statistics, Virginia Polytechnic Institute and State University.*
+     *Ph.D. Dissertation, Department of Statistics, Virginia Polytechnic Institute and State University.*
+     \url{http://hdl.handle.net/10919/114845}
+     \cr\cr
+Booth, A. S. (2025). Deep Gaussian processes with gradients. arXiv:2512.18066
      \cr\cr
 Sauer, A., Gramacy, R.B., & Higdon, D. (2023). Active learning for deep 
-    Gaussian process surrogates. *Technometrics, 65,* 4-18.  arXiv:2012.08015
-    \cr\cr
+     Gaussian process surrogates. *Technometrics, 65,* 4-18.  arXiv:2012.08015
+     \cr\cr
 Sauer, A., Cooper, A., & Gramacy, R. B. (2023). Vecchia-approximated deep Gaussian 
      processes for computer experiments. 
      *Journal of Computational and Graphical Statistics, 32*(3), 824-837.  arXiv:2204.02904
      \cr\cr
-Barnett, S., Beesley, L. J., Booth, A. S., Gramacy, R. B., & Osthus D. (2024). Monotonic 
-     warpings for additive and deep Gaussian processes. *In Review.* arXiv:2408.01540
+Barnett, S., Beesley, L. J., Booth, A. S., Gramacy, R. B., & Osthus D. (2025). 
+    Monotonic warpings for additive and deep Gaussian processes. 
+    *Statistics and Computing, 35*(3), 65. arXiv:2408.01540
 }

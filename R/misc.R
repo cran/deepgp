@@ -2,102 +2,27 @@
 # Function Contents -----------------------------------------------------------
 # Internal:
 #   eps: minimum nugget value (1.5e-8)
-#   krig: calculates posterior mean, sigma, and tau2 (optionally f_min)
-#   krig_sep: same as above, but with a separable kernel
 #   invdet: calculates inverse and log determinant of a matrix using C
 #           (credit given to the "laGP package, R.B. Gramacy & Furong Sun)
-#   fill_final_row: uses kriging to fill final row of w_0/z_0
+#   fill_final_rows: uses kriging to fill-in w_0/z_0
 #   exp_improv: calculates expected improvement
 #   calc_entropy: calculates entropy for two classes (pass/fail)
 #   ifel: returns second or third element depending on first argument
-#   monowarp_ref: uses cumulative sum on a reference grid to make warping monotonic
-#   fo_approx: linearly approximates along a reference grid
+#   monotransform: uses cumulative sum on a reference grid to make warping monotonic
+#   bind: appends copies of a matrix to itself (for gradient-enhancement)
+#   get_dydw: solves for dydw given dwdx and dydx (for gradient-enhancement)
+#   get_prior_mean: provides identity warping with appropriate gradients
 # External (see documentation below):
 #   sq_dist
 #   score
 #   rmse
 #   crps
 
+# eps -------------------------------------------------------------------------
+
 eps <- sqrt(.Machine$double.eps)
 
-# Krig ------------------------------------------------------------------------
-
-krig <- function(y, dx, d_new = NULL, d_cross = NULL, theta, g, tau2 = 1,
-                 s2 = FALSE, sigma = FALSE, f_min = FALSE, v = 2.5,
-                 prior_mean = 0, prior_mean_new = 0) {
-  
-  out <- list()
-  if (v == 999) {
-    C <- Exp2(dx, 1, theta, g)
-    C_cross <- Exp2(d_cross, 1, theta, 0) # no g in rectangular matrix
-  } else {
-    C <- Matern(dx, 1, theta, g, v) 
-    C_cross <- Matern(d_cross, 1, theta, 0, v)
-  }
-  C_inv <- invdet(C)$Mi
-  out$mean <- prior_mean_new + C_cross %*% C_inv %*% (y - prior_mean)
-  
-  if (f_min) { # predict at observed locations, return min expected value
-    if (v == 999) {
-      C_cross_observed_only <- Exp2(dx, 1, theta, 0)
-    } else C_cross_observed_only <- Matern(dx, 1, theta, 0, v)
-    out$f_min <- min(C_cross_observed_only %*% C_inv %*% y)
-  }
-  
-  if (s2) {
-    C_new <- rep(1 + g, times = nrow(d_cross))
-    out$s2 <- tau2 * (C_new - diag_quad_mat(C_cross, C_inv))
-  }
-  
-  if (sigma) {
-    quad_term <- C_cross %*% C_inv %*% t(C_cross)
-    if (v == 999) {
-      C_new <- Exp2(d_new, 1, theta, g)
-    } else  C_new <- Matern(d_new, 1, theta, g, v) 
-    out$sigma <- tau2 * (C_new - quad_term)
-  }
-  return(out)
-}
-
-# Krig SEPARABLE --------------------------------------------------------------
-
-krig_sep <- function(y, x, x_new, theta, g, tau2 = 1,
-                     s2 = FALSE, sigma = FALSE, f_min = FALSE, v = 2.5) {
-  
-  out <- list()
-  if (v == 999) {
-    C <- Exp2Sep(x, x, 1, theta, g)
-    C_cross <- Exp2Sep(x_new, x, 1, theta, 0) # no g in rectangular matrix
-  } else {
-    C <- MaternSep(x, x, 1, theta, g, v) 
-    C_cross <- MaternSep(x_new, x, 1, theta, 0, v)
-  }
-  C_inv <- invdet(C)$Mi
-  out$mean <- C_cross %*% C_inv %*% y
-  
-  if (f_min) { # predict at observed locations, return min expected value
-    if (v == 999) {
-      C_cross_observed_only <- Exp2Sep(x, x, 1, theta, 0)
-    } else C_cross_observed_only <- MaternSep(x, x, 1, theta, 0, v)
-    out$f_min <- min(C_cross_observed_only %*% C_inv %*% y)
-  }
-  
-  if (s2) {
-    C_new <- rep(1 + g, times = nrow(x_new))
-    out$s2 <- tau2 * (C_new - diag_quad_mat(C_cross, C_inv))
-  }
-  
-  if (sigma) {
-    quad_term <- C_cross %*% C_inv %*% t(C_cross)
-    if (v == 999) {
-      C_new <- Exp2Sep(x_new, x_new, 1, theta, g)
-    } else  C_new <- MaternSep(x_new, x_new, 1, theta, g, v) 
-    out$sigma <- tau2 * (C_new - quad_term)
-  }
-  return(out)
-}
-
-# Matrix Inverse --------------------------------------------------------------
+# invdet ----------------------------------------------------------------------
 
 invdet <- function(M) {
 
@@ -112,7 +37,7 @@ invdet <- function(M) {
   return(list(Mi = matrix(out$Mi, ncol=n), ldet = out$ldet))
 }
 
-# Squared Distance-------------------------------------------------------------
+# sq_dist ---------------------------------------------------------------------
 #' @title Calculates squared pairwise distances
 #' @description Calculates squared pairwise euclidean distances using C.
 #' 
@@ -166,7 +91,7 @@ sq_dist <- function(X1, X2 = NULL) {
   }
 }
 
-# Score -----------------------------------------------------------------------
+# score -----------------------------------------------------------------------
 #' @title Calculates score
 #' @description Calculates score, proportional to the multivariate normal log
 #'     likelihood.  Higher scores indicate better fits.  Only 
@@ -195,7 +120,7 @@ score <- function(y, mu, sigma) {
   return(c(score))
 }
 
-# RMSE ------------------------------------------------------------------------
+# rmse ------------------------------------------------------------------------
 #' @title Calculates RMSE
 #' @description Calculates root mean square error (lower RMSE indicate better 
 #'     fits).
@@ -210,10 +135,10 @@ score <- function(y, mu, sigma) {
 #' @export
 
 rmse <- function(y, mu) {
-  return(sqrt(mean((y - mu) ^ 2)))
+  return(sqrt(mean((y - mu)^2)))
 }
 
-# CRPS ------------------------------------------------------------------------
+# crps ------------------------------------------------------------------------
 #' @title Calculates CRPS
 #' @description Calculates continuous ranked probability score (lower CRPS indicate
 #' better fits, better uncertainty quantification).
@@ -235,49 +160,78 @@ rmse <- function(y, mu) {
 
 crps <- function(y, mu, s2) {
   sigma <- sqrt(s2)
-  z <- (y - mu) / sigma
-  return(mean(sigma * (-(1 / sqrt(pi)) + 2 * dnorm(z) + z * (2 * pnorm(z) - 1))))
+  z <- (y - mu)/sigma
+  return(mean(sigma*(-(1/sqrt(pi)) + 2*dnorm(z) + z*(2*pnorm(z) - 1))))
 }
 
-# Fill Final Row --------------------------------------------------------------
+# fill_final_rows -------------------------------------------------------------
 
-fill_final_row <- function(x, w_0, D, theta_w_0, v) {
-  n <- nrow(x)
-  dx <- sq_dist(x)
-  new_w <- vector(length = D)
-  old_x <- x[1:(n - 1), ]
-  new_x <- matrix(x[n, ], nrow = 1)
-  for (i in 1:D) {
-    new_w[i] <- krig(w_0[, i], dx[1:(n - 1), 1:(n - 1)], 
-                     d_cross = sq_dist(new_x, old_x), theta = theta_w_0[i], 
-                     g = eps, v = v)$mean
+fill_final_rows <- function(w, x, tau2, theta, v, pmx = FALSE, vecchia = FALSE,
+                            m = nrow(x) - 1) {
+
+  n <- nrow(w)
+  n_new <- nrow(x)
+  if (n_new <= n) stop("no additional rows to fill")
+  D <- ncol(w)
+  if (pmx & (ncol(x) != D)) stop("pmx requires ncol(x) = D")
+  old_x <- x[1:n, , drop = FALSE]
+  new_x <- x[(n + 1):n_new, , drop = FALSE]
+  new_w <- matrix(nrow = n_new - n, ncol = D)
+  
+  if (vecchia) {
+    temp_approx <- create_approx(old_x, m)
+    temp_approx <- add_pred_to_approx(temp_approx, new_x, m, lite = TRUE)
+    for (i in 1:D) {
+      new_w[i] <- krig_vec(w[, i], 
+                           approx = temp_approx,
+                           tau2 = tau2,
+                           theta = ifel(length(theta) == 1, theta, theta[i]), 
+                           g = eps,
+                           v = v,
+                           prior_mean = ifel(pmx, old_x[, i], 0),
+                           prior_mean_new = ifel(pmx, new_x[, i], 0))$mean
+    }
+  } else {
+    xdmat <- sq_dist(old_x)
+    xdmat_cross <- sq_dist(new_x, old_x)
+    for (i in 1:D) {
+      new_w[, i] <- krig(w[, i], 
+                         xdmat = xdmat, 
+                         xdmat_cross = xdmat_cross, 
+                         tau2 = tau2, 
+                         theta = ifel(length(theta) == 1, theta, theta[i]), 
+                         g = eps, 
+                         v = v,
+                         prior_mean = ifel(pmx, old_x[, i], 0),
+                         prior_mean_new = ifel(pmx, new_x[, i], 0))$mean 
+    }
   }
-  return(rbind(w_0, new_w))
+  return(rbind(w, new_w))
 }
 
-# EI --------------------------------------------------------------------------
+# exp_improv ------------------------------------------------------------------
 
 exp_improv <- function(mu, sig2, f_min) {
   
   s <- sqrt(sig2)
-  z <- (f_min - mu) / s
+  z <- (f_min - mu)/s
   ei <- (f_min - mu)*pnorm(z) + s*dnorm(z)
   
   return(ei)
 }
 
-# Entropy ---------------------------------------------------------------------
+# calc_entropy ----------------------------------------------------------------
 
 calc_entropy <- function(mu, sig2, limit) {
   
   fail_prob <- pnorm((mu - limit) / sqrt(sig2))
-  ent <- -(1 - fail_prob) * log(1 - fail_prob) - fail_prob * log(fail_prob)
+  ent <- -(1 - fail_prob)*log(1 - fail_prob) - fail_prob*log(fail_prob)
   ent[which(is.nan(ent))] <- 0
   
   return(ent)
 }
 
-# If else ---------------------------------------------------------------------
+# ifel ------------------------------------------------------------------------
 
 ifel <- function(logical, yes, no) {
   if (logical) {
@@ -285,48 +239,59 @@ ifel <- function(logical, yes, no) {
   } else return(no)
 }
 
-# Monowarp --------------------------------------------------------------------
 
-monowarp_ref <- function(x, xg, wg, index) {
-  # x: matrix of input locations for returned w
-  # xg: matrix of grid locations
-  # wg: matrix of w values at xg locations to be warped
-  if (!is.matrix(x)) x <- matrix(x, ncol = 1)
-  if (!is.matrix(xg)) xg <- matrix(xg, ncol = 1)
-  if (!is.matrix(wg)) wg <- matrix(wg, ncol = 1)
-  if (!is.matrix(index)) index <- matrix(index, ncol = 1)
-  
-  w <- matrix(nrow = nrow(x), ncol = ncol(wg))
-  for (i in 1:ncol(wg)) {
-    wg[, i] <- exp(wg[, i])
-    wg[, i] <- cumsum(wg[, i])
-    r <- range(wg[, i])
-    wg[, i] <- (wg[, i] - r[1]) / (r[2] - r[1])
-    w[, i] <- fo_approx(xg[, i], wg[, i], x[, i], index[, i])
+# monotransform ---------------------------------------------------------------
+
+monotransform <- function(x, x_grid, w_grid) {
+  if (!all(diff(x_grid) >= 0)) stop("x_grid must be increasing")
+  if (!is.matrix(x)) x <- as.matrix(x)
+  if (!is.matrix(w_grid)) w_grid <- as.matrix(w_grid)
+  d <- ncol(x)
+  wwarp <- matrix(nrow = nrow(x), ncol = d)
+  for (i in 1:d) {
+    wwarp_grid <- c(0, cumsum(abs(diff(w_grid[, i]))))
+    wwarp[, i] <- suppressWarnings(approx(x_grid, wwarp_grid, x[, i])$y)
   }
-  return(w)
+  return(wwarp)
 }
 
-# Fixed order approx ----------------------------------------------------------
-# Implements linear approximation assuming that input locations are unchanged,
-# so their ordering may be pre-calculated.  Uses linear extrapolation outside
-# the range of the data.
+# bind ------------------------------------------------------------------------
 
-fo_approx <- function(xg, wg, x, index = NULL) {
-  # calculate slopes and intercepts between every adjacent pair
-  n <- length(wg)
-  slopes <- icepts <- rep(NA, n + 1)
-  slopes[-c(1, n + 1)] <- (wg[2:n] - wg[1:(n - 1)]) / (xg[2:n] - xg[1:(n - 1)])
-  icepts[-c(1, n + 1)] <- -slopes[-c(1, n + 1)] * xg[1:(n-1)] + wg[1:(n-1)] 
-    
-  # accommodating linear extrapolation outside the range
-  slopes[1] <- slopes[2]
-  slopes[n + 1] <- slopes[n]
-  icepts[1] <- icepts[2]
-  icepts[n + 1] <- icepts[n]
+bind <- function(x, d) {
+  # Appends x to itself d-many times
+  if (!is.matrix(x)) x <- as.matrix(x)
+  xbind <- x
+  for (i in 1:d)
+    xbind <- rbind(xbind, x)
+  return(xbind)
+}
 
-  if (is.null(index)) index <- fo_approx_init(as.matrix(xg), as.matrix(x))
-      
-  # linear interpolation
-  return(x * slopes[index] + icepts[index])
+# get_dydw --------------------------------------------------------------------
+
+get_dydw <- function(w, dydx) {
+  # Solves for dydw given dwdx (latter rows of w) and dydx
+  if (!is.matrix(w)) w <- as.matrix(w)
+  n <- nrow(dydx)
+  d <- ncol(dydx)
+  dydw <- matrix(nrow = n, ncol = d)
+  for (i in 1:n) {
+    irows <- seq(n+i, n*(d+1), by = n)
+    dydw[i, ] <- solve(w[irows, , drop = FALSE], dydx[i, ])
+  }
+  return(dydw)
+}
+
+# get_prior_mean --------------------------------------------------------------
+
+get_prior_mean <- function(x) {
+  # Calculates prior mean for latent layer W when grad_enhance and pmx are TRUE
+  d <- ncol(x)
+  n <- nrow(x)
+  prior_mean <- x
+  for (i in 1:d) {
+    zeromat <- matrix(0, nrow = n, ncol = d)
+    zeromat[, i] <- rep(1, n)
+    prior_mean <- rbind(prior_mean, zeromat)
+  }
+  return(prior_mean)
 }

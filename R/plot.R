@@ -5,7 +5,7 @@
 #   plot.dgp2 == plot.dgp2vec
 #   plot.dgp3 == plot.dgp3vec
 
-# Define Plot for S3 Objects --------------------------------------------------
+# plot S3 class ---------------------------------------------------------------
 #' @name plot
 #' @title Plots object from \code{deepgp} package
 #' 
@@ -13,8 +13,8 @@
 #'     \code{dgp3}, or \code{dgp3vec} object.  
 #'     Generates trace plots for outer log likelihood, length scale,
 #'     and nugget hyperparameters.
-#'     Generates plots of hidden layers for one-dimensional inputs or monotonic
-#'     warpings.  Generates
+#'     Generates plots of hidden layers for low dimensions or 
+#'     monotonic warpings.  Generates
 #'     plots of the posterior mean and estimated 90\% prediction intervals for 
 #'     one-dimensional inputs; generates heat maps of the posterior mean and 
 #'     point-wise variance for two-dimensional inputs.
@@ -23,10 +23,11 @@
 #'     many hyperparameters to plot them all, then it is most useful to 
 #'     visualize the log likelihood (e.g., \code{plot(fit$ll, type = "l")}).
 #'
+#'     In one dimension, hidden layer plots show 100 evenly distributed samples.
+#'     In two dimensions (two layer only), hidden layer plots show 3 samples.
 #'     Hidden layer plots are colored on a gradient - red lines represent 
 #'     earlier iterations and yellow lines represent later iterations - to 
-#'     help assess burn-in of the hidden layers.  Only every 100th sample
-#'     is plotted.
+#'     help assess burn-in of the hidden layers.  
 #' 
 #' @param x object of class \code{gp}, \code{gpvec}, \code{dgp2}, 
 #'        \code{dgp2vec}, \code{dgp3}, or \code{dgp3vec}
@@ -45,7 +46,7 @@
 #' @rdname plot
 NULL
 
-# Plot One Layer --------------------------------------------------------------
+# plot.gp ---------------------------------------------------------------------
 #' @rdname plot
 #' @export
 
@@ -55,7 +56,7 @@ plot.gp <- function(x, trace = NULL, predict = NULL, ...) {
   oldpar <- par(no.readonly = TRUE)
   on.exit(par(oldpar))
   
-  Dx <- ncol(x$x)
+  d <- ncol(x$x)
   if (is.null(x$mean)) {
     if (is.null(trace)) trace <- TRUE
     if (is.null(predict)) predict <- FALSE
@@ -65,60 +66,41 @@ plot.gp <- function(x, trace = NULL, predict = NULL, ...) {
   }
   
   if (trace) {
-    fixed_g <- (length(unique(x$g)) == 1)
+    fixed_g <- (length(x$g) == 1)
+    if (is.matrix(x$theta)) {
+      nplots <- ncol(x$theta) + 2 + as.numeric(!fixed_g)
+    } else nplots <- 3 + as.numeric(!fixed_g)
+    if (nplots > 4) {
+      par(mfrow = c(2, ceiling(nplots/2)), mar = c(5, 4, 2, 2))
+    } else par(mfrow = c(1, nplots), mar = c(5, 4, 2, 2))
+    plot(x$ll, type = "l", ylab = "logl", xlab = "Iteration", main = "logl")
+    plot(x$tau2, type = "l", ylab = "tau2", xlab = "Iteration", main = "tau2")
+    if (!fixed_g) plot(x$g, type = "l", ylab = "g", xlab = "Iteration", main = "g")
     if (is.matrix(x$theta)) { # separable lengthscale
-      if (fixed_g) {
-        par(mfrow = c(1, ncol(x$theta) + 1), mar = c(5, 4, 2, 2))
-        plot(x$ll, type = "l", ylab = "logl", xlab = "Iteration",
-             main = "logl")
-        for (i in 1:ncol(x$theta))
-          plot(x$theta[, i], type = "l", ylab = paste0("theta[", i, "]"), 
-               xlab = "Iteration", main = paste0("theta[", i, "]"))
-      } else {
-        par(mfrow = c(1, ncol(x$theta) + 2), mar = c(5, 4, 2, 2))
-        plot(x$ll, type = "l", ylab = "logl", xlab = "Iteration",
-             main = "logl")
-        plot(x$g, type = "l", ylab = "g", xlab = "Iteration",
-             main = "g")
-        for (i in 1:ncol(x$theta))
-          plot(x$theta[, i], type = "l", ylab = paste0("theta[", i, "]"), 
-               xlab = "Iteration", main = paste0("theta[", i, "]"))
+      for (i in 1:ncol(x$theta)) {
+        plot(x$theta[, i], type = "l", ylab = paste0("theta[", i, "]"), 
+             xlab = "Iteration", main = paste0("theta[", i, "]"))
       }
     } else { # isotropic lengthscale
-      if (fixed_g) {
-        par(mfrow = c(1, 2), mar = c(5, 4, 2, 2))
-        plot(x$ll, type = "l", ylab = "logl", xlab = "Iteration",
-             main = "logl")
-        plot(x$theta, type = "l", ylab = "theta", xlab = "Iteration",
-             main = "theta")
-      } else {
-        par(mfrow = c(1, 3), mar = c(5, 4, 2, 2))
-        plot(x$ll, type = "l", ylab = "logl", xlab = "Iteration",
-             main = "logl")
-        plot(x$g, type = "l", ylab = "g", xlab = "Iteration",
-             main = "g")
-        plot(x$theta, type = "l", ylab = "theta", xlab = "Iteration",
-             main = "theta")
-      }
+      plot(x$theta, type = "l", ylab = "theta", xlab = "Iteration", main = "theta")
     }
   }
   
   if (predict) {
-    if (Dx == 1) {
+    if (d == 1) {
       par(mfrow = c(1, 1), mar = c(4, 4, 2, 2))
       if (is.null(x$Sigma)) {
         q1 <- x$mean + qnorm(0.05, 0, sqrt(x$s2))
         q3 <- x$mean + qnorm(0.95, 0, sqrt(x$s2))
       } else {
         Sigma_smooth <- x$Sigma - diag(mean(x$g * x$tau2), nrow(x$x_new))
-        y_samples <- t(mvtnorm::rmvnorm(50, x$mean, Sigma_smooth))
+        y_samples <- t(mvtnorm::rmvnorm(50, x$mean, Sigma_smooth, checkSymmetry = FALSE))
         q1 <- x$mean + qnorm(0.05, 0, sqrt(diag(x$Sigma)))
         q3 <- x$mean + qnorm(0.95, 0, sqrt(diag(x$Sigma)))
       }
       o <- order(x$x_new)
       plot(x$x_new[o], x$mean[o], type = "l", xlab = "x", ylab = "y", 
-           ylim = c(min(q1), max(q3)),
-           col = "blue", ...)
+           ylim = c(min(q1), max(q3)), col = "blue", ...)
       if (!is.null(x$Sigma)) {
         matlines(x$x_new[o], y_samples[o,], col = "grey", lty = 1)
         lines(x$x_new[o], x$mean[o], col = "blue")
@@ -126,7 +108,7 @@ plot.gp <- function(x, trace = NULL, predict = NULL, ...) {
       lines(x$x_new[o], q1[o], col = "blue", lty = 2)
       lines(x$x_new[o], q3[o], col = "blue", lty = 2)
       points(x$x, x$y, pch = 20)
-    } else if (Dx == 2) {
+    } else if (d == 2) {
       if (!requireNamespace("interp", quietly = TRUE)) {
         stop("Package \"interp\" needed for this plot. Please install it.",
              call. = FALSE)
@@ -148,13 +130,13 @@ plot.gp <- function(x, trace = NULL, predict = NULL, ...) {
   }
 }
 
-# Plot One Layer Vecchia ------------------------------------------------------
+# plot.gpvec ------------------------------------------------------------------
 #' @rdname plot
 #' @export
 
 plot.gpvec <- plot.gp
 
-# Plot Two Layer --------------------------------------------------------------
+# plot.dgp2 -------------------------------------------------------------------
 #' @rdname plot
 #' @export
 
@@ -163,11 +145,10 @@ plot.dgp2 <- function(x, trace = NULL, hidden = NULL, predict = NULL, ...) {
   # save and restore par settings
   oldpar <- par(no.readonly = TRUE)
   on.exit(par(oldpar))
-
-  monowarp <- (!is.null(x$x_grid))
   
-  Dx <- ncol(x$x)
-  if (monowarp) D <- ncol(x$w_grid[[1]]) else D <- ncol(x$w[[1]])
+  n <- nrow(x$x)
+  d <- ncol(x$x)
+  D <- dim(x$w)[3]
   if (is.null(x$mean)) {
     if (is.null(trace)) trace <- TRUE
     if (is.null(predict)) predict <- FALSE
@@ -178,74 +159,80 @@ plot.dgp2 <- function(x, trace = NULL, hidden = NULL, predict = NULL, ...) {
   if (is.null(hidden)) hidden <- FALSE
   
   if (trace) {
-    fixed_g <- (length(unique(x$g)) == 1)
-    if (fixed_g) {
-      if (monowarp) {
-        par(mfrow = c(1, 2*D + 1), mar = c(5, 4, 2, 2))
-      } else par(mfrow = c(1, D + 2), mar = c(5, 4, 2, 2))
-    } else {
-      if (monowarp) {
-        par(mfrow = c(1, 2*D + 2), mar = c(5, 4, 2, 2))
-      } else par(mfrow = c(1, D + 3), mar = c(5, 4, 2, 2))
+    fixed_g <- (length(x$g) == 1)
+    nplots <- D + 3 + as.numeric(!fixed_g) + ifel(x$settings$monowarp & d > 1, D, 0)
+    if (nplots > 4) {
+      par(mfrow = c(2, ceiling(nplots/2)), mar = c(5, 4, 2, 2))
+    } else par(mfrow = c(1, nplots), mar = c(5, 4, 2, 2))
+    plot(x$ll, type = "l", ylab = "outer logl", xlab = "Iteration", main = "outer logl")
+    plot(x$tau2_y, type = "l", ylab = "tau2_y", xlab = "Iteration", main = "tau2_y")
+    if (!fixed_g) plot(x$g, type = "l", ylab = "g", xlab = "Iteration", main = "g")
+    plot(x$theta_y, type = "l", ylab = "theta_y", xlab = "Iteration", main = "theta_y")
+    if (x$settings$monowarp & d > 1) {
+      for (i in 1:D) {
+        plot(x$tau2_w[, i], type = "l", ylab = paste0("tau2_w[", i, "]"), 
+           xlab = "Iteration", main = paste0("tau2_w[", i, "]"))
+      }
     }
-    plot(x$ll, type = "l", ylab = "outer logl", xlab = "Iteration",
-          main = "outer logl")
-    if (!fixed_g) 
-      plot(x$g, type = "l", ylab = "g", xlab = "Iteration",
-           main = "g")
-    if (monowarp) {
-      for (i in 1:D)
-        plot(x$theta_y[, i], type = "l", ylab = paste0("theta_y[", i, "]"), 
-             xlab = "Iteration", main = paste0("theta_y[", i, "]"))
-    } else {
-      plot(x$theta_y, type = "l", ylab = "theta_y", xlab = "Iteration",
-             main = "theta_y")
-    }
-    for (i in 1:D)
+    for (i in 1:D) {
       plot(x$theta_w[, i], type = "l", ylab = paste0("theta_w[", i, "]"), 
            xlab = "Iteration", main = paste0("theta_w[", i, "]"))
+    }
   }
   
-  if (hidden) {
-    # specify the hidden layers to plot
-    indx <- floor(seq(from = 1, to = x$nmcmc, length = 100))
-    if (indx[1] == 0) indx[1] = 1
-    col <- heat.colors(100 + 10) # add ten to avoid using colors that are too light
-    if (monowarp) { 
-      grid_index <- fo_approx_init(x$x_grid, x$x)
+  if (hidden) { 
+    col <- heat.colors(100 + 30)
+
+    if (x$settings$monowarp) { 
+      # select 100 lines to plot (don't want things to be too cluttered)
+      indx <- floor(seq(from = 1, to = x$nmcmc, length = 100))
+      w <- x$w[indx, , , drop = FALSE]
       par(mfrow = c(1, D), mar = c(4, 4, 2, 2))
       for (i in 1:D) {
         o <- order(x$x[, i])
-        plot(x$x[o, i], monowarp_ref(x$x[, i], x$x_grid[, i], x$w_grid[[indx[1]]][, i], 
-                                     grid_index[, i])[o], 
-             type = "l", xlab = paste0("x", i), ylab = paste0("w", i), col = col[1], 
-             main = "monowarped ESS samples", ylim = c(0, 1))
-        for (j in 2:length(indx)) 
-          lines(x$x[o, i], monowarp_ref(x$x[, i], x$x_grid[, i], x$w_grid[[indx[j]]][, i], 
-                                        grid_index[, i])[o], col = col[j])
-        abline(0, 1, lwd = 2, lty = 2)
+        matplot(x$x[o, i], t(w[, o, i] - apply(w[, , i], 1, mean)), 
+                type = "l", xlab = paste0("x", i),
+                ylab = paste0("w", i), col = col, lty = 1,
+                main = "monowarped ESS samples")
       }
-    } else if (Dx == 1 & D == 1) {
-      par(mfrow = c(1, 1), mar = c(4, 4, 2, 2))
+    } else if (d == 1 & D == 1) {
+      # select 100 lines to plot (don't want things to be too cluttered)
+      indx <- floor(seq(from = 1, to = x$nmcmc, length = 100))
       o <- order(x$x)
-      plot(x$x[o], x$w[[indx[1]]][o] - mean(x$w[[indx[1]]]), type = "l", xlab = "x", 
-           ylab = "w", col = col[1], main = "ESS samples", 
-           ylim = c(min(unlist(x$w[indx])), max(unlist(x$w[indx]))))
-      for (j in 2:length(indx)) {
-        lines(x$x[o], x$w[[indx[j]]][o] - mean(x$w[[indx[j]]]), col = col[j])
+      w <- x$w[indx, , 1]
+      par(mfrow = c(1, 1), mar = c(4, 4, 2, 2))
+      matplot(x$x[o], t(w[, o] - apply(w, 1, mean)), type = "l", xlab = "x", 
+           ylab = "w", col = col, lty = 1, main = "ESS samples")
+    } else if (d == 2 & D == 2) {
+      if (!requireNamespace("interp", quietly = TRUE)) {
+        stop("Package \"interp\" needed for this plot. Please install it.",
+             call. = FALSE)
+      }
+      par(mfcol = c(2, 3), mar = c(4, 4, 2, 2))
+      # select 3 samples to plot
+      for (i in floor(seq(from = 1, to = x$nmcmc, length = 3))) {
+        ii <- interp::interp(x$x[, 1], x$x[, 2], x$w[i, 1:n, 1] - mean(x$w[i, 1:n, 1]))
+        image(ii, col = heat.colors(128), xlab = "x1", ylab = "x2", 
+            main = paste0("w1, iteration ", i))
+        points(x$x, pch = 20, cex = 0.5)
+        ii <- interp::interp(x$x[, 1], x$x[, 2], x$w[i, 1:n, 2] - mean(x$w[i, 1:n, 1]))
+        image(ii, col = heat.colors(128), xlab = "x1", ylab = "x2", 
+            main = paste0("w2, iteration ", i))
+        points(x$x, pch = 20, cex = 0.5)
       }
     } else cat("Default plotting not prepared for these dimensions")
   } 
 
   if (predict) {
-    if (Dx == 1){
+    n <- length(x$y)
+    if (d == 1) {
       par(mfrow = c(1, 1), mar = c(4, 4, 2, 2))
       if (is.null(x$Sigma)) {
         q1 <- x$mean + qnorm(0.05, 0, sqrt(x$s2))
         q3 <- x$mean + qnorm(0.95, 0, sqrt(x$s2))
       } else {
-        Sigma_smooth <- x$Sigma - diag(mean(x$g * x$tau2), nrow(x$x_new))
-        y_samples <- t(mvtnorm::rmvnorm(50, x$mean, Sigma_smooth))
+        Sigma_smooth <- x$Sigma - diag(mean(x$g * x$tau2_y), nrow(x$x_new))
+        y_samples <- t(mvtnorm::rmvnorm(50, x$mean, Sigma_smooth, checkSymmetry = FALSE))
         q1 <- x$mean + qnorm(0.05, 0, sqrt(diag(x$Sigma)))
         q3 <- x$mean + qnorm(0.95, 0, sqrt(diag(x$Sigma)))
       }
@@ -260,7 +247,7 @@ plot.dgp2 <- function(x, trace = NULL, hidden = NULL, predict = NULL, ...) {
       lines(x$x_new[o], q1[o], col = "blue", lty = 2)
       lines(x$x_new[o], q3[o], col = "blue", lty = 2)
       points(x$x, x$y, pch = 20)
-    } else if (Dx == 2) {
+    } else if (d == 2) {
       if (!requireNamespace("interp", quietly = TRUE)) {
         stop("Package \"interp\" needed for this plot. Please install it.",
              call. = FALSE)
@@ -281,13 +268,13 @@ plot.dgp2 <- function(x, trace = NULL, hidden = NULL, predict = NULL, ...) {
   }
 }
 
-# Plot Two Layer Vecchia ------------------------------------------------------
+# plot.dgp2vec ----------------------------------------------------------------
 #' @rdname plot
 #' @export
 
 plot.dgp2vec <- plot.dgp2
 
-# Plot Three Layer ------------------------------------------------------------
+# plot.dgp3 -------------------------------------------------------------------
 #' @rdname plot
 #' @export
 
@@ -297,8 +284,8 @@ plot.dgp3 <- function(x, trace = NULL, hidden = NULL, predict = NULL, ...) {
   oldpar <- par(no.readonly = TRUE)
   on.exit(par(oldpar))
   
-  Dx <- ncol(x$x)
-  D <- ncol(x$w[[1]])
+  d <- ncol(x$x)
+  D <- dim(x$w)[3]
   if (is.null(x$mean)) {
     if (is.null(trace)) trace <- TRUE
     if (is.null(predict)) predict <- FALSE
@@ -309,85 +296,56 @@ plot.dgp3 <- function(x, trace = NULL, hidden = NULL, predict = NULL, ...) {
   if (is.null(hidden)) hidden <- FALSE
   
   if (trace) {
-    fixed_g <- (length(unique(x$g)) == 1)
-    if (fixed_g) {
-      par(mfrow = c(2, D + 1), mar = c(5, 4, 2, 2))
-      plot(x$ll, type = "l", ylab = "outer logl", xlab = "Iteration",
-           main = "outer logl")
-      plot(x$theta_y, type = "l", ylab = "theta_y", xlab = "Iteration",
-           main = "theta_y")
-      for (i in 1:D)
-        plot(x$theta_w[,i], type = "l", ylab = paste0("theta_w[", i, "]"), 
-             xlab = "Iteration", main = paste0("theta_w[", i, "]"))
-      for (i in 1:D)
-        plot(x$theta_z[,i], type = "l", ylab = paste0("theta_z[", i, "]"), 
-             xlab = "Iteration", main = paste0("theta_z[", i, "]"))
-    } else {
-      par(mfrow = c(2, D + 2), mar = c(5, 4, 2, 2))
-      plot(x$ll, type = "l", ylab = "outer logl", xlab = "Iteration",
-           main = "outer logl")
-      plot(x$g, type = "l", ylab = "g", xlab = "Iteration",
-           main = "g")
-      plot(x$theta_y, type = "l", ylab = "theta_y", xlab = "Iteration",
-           main = "theta_y")
-      for (i in 1:D)
-        plot(x$theta_w[,i], type = "l", ylab = paste0("theta_w[", i, "]"), 
-             xlab = "Iteration", main = paste0("theta_w[", i, "]"))
-      for (i in 1:D)
-        plot(x$theta_z[,i], type = "l", ylab = paste0("theta_z[", i, "]"), 
-             xlab = "Iteration", main = paste0("theta_z[", i, "]"))
+    fixed_g <- (length(x$g) == 1)
+    nplots <- 2*D + 3 + as.numeric(!fixed_g)
+    if (nplots > 4) {
+      par(mfrow = c(2, ceiling(nplots/2)), mar = c(5, 4, 2, 2))
+    } else par(mfrow = c(1, nplots), mar = c(5, 4, 2, 2))
+    plot(x$ll, type = "l", ylab = "outer logl", xlab = "Iteration", main = "outer logl")
+    plot(x$tau2_y, type = "l", ylab = "tau2_y", xlab = "Iteration", main = "tau2_y")
+    plot(x$theta_y, type = "l", ylab = "theta_y", xlab = "Iteration", main = "theta_y")
+    for (i in 1:D) {
+      plot(x$theta_w[,i], type = "l", ylab = paste0("theta_w[", i, "]"), 
+           xlab = "Iteration", main = paste0("theta_w[", i, "]"))
+    }
+    for (i in 1:D) {
+      plot(x$theta_z[,i], type = "l", ylab = paste0("theta_z[", i, "]"), 
+           xlab = "Iteration", main = paste0("theta_z[", i, "]"))
     }
   }
   
   if (hidden) {
-    if (Dx == 1 & D == 1) {
-      # specify the hidden layers to plot
+    if (d == 1 & D == 1) {
+      # randomly select 100 lines to plot (don't want things to be too cluttered)
       indx <- floor(seq(from = 1, to = x$nmcmc, length = 100))
-      if (indx[1] == 0) indx[1] <- 1
-      col <- heat.colors(100 + 10)
+      col <- heat.colors(100 + 30)
+      z <- x$z[indx, , 1]
       par(mfrow = c(1, 2), mar = c(4, 4, 2, 2))
-      # plot x to z
       o <- order(x$x)
-      plot(x$x[o], x$z[[indx[1]]][o] - mean(x$z[[indx[1]]]), type = "l", 
-           xlab = "x", ylab = "z", col = col[1], 
-           main = paste0("ESS samples (inner layer)"), 
-           ylim = c(min(unlist(x$z[indx])), max(unlist(x$z[indx]))))
-      for (j in 2:length(indx)) {
-        lines(x$x[o], x$z[[indx[j]]][o] - mean(x$z[[indx[j]]]), col = col[j])
-      }
-      # plot z to w
-      zmin <- 100; zmax <- -100 # arbitrary extreme values
-      wmin <- 100; wmax <- -100
-      for (i in 1:length(indx)) {
-        zmin <- min(zmin, x$z[[indx[i]]] - mean(x$z[[indx[i]]]))
-        zmax <- max(zmax, x$z[[indx[i]]] - mean(x$z[[indx[i]]]))
-        wmin <- min(wmin, x$w[[indx[i]]] - mean(x$w[[indx[i]]]))
-        wmax <- max(wmax, x$w[[indx[i]]] - mean(x$w[[indx[i]]]))
-      }
-      o <- order(x$z[[indx[1]]])
-      plot(x$z[[indx[1]]][o] - mean(x$z[[indx[1]]]), 
-           x$w[[indx[1]]][o] - mean(x$w[[indx[1]]]), 
-           type = "l", xlab = "z (centered at zero)", 
+      matplot(x$x[o], t(z[, o] - apply(z, 1, mean)), type = "l", xlab = "x", 
+              ylab = "z", col = col, lty = 1, main = "ESS samples (inner layer)")
+      w <- x$w[indx, , 1]
+      o <- order(z[1, ])
+      plot(z[1, o], w[1, o] - mean(w[1, ]), type = "l", xlab = "z (centered at zero)", 
            ylab = "w (centered at zero)", col = col[1], 
-           main = paste0("ESS samples (middle layer)"), xlim = c(zmin, zmax),
-           ylim = c(wmin, wmax))
+           main = "ESS samples (middle layer)", xlim = c(min(z), max(z)),
+           ylim = c(min(w), max(w)))
       for (j in 2:length(indx)) {
-        o <- order(x$z[[indx[j]]])
-        lines(x$z[[indx[j]]][o] - mean(x$z[[indx[j]]]), 
-              x$w[[indx[j]]][o] - mean(x$w[[indx[j]]]), col = col[j])
+        o <- order(z[j, ])
+        lines(z[j, o], w[j, o] - mean(w[j, ]), col = col[j])
       }
     } else cat("Default plotting not prepared for these dimensions")
   }
   
   if (predict) {
-    if (Dx == 1) {
+    if (d == 1) {
       par(mfrow = c(1, 1), mar = c(5, 4, 2, 2))
       if (is.null(x$Sigma)) {
         q1 <- x$mean + qnorm(0.05, 0, sqrt(x$s2))
         q3 <- x$mean + qnorm(0.95, 0, sqrt(x$s2))
       } else {
-        Sigma_smooth <- x$Sigma - diag(mean(x$g * x$tau2), nrow(x$x_new))
-        y_samples <- t(mvtnorm::rmvnorm(50, x$mean, Sigma_smooth))
+        Sigma_smooth <- x$Sigma - diag(mean(x$g * x$tau2_y), nrow(x$x_new))
+        y_samples <- t(mvtnorm::rmvnorm(50, x$mean, Sigma_smooth, checkSymmetry = FALSE))
         q1 <- x$mean + qnorm(0.05, 0, sqrt(diag(x$Sigma)))
         q3 <- x$mean + qnorm(0.95, 0, sqrt(diag(x$Sigma)))
       }
@@ -402,7 +360,7 @@ plot.dgp3 <- function(x, trace = NULL, hidden = NULL, predict = NULL, ...) {
       lines(x$x_new[o], q1[o], col = "blue", lty = 2)
       lines(x$x_new[o], q3[o], col = "blue", lty = 2)
       points(x$x, x$y, pch = 20)
-    } else if (Dx == 2) {
+    } else if (d == 2) {
       if (!requireNamespace("interp", quietly = TRUE)) {
         stop("Package \"interp\" needed for this function to work. Please install it.",
              call. = FALSE)
@@ -423,7 +381,7 @@ plot.dgp3 <- function(x, trace = NULL, hidden = NULL, predict = NULL, ...) {
   }
 }
 
-# Plot Three Layer Vecchia ----------------------------------------------------
+# plot.dgp3vec ----------------------------------------------------------------
 #' @rdname plot
 #' @export
 

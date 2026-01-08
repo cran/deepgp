@@ -12,17 +12,18 @@ fit_three_layer(
   verb = TRUE,
   w_0 = NULL,
   z_0 = NULL,
-  g_0 = 0.001,
-  theta_y_0 = 0.1,
+  theta_y_0 = 0.01,
   theta_w_0 = 0.1,
   theta_z_0 = 0.1,
+  g_0 = 0.001,
   true_g = NULL,
+  v = 2.5,
   settings = NULL,
   cov = c("matern", "exp2"),
-  v = 2.5,
   vecchia = FALSE,
-  m = min(25, length(y) - 1),
-  ordering = NULL
+  m = NULL,
+  ord = NULL,
+  cores = NULL
 )
 }
 \arguments{
@@ -37,15 +38,15 @@ dimension of \code{x}}
 
 \item{verb}{logical indicating whether to print iteration progress}
 
-\item{w_0}{initial value for hidden layer \code{w} (must be matrix 
-of dimension \code{nrow(x)} by \code{D} or  dimension 
-\code{nrow(x) - 1} by \code{D}).  Defaults to the identity mapping.}
+\item{w_0}{initial value for hidden layer \code{w} (rows must correspond to
+rows of \code{x}, requires \code{ncol(w_0) = D}.  Defaults to the 
+identity mapping.  If \code{nrow(w_0) < nrow(x)}, missing initial values
+are filled-in with the GP posterior mean.}
 
-\item{z_0}{initial value for hidden layer \code{z} (must be matrix 
-of dimension \code{nrow(x)} by \code{D} or  dimension 
-\code{nrow(x) - 1} by \code{D}).  Defaults to the identity mapping.}
-
-\item{g_0}{initial value for \code{g}}
+\item{z_0}{initial value for hidden layer \code{z} (rows must correspond to
+rows of \code{x}, requires \code{ncol(z_0) = D}.  Defaults to the 
+identity mapping.  If \code{nrow(z_0) < nrow(x)}, missing initial values
+are filled-in with the GP posterior mean.}
 
 \item{theta_y_0}{initial value for \code{theta_y} (length scale of outer 
 layer)}
@@ -56,25 +57,31 @@ layer), may be single value or vector of length \code{D}}
 \item{theta_z_0}{initial value for \code{theta_z} (length scale of inner 
 layer), may be single value or vector of length \code{D}}
 
+\item{g_0}{initial value for \code{g}}
+
 \item{true_g}{if true nugget is known it may be specified here (set to a 
 small value to make fit deterministic).  Note - values that are too 
 small may cause numerical issues in matrix inversions.}
 
+\item{v}{Matern smoothness parameter (only used if \code{cov = "matern"})}
+
 \item{settings}{hyperparameters for proposals and priors (see details)}
 
-\item{cov}{covariance kernel, either Matern or squared exponential 
+\item{cov}{covariance kernel, either Matern (\code{"matern"}) or squared exponential 
 (\code{"exp2"})}
-
-\item{v}{Matern smoothness parameter (only used if \code{cov = "matern"})}
 
 \item{vecchia}{logical indicating whether to use Vecchia approximation}
 
-\item{m}{size of Vecchia conditioning sets (only used if 
-\code{vecchia = TRUE})}
+\item{m}{size of Vecchia conditioning sets, defaults to the lower of 25 or
+the maximum available (only used if \code{vecchia = TRUE})}
 
-\item{ordering}{optional ordering for Vecchia approximation, must correspond
+\item{ord}{optional ordering for Vecchia approximation, must correspond
 to rows of \code{x}, defaults to random, is applied to \code{x},
 \code{w}, and \code{z}}
+
+\item{cores}{number of cores to use for OpenMP parallelization 
+(\code{vecchia = TRUE} only).  Defaults to \code{min(4, maxcores - 1)} 
+where \code{maxcores} is the number of detectable available cores.}
 }
 \value{
 a list of the S3 class \code{dgp3} or \code{dgp3vec} with elements:
@@ -86,16 +93,18 @@ a list of the S3 class \code{dgp3} or \code{dgp3vec} with elements:
   \item \code{v}: copy of Matern smoothness parameter (\code{v = 999} 
         indicates \code{cov = "exp2"}) 
   \item \code{g}: vector of MCMC samples for \code{g}
+  \item \code{tau2_y}: vector of MLE estimates for \code{tau2} on outer layer
   \item \code{theta_y}: vector of MCMC samples for \code{theta_y} (length 
         scale of outer layer)
   \item \code{theta_w}: matrix of MCMC samples for \code{theta_w} (length 
         scale of middle layer)
   \item \code{theta_z}: matrix of MCMC samples for \code{theta_z} (length 
         scale of inner layer)
-  \item \code{tau2}: vector of MLE estimates for \code{tau2} (scale 
-        parameter of outer layer)
   \item \code{w}: list of MCMC samples for middle hidden layer \code{w}
   \item \code{z}: list of MCMC samples for inner hidden layer \code{z}
+  \item \code{w_approx}: Vecchia approximation object for outer layer (\code{vecchia = TRUE} only)
+  \item \code{z_approx}: Vecchia approximation object for middle layer (\code{vecchia = TRUE} only)
+  \item \code{x_approx}: Vecchia approximation object for inner layer (\code{vecchia = TRUE} only)
   \item \code{ll}: vector of MVN log likelihood of the outer layer 
         for reach Gibbs iteration
   \item \code{time}: computation time in seconds
@@ -109,19 +118,19 @@ Conducts MCMC sampling of hyperparameters, hidden layer
     strength of the inner layer, middle layer, and outer layer respectively.  
     Nugget parameter \code{g} governs noise on the outer layer.  In Matern 
     covariance, \code{v} governs smoothness.
+
+    Currently, there are no \code{pmx}, \code{monowarp}, or \code{dydx} 
+    options.
 }
 \details{
-\code{pmx = TRUE} option not yet implemented for three-layer DGP.
-
-    Maps inputs \code{x} through hidden layer \code{z} then hidden
+Maps inputs \code{x} through hidden layer \code{z} then hidden
     layer \code{w} to outputs \code{y}.  Conducts sampling of the hidden 
-    layers using Elliptical Slice sampling.  Utilizes Metropolis Hastings 
+    layers using elliptical slice sampling.  Utilizes Metropolis Hastings 
     sampling of the length scale and nugget parameters with proposals and 
     priors controlled by \code{settings}.  When \code{true_g} is set to a 
     specific value, the nugget is not estimated.  When 
     \code{vecchia = TRUE}, all calculations leverage the Vecchia 
-    approximation with specified conditioning set size \code{m}.  Vecchia 
-    approximation is only implemented for \code{cov = "matern"}.
+    approximation with specified conditioning set size \code{m}.
     
     NOTE on OpenMP: The Vecchia implementation relies on OpenMP parallelization
     for efficient computation.  This function will produce a warning message 
@@ -132,7 +141,7 @@ Conducts MCMC sampling of hyperparameters, hidden layer
     
     Proposals for \code{g}, 
     \code{theta_y}, \code{theta_w}, and \code{theta_z} follow a uniform 
-    sliding window scheme, e.g.
+    sliding window scheme, e.g.,
     
     \code{g_star <- runif(1, l * g_t / u, u * g_t / l)},
     
@@ -141,25 +150,20 @@ Conducts MCMC sampling of hyperparameters, hidden layer
     Priors on \code{g}, \code{theta_y}, \code{theta_w}, and \code{theta_z} 
     follow Gamma distributions with shape parameters (\code{alpha}) and rate 
     parameters (\code{beta}) controlled within the \code{settings} list 
-    object.  Defaults have been updated with package version 1.1.3.  
-    Default priors differ for noisy/deterministic settings and 
-    depend on whether \code{monowarp = TRUE}.  All default values are 
+    object.  Default priors differ for noisy/deterministic settings.  
+    All default values are 
     visible in the internal \code{deepgp:::check_settings} function.
     These priors are designed for \code{x} scaled to [0, 1] and \code{y} 
     scaled to have mean 0 and variance 1.  These may be adjusted using the 
     \code{settings} input.
-    
-    In the current version, the three-layer does not have any equivalent
-    setting for \code{monowarp = TRUE} or \code{pmx = TRUE} as in 
-    \code{fit_two_layer}.
+
+    The scale on the latent layers (\code{tau2_z} and \code{tau2_w}) may also 
+    be specified in \code{settings}.  Defaults to 1. 
     
     When \code{w_0 = NULL} and/or \code{z_0 = NULL}, the hidden layers are 
-    initialized at \code{x} (i.e. the identity mapping).  The default prior 
-    mean of the inner hidden layer \code{z} is zero, but may be adjusted to \code{x} 
-    using \code{settings = list(z_prior_mean = x)}.  The prior mean of the
-    middle hidden layer \code{w} is set at zero is is not user adjustable.
+    initialized at \code{x} (i.e., the identity mapping).
     If \code{w_0} and/or \code{z_0} is of dimension \code{nrow(x) - 1} by 
-    \code{D}, the final row is predicted using kriging. This is helpful in 
+    \code{D}, the final row is filled-in using the GP posterior mean. This is helpful in 
     sequential design when adding a new input location and starting the MCMC 
     at the place where the previous MCMC left off.
     
@@ -195,8 +199,8 @@ contour(i, add = TRUE)
 contour(i, level = -0.5, col = 4, add = TRUE) # potential failure limit
 points(x)
 
-# Example 1: full model (nugget estimated, entropy calculated)
-fit <- fit_three_layer(x, y, nmcmc = 2000)
+# Example 1: nugget fixed, calculating entropy
+fit <- fit_three_layer(x, y, nmcmc = 2000, true_g = 1e-6)
 plot(fit)
 fit <- trim(fit, 1000, 2)
 fit <- predict(fit, xx, entropy_limit = -0.5, cores = 1)
@@ -204,10 +208,8 @@ plot(fit)
 i <- interp::interp(xx[, 1], xx[, 2], fit$entropy)
 image(i, col = heat.colors(128), main = "Entropy")
 
-# Example 2: Vecchia approximated model (nugget fixed)
-# (Vecchia approximation is faster for larger data sizes)
-fit <- fit_three_layer(x, y, nmcmc = 2000, vecchia = TRUE, 
-                       m = 10, true_g = 1e-6)
+# Example 2: using Vecchia
+fit <- fit_three_layer(x, y, nmcmc = 2000, true_g = 1e-6, vecchia = TRUE, m = 10)
 plot(fit)
 fit <- trim(fit, 1000, 2)
 fit <- predict(fit, xx, cores = 1)
@@ -217,12 +219,14 @@ plot(fit)
 }
 \references{
 Sauer, A. (2023). Deep Gaussian process surrogates for computer experiments. 
-    *Ph.D. Dissertation, Department of Statistics, Virginia Polytechnic Institute and State University.*
+     *Ph.D. Dissertation, Department of Statistics, Virginia Polytechnic Institute and State University.*
+     \url{http://hdl.handle.net/10919/114845}
      \cr\cr
 Sauer, A., Gramacy, R.B., & Higdon, D. (2023). Active learning for deep 
-    Gaussian process surrogates. *Technometrics, 65,* 4-18.  arXiv:2012.08015
-    \cr\cr
+     Gaussian process surrogates. *Technometrics, 65,* 4-18.  arXiv:2012.08015
+     \cr\cr
 Sauer, A., Cooper, A., & Gramacy, R. B. (2023). Vecchia-approximated deep Gaussian 
      processes for computer experiments. 
      *Journal of Computational and Graphical Statistics, 32*(3), 824-837.  arXiv:2204.02904
+     \cr\cr
 }

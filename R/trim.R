@@ -5,7 +5,7 @@
 #   trim.dgp2 == trim.dgp2vec
 #   trim.dgp3 == trim.dgp3vec
 
-# Define Trim for S3 Objects --------------------------------------------------
+# trim S3 class ---------------------------------------------------------------
 #' @title Trim/Thin MCMC iterations
 #' @description Acts on a \code{gp}, \code{gpvec}, \code{dgp2}, \code{dgp2vec},
 #'    \code{dgp3vec}, or \code{dgp3} object.
@@ -40,7 +40,7 @@
 trim <- function(object, burn, thin)
   UseMethod("trim", object)
 
-# Trim One Layer --------------------------------------------------------------
+# trim.gp ---------------------------------------------------------------------
 #' @rdname trim
 #' @export
 
@@ -55,8 +55,8 @@ trim.gp <- function(object, burn, thin = 1) {
   indx <- indx[which(indx %% thin == 0)]
   
   object$nmcmc <- length(indx)
-  object$g <- object$g[indx, drop = FALSE]
-  if (is.matrix(object$theta)) {
+  if (length(object$g) > 1) object$g <- object$g[indx, drop = FALSE]
+  if (object$settings$sep) {
     object$theta <- object$theta[indx, , drop = FALSE]
   } else object$theta <- object$theta[indx, drop = FALSE]
   object$tau2 <- object$tau2[indx, drop = FALSE]
@@ -68,7 +68,7 @@ trim.gp <- function(object, burn, thin = 1) {
   return(object)
 }
 
-# Trim One Layer Vecchia ------------------------------------------------------
+# trim.gpvec ------------------------------------------------------------------
 #' @rdname trim
 #' @export
 
@@ -83,24 +83,23 @@ trim.dgp2 <- function(object, burn, thin = 1) {
   tic <- proc.time()[3]
   
   if (burn >= object$nmcmc) stop('burn must be less than nmcmc')
-
-  monowarp <- (!is.null(object$x_grid))
   
   nmcmc <- object$nmcmc
   indx <- (burn + 1):nmcmc
   indx <- indx[which(indx %% thin == 0)]
   
   object$nmcmc <- length(indx)
-  object$g <- object$g[indx, drop = FALSE]
-  object$theta_w <- object$theta_w[indx, , drop = FALSE]
-  if (monowarp) {
-    object$theta_y <- object$theta_y[indx, , drop = FALSE]
-    object$w_grid <- as.list(object$w_grid[indx])
-  } else {
-    object$theta_y <- object$theta_y[indx, drop = FALSE]
-    object$w <- as.list(object$w[indx])
+  if (length(object$g) > 1) object$g <- object$g[indx, drop = FALSE]
+  object$tau2_y <- object$tau2_y[indx, drop = FALSE]
+  object$theta_y <- object$theta_y[indx, drop = FALSE]
+  if (object$settings$monowarp) {
+    if (!is.null(object$tau2_w)) {
+      object$tau2_w <- object$tau2_w[indx, , drop = FALSE]
+    }
+    object$w_grid <- object$w_grid[indx, , , drop = FALSE]
   }
-  object$tau2 <- object$tau2[indx, drop = FALSE]
+  object$theta_w <- object$theta_w[indx, , drop = FALSE]
+  object$w <- object$w[indx, , , drop = FALSE]
   object$ll <- object$ll[indx, drop = FALSE]
   
   toc <- proc.time()[3]
@@ -109,13 +108,13 @@ trim.dgp2 <- function(object, burn, thin = 1) {
   return(object)
 }
 
-# Trim Two Layer Vecchia ------------------------------------------------------
+# trim.dgp2vec ----------------------------------------------------------------
 #' @rdname trim
 #' @export
 
 trim.dgp2vec <- trim.dgp2
 
-# Trim Three Layer ------------------------------------------------------------
+# trim.dgp3 -------------------------------------------------------------------
 #' @rdname trim
 #' @export
 
@@ -130,13 +129,13 @@ trim.dgp3 <- function(object, burn, thin = 1) {
   indx <- indx[which(indx %% thin == 0)]
   
   object$nmcmc <- length(indx)
-  object$g <- object$g[indx, drop = FALSE]
+  if (length(object$g) > 1) object$g <- object$g[indx, drop = FALSE]
+  object$tau2_y <- object$tau2_y[indx, drop = FALSE]
   object$theta_y <- object$theta_y[indx, drop = FALSE]
   object$theta_w <- object$theta_w[indx, , drop = FALSE]
   object$theta_z <- object$theta_z[indx, , drop = FALSE]
-  object$w <- as.list(object$w[indx])
-  object$z <- as.list(object$z[indx])
-  object$tau2 <- object$tau2[indx, drop = FALSE]
+  object$w <- object$w[indx, , , drop = FALSE]
+  object$z <- object$z[indx, , , drop = FALSE]
   object$ll <- object$ll[indx, drop = FALSE]
   
   toc <- proc.time()[3]
@@ -145,7 +144,7 @@ trim.dgp3 <- function(object, burn, thin = 1) {
   return(object)
 }
 
-# Trim Three Layer Vecchia ----------------------------------------------------
+# trim.dgp3vec ----------------------------------------------------------------
 #' @rdname trim
 #' @export
 

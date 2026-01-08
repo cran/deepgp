@@ -5,7 +5,7 @@
 # External (see documentation below):
 #   IMSE (S3 method for gp, dgp2, dgp3 classes)
 
-# Wij C -----------------------------------------------------------------------
+# Wij.C -----------------------------------------------------------------------
 
 Wij.C <- function(x1, x2, theta, a, b){
   W <- matrix(1, nrow = nrow(x1), ncol = nrow(x2))
@@ -23,7 +23,7 @@ Wij.C <- function(x1, x2, theta, a, b){
   return(matrix(result$W, nrow = nrow(x1), ncol = nrow(x2)))
 }
 
-# Define IMSE for S3 Objects -------------------------------------------------
+# IMSE S3 class ---------------------------------------------------------------
 #' @title Integrated Mean-Squared (prediction) Error for Sequential Design
 #' @description Acts on a \code{gp}, \code{dgp2}, or \code{dgp3} object.
 #'     Current version requires squared exponential covariance
@@ -55,8 +55,7 @@ Wij.C <- function(x1, x2, theta, a, b){
 #' @param object object of class \code{gp}, \code{dgp2}, or \code{dgp3}
 #' @param x_new matrix of possible input locations, if object has been run 
 #'        through \code{predict} the previously stored \code{x_new} is used
-#' @param cores number of cores to utilize in parallel, by default no 
-#'        parallelization is used
+#' @param cores number of cores to utilize for SNOW parallelization
 #' @return list with elements:
 #' \itemize{
 #'   \item \code{value}: vector of IMSE values, indices correspond to \code{x_new}
@@ -119,6 +118,7 @@ Wij.C <- function(x1, x2, theta, a, b){
 #' points(x, y, col = 2)
 #' 
 #' # Conduct MCMC (can replace fit_three_layer with fit_one_layer/fit_two_layer)
+#' # nugget estimated
 #' fit <- fit_three_layer(x, y, D = 1, nmcmc = 2000, cov = "exp2")
 #' plot(fit)
 #' fit <- trim(fit, 1000, 2)
@@ -146,13 +146,14 @@ Wij.C <- function(x1, x2, theta, a, b){
 IMSE <- function(object, x_new, cores)
   UseMethod("IMSE", object)
 
-# IMSE One Layer --------------------------------------------------------------
+# IMSE.gp ---------------------------------------------------------------------
 #' @rdname IMSE
 #' @export
 
 IMSE.gp <- function(object, x_new = NULL, cores = 1) {
   
   tic <- proc.time()[[3]]
+  cores <- check_cores(cores)
   
   if (object$v != 999) 
     stop("IMSE is only implemented for the un-approximated squared exponential 
@@ -164,11 +165,11 @@ IMSE.gp <- function(object, x_new = NULL, cores = 1) {
       stop("x_new has not been specified")
     } else x_new <- object$x_new
   }
-  if (is.numeric(x_new)) x_new <- as.matrix(x_new)
+  if (is.vector(x_new)) x_new <- as.matrix(x_new)
 
   n <- nrow(object$x)
   n_new <- nrow(x_new)
-  dx <- sq_dist(object$x)
+  xdmat <- sq_dist(object$x)
   
   # Define bounds
   a <- apply(x_new, 2, min)
@@ -182,9 +183,10 @@ IMSE.gp <- function(object, x_new = NULL, cores = 1) {
     imse <- rep(0, times = n_new)
       
     for (t in 1:object$nmcmc) { 
-      Kn <- Exp2(dx, 1, object$theta[t], object$g[t])
+      g <- ifel(length(object$g) == 1, object$g, object$g[t])
+      Kn <- Exp2(xdmat, 1, object$theta[t], g)
       Kn_inv <- invdet(Kn)$Mi
-      kk <- 1 + object$g[t]
+      kk <- 1 + g
         
       # Precalculate all except the last row and last column
       Wijs[1:n, 1:n] <- Wij.C(object$x, object$x, object$theta[t], a, b)
@@ -195,16 +197,16 @@ IMSE.gp <- function(object, x_new = NULL, cores = 1) {
         # Calculate new Ki matrix
         k <- Exp2(sq_dist(object$x, x_star), 1, object$theta[t], eps)
         v <- c(kk - t(k) %*% Kn_inv %*% k)
-        g <- (- 1 / v) * Kn_inv %*% k
-        Knew_inv[1:n, 1:n] <- Kn_inv + g %*% t(g) * v
-        Knew_inv[1:n, n+1] <- g
-        Knew_inv[n+1, 1:n] <- g
-        Knew_inv[n+1, n+1] <- 1 / v
+        G <- (-1/v)*Kn_inv %*% k
+        Knew_inv[1:n, 1:n] <- Kn_inv + G %*% t(G)*v
+        Knew_inv[1:n, n+1] <- G
+        Knew_inv[n+1, 1:n] <- G
+        Knew_inv[n+1, n+1] <- 1/v
           
         Wijs[1:n, n+1] <- Wijs[n+1, 1:n] <- Wij.C(object$x, x_star, 
                                                   object$theta[t], a, b)
         Wijs[n+1, n+1] <- Wij.C(x_star, x_star, object$theta[t], a, b)
-        imse[i] <- imse[i] + object$tau2[t] * prod(b - a) * (1 - sum(Knew_inv * Wijs))
+        imse[i] <- imse[i] + object$tau2[t]*prod(b - a)*(1 - sum(Knew_inv*Wijs))
         # Note: sum(Ki * Wijs) == sum(diag(Ki %*% Wijs)) because symmetric
       } # end of i for loop
     } # end of t for loop
@@ -213,7 +215,12 @@ IMSE.gp <- function(object, x_new = NULL, cores = 1) {
   
     iters <- 1:object$nmcmc
     chunks <- split(iters, sort(cut(iters, cores, labels = FALSE)))
-    if (cores > detectCores()) warning("cores is greater than available nodes")
+    if (cores > detectCores()) 
+      message("Warning: cores is greater than available nodes")
+    if (cores > object$nmcmc) {
+      message("cores is greater than nmcmc, overwriting with nmcmc")
+      cores <- object$nmcmc
+    }
     
     cl <- makeCluster(cores)
     registerDoParallel(cl)
@@ -223,9 +230,10 @@ IMSE.gp <- function(object, x_new = NULL, cores = 1) {
       imse_sum <- rep(0, times = n_new)
        
       for (t in chunks[[thread]]) { 
-        Kn <- Exp2(dx, 1, object$theta[t], object$g[t])
+        g <- ifel(length(object$g) == 1, object$g, object$g[t])
+        Kn <- Exp2(xdmat, 1, object$theta[t], g)
         Kn_inv <- invdet(Kn)$Mi
-        kk <- 1 + object$g[t]
+        kk <- 1 + g
         
         # Precalculate all except the last row and last column
         Wijs[1:n, 1:n] <- Wij.C(object$x, object$x, object$theta[t], a, b)
@@ -236,17 +244,16 @@ IMSE.gp <- function(object, x_new = NULL, cores = 1) {
           # Calculate new Ki matrix
           k <- Exp2(sq_dist(object$x, x_star), 1, object$theta[t], eps)
           v <- c(kk - t(k) %*% Kn_inv %*% k)
-          g <- (- 1 / v) * Kn_inv %*% k
-          Knew_inv[1:n, 1:n] <- Kn_inv + g %*% t(g) * v
-          Knew_inv[1:n, n+1] <- g
-          Knew_inv[n+1, 1:n] <- g
-          Knew_inv[n+1, n+1] <- 1 / v
+          G <- (-1/v)*Kn_inv %*% k
+          Knew_inv[1:n, 1:n] <- Kn_inv + G %*% t(G)*v
+          Knew_inv[1:n, n+1] <- G
+          Knew_inv[n+1, 1:n] <- G
+          Knew_inv[n+1, n+1] <- 1/v
           
           Wijs[1:n, n+1] <- Wijs[n+1, 1:n] <- Wij.C(object$x, x_star, 
                                                     object$theta[t], a, b)
           Wijs[n+1, n+1] <- Wij.C(x_star, x_star, object$theta[t], a, b)
-          imse_sum[i] <- imse_sum[i] + object$tau2[t] * prod(b - a) * 
-                                        (1 - sum(Knew_inv * Wijs))
+          imse_sum[i] <- imse_sum[i] + object$tau2[t]*prod(b - a)*(1 - sum(Knew_inv*Wijs))
           # Note: sum(Ki * Wijs) == sum(diag(Ki %*% Wijs)) because symmetric
         } # end of i for loop
       } # end of t for loop
@@ -261,13 +268,14 @@ IMSE.gp <- function(object, x_new = NULL, cores = 1) {
   return(list(value = imse / object$nmcmc, time = unname(toc - tic)))
 }
 
-# IMSE Two Layer --------------------------------------------------------------
+# IMSE.dgp2 -------------------------------------------------------------------
 #' @rdname IMSE
 #' @export
 
 IMSE.dgp2 <- function(object, x_new = NULL, cores = 1) {
   
   tic <- proc.time()[[3]]
+  cores <- check_cores(cores)
   
   if (object$v != 999) 
     stop("IMSE is only implemented for the un-approximated squared exponential 
@@ -286,14 +294,14 @@ IMSE.dgp2 <- function(object, x_new = NULL, cores = 1) {
       } else predicted <- TRUE
     }
   } else predicted <- FALSE
-  if (is.numeric(x_new)) x_new <- as.matrix(x_new)
+  if (is.vector(x_new)) x_new <- as.matrix(x_new)
   
   n <- nrow(object$x)
   n_new <- nrow(x_new)
   if (!predicted) {
-    D <- ncol(object$w[[1]])
-    dx <- sq_dist(object$x)
-    d_cross <- sq_dist(x_new, object$x)
+    D <- dim(object$w)[3]
+    xdmat <- sq_dist(object$x)
+    xdmat_cross <- sq_dist(x_new, object$x)
   }
   
   Knew_inv <- matrix(nrow = n + 1, ncol = n + 1)
@@ -304,18 +312,24 @@ IMSE.dgp2 <- function(object, x_new = NULL, cores = 1) {
     imse <- rep(0, times = n_new)
     
     for (t in 1:object$nmcmc) {
-      w <- object$w[[t]]
-      Kn <- Exp2(sq_dist(w), 1, object$theta_y[t], object$g[t])
+      g <- ifel(length(object$g) == 1, object$g, object$g[t])
+      w <- as.matrix(object$w[t, , ])
+      Kn <- Exp2(sq_dist(w), 1, object$theta_y[t], g)
       Kn_inv <- invdet(Kn)$Mi
-      kk <- 1 + object$g[t]
+      kk <- 1 + g
       
       if (predicted) {
-        w_new <- object$w_new[[t]]
+        w_new <- as.matrix(object$w_new[t, , ])
       } else {
         w_new <- matrix(nrow = n_new, ncol = D)
         for (i in 1:D)
-          w_new[, i] <- krig(w[, i], dx, NULL, d_cross, object$theta_w[t, i], 
-                             g = eps, v = 999)$mean
+          w_new[, i] <- krig(w[, i], xdmat, NULL, xdmat_cross, 
+                             tau2 = object$settings$tau2_w,
+                             theta = object$theta_w[t, i], 
+                             g = eps, 
+                             v = 999,
+                             prior_mean = ifel(object$settings$pmx, object$x[, i], 0),
+                             prior_mean_new = ifel(object$settings$pmx, x_new[, i], 0))$mean
       }
       
       # Define bounds
@@ -331,16 +345,15 @@ IMSE.dgp2 <- function(object, x_new = NULL, cores = 1) {
         # Calculate new Ki matrix
         k <- Exp2(sq_dist(w, w_star), 1, object$theta_y[t], eps)
         v <- c(kk - t(k) %*% Kn_inv %*% k)
-        g <- (- 1 / v) * Kn_inv %*% k
-        Knew_inv[1:n, 1:n] <- Kn_inv + g %*% t(g) * v
-        Knew_inv[1:n, n+1] <- g
-        Knew_inv[n+1, 1:n] <- g
-        Knew_inv[n+1, n+1] <- 1 / v
+        G <- (-1/v)*Kn_inv %*% k
+        Knew_inv[1:n, 1:n] <- Kn_inv + G %*% t(G)*v
+        Knew_inv[1:n, n+1] <- G
+        Knew_inv[n+1, 1:n] <- G
+        Knew_inv[n+1, n+1] <- 1/v
         
         Wijs[1:n, n+1] <- Wijs[n+1, 1:n] <- Wij.C(w, w_star, object$theta_y[t], a, b)
         Wijs[n+1, n+1] <- Wij.C(w_star, w_star, object$theta_y[t], a, b)
-        imse[i] <- imse[i] + object$tau2[t] * prod(b - a) * 
-          (1 - sum(Knew_inv * Wijs))
+        imse[i] <- imse[i] + object$tau2_y[t]*prod(b - a)*(1 - sum(Knew_inv*Wijs))
         # Note: sum(Ki * Wijs) == sum(diag(Ki %*% Wijs)) because symmetric
       } # end of i for loop
     } # end of t for loop
@@ -349,7 +362,12 @@ IMSE.dgp2 <- function(object, x_new = NULL, cores = 1) {
     
     iters <- 1:object$nmcmc
     chunks <- split(iters, sort(cut(iters, cores, labels = FALSE)))
-    if (cores > detectCores()) warning("cores is greater than available nodes")
+    if (cores > detectCores()) 
+      message("Warning: cores is greater than available nodes")
+    if (cores > object$nmcmc) {
+      message("cores is greater than nmcmc, overwriting with nmcmc")
+      cores <- object$nmcmc
+    }
     
     cl <- makeCluster(cores)
     registerDoParallel(cl)
@@ -359,18 +377,24 @@ IMSE.dgp2 <- function(object, x_new = NULL, cores = 1) {
       imse_sum <- rep(0, times = n_new)
       
       for (t in chunks[[thread]]) {
-        w <- object$w[[t]]
-        Kn <- Exp2(sq_dist(w), 1, object$theta_y[t], object$g[t])
+        g <- ifel(length(object$g) == 1, object$g, object$g[t])
+        w <- as.matrix(object$w[t, , ])
+        Kn <- Exp2(sq_dist(w), 1, object$theta_y[t], g)
         Kn_inv <- invdet(Kn)$Mi
-        kk <- 1 + object$g[t]
+        kk <- 1 + g
         
         if (predicted) {
-          w_new <- object$w_new[[t]]
+          w_new <- as.matrix(object$w_new[t, , ])
         } else {
           w_new <- matrix(nrow = n_new, ncol = D)
           for (i in 1:D)
-            w_new[, i] <- krig(w[, i], dx, NULL, d_cross, object$theta_w[t, i], 
-                               g = eps, v = 999)$mean
+            w_new[, i] <- krig(w[, i], xdmat, NULL, xdmat_cross, 
+                               tau2 = object$settings$tau2_w,
+                               theta = object$theta_w[t, i], 
+                               g = eps, 
+                               v = 999,
+                               prior_mean = ifel(object$settings$pmx, object$x[, i], 0),
+                               prior_mean_new = ifel(object$settings$pmx, x_new[, i], 0))$mean
         }
         
         # Define bounds
@@ -386,16 +410,15 @@ IMSE.dgp2 <- function(object, x_new = NULL, cores = 1) {
           # Calculate new Ki matrix
           k <- Exp2(sq_dist(w, w_star), 1, object$theta_y[t], eps)
           v <- c(kk - t(k) %*% Kn_inv %*% k)
-          g <- (- 1 / v) * Kn_inv %*% k
-          Knew_inv[1:n, 1:n] <- Kn_inv + g %*% t(g) * v
-          Knew_inv[1:n, n+1] <- g
-          Knew_inv[n+1, 1:n] <- g
-          Knew_inv[n+1, n+1] <- 1 / v
+          G <- (-1/v)*Kn_inv %*% k
+          Knew_inv[1:n, 1:n] <- Kn_inv + G %*% t(G)*v
+          Knew_inv[1:n, n+1] <- G
+          Knew_inv[n+1, 1:n] <- G
+          Knew_inv[n+1, n+1] <- 1/v
           
           Wijs[1:n, n+1] <- Wijs[n+1, 1:n] <- Wij.C(w, w_star, object$theta_y[t], a, b)
           Wijs[n+1, n+1] <- Wij.C(w_star, w_star, object$theta_y[t], a, b)
-          imse_sum[i] <- imse_sum[i] + object$tau2[t] * prod(b - a) * 
-                                          (1 - sum(Knew_inv * Wijs))
+          imse_sum[i] <- imse_sum[i] + object$tau2_y[t]*prod(b - a)*(1 - sum(Knew_inv*Wijs))
           # Note: sum(Ki * Wijs) == sum(diag(Ki %*% Wijs)) because symmetric
         } # end of i for loop
       } # end of t for loop
@@ -410,13 +433,14 @@ IMSE.dgp2 <- function(object, x_new = NULL, cores = 1) {
   return(list(value = imse / object$nmcmc, time = unname(toc - tic)))
 }
 
-# IMSE Three Layer ------------------------------------------------------------
+# IMSE.dgp3 -------------------------------------------------------------------
 #' @rdname IMSE
 #' @export
 
 IMSE.dgp3 <- function(object, x_new = NULL, cores = 1) {
   
   tic <- proc.time()[[3]]
+  cores <- check_cores(cores)
   
   if (object$v != 999) 
     stop("IMSE is only implemented for the un-approximated squared exponential 
@@ -435,14 +459,14 @@ IMSE.dgp3 <- function(object, x_new = NULL, cores = 1) {
       } else predicted <- TRUE
     }
   } else predicted <- FALSE
-  if (is.numeric(x_new)) x_new <- as.matrix(x_new)
+  if (is.vector(x_new)) x_new <- as.matrix(x_new)
   
   n <- nrow(object$x)
   n_new <- nrow(x_new)
   if (!predicted) {
-    D <- ncol(object$w[[1]])
-    dx <- sq_dist(object$x)
-    d_cross <- sq_dist(x_new, object$x)
+    D <- dim(object$w)[3]
+    xdmat <- sq_dist(object$x)
+    xdmat_cross <- sq_dist(x_new, object$x)
   }
   
   Knew_inv <- matrix(nrow = n + 1, ncol = n + 1)
@@ -453,23 +477,30 @@ IMSE.dgp3 <- function(object, x_new = NULL, cores = 1) {
     imse <- rep(0, times = n_new)
     
     for (t in 1:object$nmcmc) {
-      w <- object$w[[t]]
-      Kn <- Exp2(sq_dist(w), 1, object$theta_y[t], object$g[t])
+      g <- ifel(length(object$g) == 1, object$g, object$g[t])
+      w <- as.matrix(object$w[t, , ])
+      Kn <- Exp2(sq_dist(w), 1, object$theta_y[t], g)
       Kn_inv <- invdet(Kn)$Mi
-      kk <- 1 + object$g[t]
+      kk <- 1 + g
       
       if (predicted) {
-        w_new <- object$w_new[[t]]
+        w_new <- as.matrix(object$w_new[t, , ])
       } else {
-        z <- object$z[[t]]
+        z <- as.matrix(object$z[t, , ])
         z_new <- matrix(nrow = n_new, ncol = D)
         for (i in 1:D)
-          z_new[, i] <- krig(z[, i], dx, NULL, d_cross, object$theta_z[t, i], 
-                             g = eps, v = 999)$mean
+          z_new[, i] <- krig(z[, i], xdmat, NULL, xdmat_cross, 
+                             tau2 = object$settings$tau2_z,
+                             theta = object$theta_z[t, i], 
+                             g = eps, 
+                             v = 999)$mean
         w_new <- matrix(nrow = n_new, ncol = D)
         for (i in 1:D)
           w_new[, i] <- krig(w[, i], sq_dist(z), NULL, sq_dist(z_new, z), 
-                             object$theta_w[t, i], g = eps, v = 999)$mean
+                             tau2 = object$settings$tau2_w,
+                             theta = object$theta_w[t, i], 
+                             g = eps, 
+                             v = 999)$mean
       }
       
       # Define bounds
@@ -485,17 +516,16 @@ IMSE.dgp3 <- function(object, x_new = NULL, cores = 1) {
         # Calculate new Ki matrix
         k <- Exp2(sq_dist(w, w_star), 1, object$theta_y[t], eps)
         v <- c(kk - t(k) %*% Kn_inv %*% k)
-        g <- (- 1 / v) * Kn_inv %*% k
-        Knew_inv[1:n, 1:n] <- Kn_inv + g %*% t(g) * v
-        Knew_inv[1:n, n+1] <- g
-        Knew_inv[n+1, 1:n] <- g
-        Knew_inv[n+1, n+1] <- 1 / v
+        G <- (-1/v)*Kn_inv %*% k
+        Knew_inv[1:n, 1:n] <- Kn_inv + G %*% t(G)*v
+        Knew_inv[1:n, n+1] <- G
+        Knew_inv[n+1, 1:n] <- G
+        Knew_inv[n+1, n+1] <- 1/v
         
         Wijs[1:n, n+1] <- Wijs[n+1, 1:n] <- Wij.C(w, w_star, 
                                                   object$theta_y[t], a, b)
         Wijs[n+1, n+1] <- Wij.C(w_star, w_star, object$theta_y[t], a, b)
-        imse[i] <- imse[i] + object$tau2[t] * prod(b - a) * 
-          (1 - sum(Knew_inv * Wijs))
+        imse[i] <- imse[i] + object$tau2_y[t]*prod(b - a)*(1 - sum(Knew_inv*Wijs))
         # Note: sum(Ki * Wijs) == sum(diag(Ki %*% Wijs)) because symmetric
       } # end of i for loop
     } # end of t for loop
@@ -504,7 +534,12 @@ IMSE.dgp3 <- function(object, x_new = NULL, cores = 1) {
     
     iters <- 1:object$nmcmc
     chunks <- split(iters, sort(cut(iters, cores, labels = FALSE)))
-    if (cores > detectCores()) warning("cores is greater than available nodes")
+    if (cores > detectCores()) 
+      message("Warning: cores is greater than available nodes")
+    if (cores > object$nmcmc) {
+      message("cores is greater than nmcmc, overwriting with nmcmc")
+      cores <- object$nmcmc
+    }
     
     cl <- makeCluster(cores)
     registerDoParallel(cl)
@@ -514,23 +549,30 @@ IMSE.dgp3 <- function(object, x_new = NULL, cores = 1) {
       imse_sum <- rep(0, times = n_new)
       
       for (t in chunks[[thread]]) {
-        w <- object$w[[t]]
-        Kn <- Exp2(sq_dist(w), 1, object$theta_y[t], object$g[t])
+        g <- ifel(length(object$g) == 1, object$g, object$g[t])
+        w <- as.matrix(object$w[t, , ])
+        Kn <- Exp2(sq_dist(w), 1, object$theta_y[t], g)
         Kn_inv <- invdet(Kn)$Mi
-        kk <- 1 + object$g[t]
+        kk <- 1 + g
         
         if (predicted) {
-          w_new <- object$w_new[[t]]
+          w_new <- as.matrix(object$w_new[t, , ])
         } else {
-          z <- object$z[[t]]
+          z <- as.matrix(object$z[t, , ])
           z_new <- matrix(nrow = n_new, ncol = D)
           for (i in 1:D)
-            z_new[, i] <- krig(z[, i], dx, NULL, d_cross, object$theta_z[t, i], 
-                               g = eps, v = 999)$mean
+            z_new[, i] <- krig(z[, i], xdmat, NULL, xdmat_cross, 
+                               tau2 = object$settings$tau2_z,
+                               theta = object$theta_z[t, i], 
+                               g = eps,
+                               v = 999)$mean
           w_new <- matrix(nrow = n_new, ncol = D)
           for (i in 1:D)
             w_new[, i] <- krig(w[, i], sq_dist(z), NULL, sq_dist(z_new, z), 
-                               object$theta_w[t, i], g = eps, v = 999)$mean
+                               tau2 = object$settings$tau2_w,
+                               theta = object$theta_w[t, i], 
+                               g = eps, 
+                               v = 999)$mean
         }
         
         # Define bounds
@@ -546,17 +588,16 @@ IMSE.dgp3 <- function(object, x_new = NULL, cores = 1) {
           # Calculate new Ki matrix
           k <- Exp2(sq_dist(w, w_star), 1, object$theta_y[t], eps)
           v <- c(kk - t(k) %*% Kn_inv %*% k)
-          g <- (- 1 / v) * Kn_inv %*% k
-          Knew_inv[1:n, 1:n] <- Kn_inv + g %*% t(g) * v
-          Knew_inv[1:n, n+1] <- g
-          Knew_inv[n+1, 1:n] <- g
-          Knew_inv[n+1, n+1] <- 1 / v
+          G <- (-1/v)*Kn_inv %*% k
+          Knew_inv[1:n, 1:n] <- Kn_inv + G %*% t(G)*v
+          Knew_inv[1:n, n+1] <- G
+          Knew_inv[n+1, 1:n] <- G
+          Knew_inv[n+1, n+1] <- 1/v
           
           Wijs[1:n, n+1] <- Wijs[n+1, 1:n] <- Wij.C(w, w_star, 
                                                     object$theta_y[t], a, b)
           Wijs[n+1, n+1] <- Wij.C(w_star, w_star, object$theta_y[t], a, b)
-          imse_sum[i] <- imse_sum[i] + object$tau2[t] * prod(b - a) * 
-                                          (1 - sum(Knew_inv * Wijs))
+          imse_sum[i] <- imse_sum[i] + object$tau2_y[t]*prod(b - a)*(1 - sum(Knew_inv*Wijs))
           # Note: sum(Ki * Wijs) == sum(diag(Ki %*% Wijs)) because symmetric
         } # end of i for loop
       } # end of t for loop

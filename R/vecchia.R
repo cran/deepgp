@@ -1,202 +1,222 @@
 
 # Function Contents -----------------------------------------------------------
+# External:
+#   to_vec: converts a "gp", "dgp2", or "dgp3" class object to its Vecchia equivalent
 # Internal:
-#   rand_mvn_vec: samples from MVN Gaussian using vecchia approximation
-#   fill_final_row_vec: uses kriging to fill final row of w_0/z_0
-#   create_U: uses C++ to create sparse Matrix U
-#   create_approx: creates vecchia approximation object
-#   update_obs_in_approx: updates x_ord inside approx object
-#   add_pred_to_approx: incorporates predictive locations inside vecchia approx
-#   krig_vec: prediction using vecchia
+#   rand_mvn_vec: samples from MVN Gaussian using Vecchia approximation
+#   create_U: uses C++ to create sparse U matrix
+#   create_approx: creates Vecchia approximation object
+#   add_pred_to_approx: incorporates predictive locations inside Vecchia approx
+#   clean_pred_from_approx: remove predictive information from an approx object
 
-# Random MVN ------------------------------------------------------------------
+# to_vec ----------------------------------------------------------------------
+#' @title Converts non-Vecchia object to its Vecchia version
+#' @description Converts an object of class "gp", "dgp2", or "dgp3" to its 
+#'              Vecchia equivalent ("gpvec", "dgp2vec", or "dgp3vec").
+#' 
+#' @details Creates and appends Vecchia-approximation objects to the 
+#'     provided fit.  Defaults to random ordering and nearest neighbors
+#'     conditioning.  Useful for speeding up predictions when the testing
+#'     size is large but the training size is small.
+#'
+#' @param object object from \code{fit_one_layer}, \code{fit_two_layer}, or 
+#'        \code{fit_three_layer} with \code{vecchia = FALSE}
+#' @param m size of Vecchia conditioning sets, defaults to the lower of 25 or 
+#'        maximum available
+#' @param ord optional ordering for Vecchia approximation, defaults to random
+#' @param cores number of cores to use for OpenMP parallelization.  Defaults 
+#'        to \code{min(4, maxcores - 1)} where \code{maxcores} is the number 
+#'        of detectable available cores.
+#'
+#' @return The same object, with \code{x_approx}, \code{w_approx}, and \code{z_approx}
+#'         appended (depending on the number of layers).
+#'
+#' @examples
+#' # See ?fit_one_layer for an example
+#' 
+#' @export
 
-rand_mvn_vec <- function(approx, theta, v, mean = rep(0, nrow(approx$x_ord)),
-                         g = eps, scale = 1) {
+to_vec <- function(object, m = NULL, ord = NULL, cores = NULL) {
+  
+  n <- nrow(object$x)
+  d <- ncol(object$x)
+  grad_enhance <- !is.null(object$dydx)
+  if (is.null(m)) m <- min(25, ifel(grad_enhance, n*(d + 1) - 1, n - 1))
+  test <- check_vecchia(n, d, m, ord, grad_enhance)
+  if (inherits(object, "gp")) {
+    object$x_approx <- create_approx(object$x, m, ord, grad_enhance, cores)
+    class(object) <- "gpvec"
+  } else if (inherits(object, "dgp2")) {
+    object$x_approx <- create_approx(object$x, m, ord, grad_enhance, cores)
+    object$w_approx <- create_approx(object$w[object$nmcmc, 1:n, ], m, ord, 
+                                     grad_enhance, cores)
+    class(object) <- "dgp2vec"
+  } else if (inherits(object, "dgp3")) { # no grad_enhance option
+    object$x_approx <- create_approx(object$x, m, ord, FALSE, cores)
+    object$z_approx <- create_approx(object$z[object$nmcmc, , ], m, ord, FALSE, cores)
+    object$w_approx <- create_approx(object$w[object$nmcmc, , ], m, ord, FALSE, cores)
+    class(object) <- "dgp3vec"
+  }
+  return(object)
+}
+
+# rand_mvn_vec ----------------------------------------------------------------
+
+rand_mvn_vec <- function(approx, tau2 = 1, theta, g = eps, v, grad = FALSE,
+                         prior_mean = 0) {
   
   z <- rnorm(nrow(approx$x_ord))
-  Uraw <- create_U(approx, g, theta, v, raw_form = TRUE)
-  sample <- forward_solve_raw(Uraw, z, approx$NNarray)
-  sample <- sample[approx$rev_ord_obs] + mean
-  return(sample)
+  if (grad) {
+    if (v != 999) stop("grad requires 'exp2' kernel") # Matern might be implemented later
+
+    n <- sum(approx$grad_indx == 0)
+    d <- ncol(approx$x_ord)
+    
+    if (length(theta) > 1) {
+      U <- U_entries_sep_grad(approx$cores, approx$x_ord, approx$NNarray,
+                              approx$grad_indx, tau2, theta, g, v)
+    } else {
+      U <- U_entries_grad(approx$cores, approx$x_ord, approx$NNarray,
+                          approx$grad_indx, tau2, theta, g, v)
+    }
+    sample <- forward_solve_raw(U, z, approx$NNarray)
+    sample <- sample[approx$rev_ord_obs] + prior_mean # prior_mean is NOT ordered
+    return(sample)
+  } else {
+    if (length(theta) > 1) {
+      U <- U_entries_sep(approx$cores, approx$x_ord, approx$NNarray, 
+                         tau2, theta, g, v)
+    } else {
+      U <- U_entries(approx$cores, approx$x_ord, approx$NNarray, 
+                          tau2, theta, g, v)
+    }
+    sample <- forward_solve_raw(U, z, approx$NNarray)
+    sample <- sample[approx$rev_ord_obs] + prior_mean # prior_mean is NOT ordered
+    return(sample)
+  }
 }
 
-# Fill Final Row --------------------------------------------------------------
+# create_U --------------------------------------------------------------------
 
-fill_final_row_vec <- function(x, w_0, D, theta_w_0, v, m) { 
-  
-  n <- nrow(x)
-  new_w <- vector(length = D)
-  old_x <- as.matrix(x[1:(n - 1), ])
-  new_x <- matrix(x[n, ], nrow = 1)
-  for (i in 1:D) 
-    new_w[i] <- krig_vec(w_0[, i], theta_w_0[i], eps, v = v, m = m,
-                         x = old_x, x_new = new_x)$mean
-  
-  return(rbind(w_0, new_w))
-}
-
-# Create U --------------------------------------------------------------------
-
-create_U <- function(approx, g, theta, v, sep = FALSE,
-                     raw_form = FALSE) {
+create_U <- function(approx, tau2 = 1, theta, g, v, sep = FALSE) {
   
   n <- nrow(approx$x_ord)
-  if (sep) {
-    U <- U_entries_sep(approx$n_cores, approx$x_ord, approx$revNN, 
-                       1, theta, g, v)
-  } else U <- U_entries(approx$n_cores, approx$x_ord, approx$revNN, 
-                        1, theta, g, v)
   
-  if (raw_form) {
-    m <- ncol(approx$NNarray) - 1
-    U <- rev_matrix(U)
-    for (i in 1:m) {
-      zeros <- (U[i, ] == 0)
-      U[i, ] <- c(U[i, !zeros], rep(0, times = sum(zeros))) 
+  if (is.null(approx$grad_indx)) { # no gradients
+    if (sep) {
+      U <- U_entries_sep(approx$cores, approx$x_ord, approx$NNarray, 
+                         tau2, theta, g, v)
+    } else {
+      U <- U_entries(approx$cores, approx$x_ord, approx$NNarray, 
+                     tau2, theta, g, v)
     }
-    return(U)
-  } else {
-    U <- c(t(U))[approx$notNA]
-    U <- Matrix::sparseMatrix(i = approx$pointers[, 2], 
-                              j = approx$pointers[, 1], x = U, 
-                              dims = c(n, n))
-    return(U)
-  } 
+  } else { # gradients
+    if (sep) {
+      U <- U_entries_sep_grad(approx$cores, approx$x_ord, approx$NNarray, 
+                              approx$grad_indx, tau2, theta, g, v)
+    } else {
+      U <- U_entries_grad(approx$cores, approx$x_ord, approx$NNarray, 
+                          approx$grad_indx, tau2, theta, g, v)
+    }
+  }
+  
+  U <- U[-approx$na_indx]
+  U <- Matrix::sparseMatrix(i = approx$pointers[, 1], j = approx$pointers[, 2], 
+                            x = U, dims = c(n, n))
+  return(U)
 }
 
-# Create Approximation --------------------------------------------------------
+# create_approx ---------------------------------------------------------------
 
-create_approx <- function(x, m, ordering = NULL) {
+create_approx <- function(x, m, ord = NULL, grad_enhance = FALSE, cores = NULL) {
   
+  if (!is.matrix(x)) x <- as.matrix(x)
   n <- nrow(x)
-  if (is.null(ordering)) 
-    ordering <- sample(1:n, n, replace = FALSE)
-  rev_ord_obs <- order(ordering)
-  x_ord <- x[ordering, , drop = FALSE]
- 
-  NNarray <- GpGp::find_ordered_nn(x_ord, m)
-  revNN <- rev_matrix(NNarray)
-  notNA <- as.vector(t(!is.na(NNarray)))
+  d <- ncol(x)
+  if (is.null(cores)) cores <- check_cores(cores)
+
+  if (is.null(ord)) ord <- sample(1:n, n, replace = FALSE) # random
+
+  if (grad_enhance) { 
+    grad_indx <- rep(0:d, each = n)
+    ord <- rep(ord, times = d + 1) + n*grad_indx
+    x <- bind(x, d)
+  } else grad_indx <- rep(0, times = n)
+
+  x_ord <- x[ord, , drop = FALSE]
+  NNarray <- GpGp::find_ordered_nn(x_ord, m) # TODO: avoid duplicate NN calculations for gradient locations?
+  rev_ord_obs <- order(ord) # includes partial derivative indices
+  na_indx <- which(is.na(t(NNarray))) # vector indices of NA values (for converting U to sparse matrix)
   pointers <- row_col_pointers(NNarray)
-  n_cores <- parallel::detectCores(all.tests = FALSE, logical = TRUE)
   
-  out <- list(m = m, ord = ordering, NNarray = NNarray, revNN = revNN, 
-              notNA = notNA, pointers = pointers,
-              n_cores = n_cores, rev_ord_obs = rev_ord_obs, x_ord = x_ord)
+  out <- list(m = m, ord = ord, NNarray = NNarray, na_indx = na_indx,
+              pointers = pointers, rev_ord_obs = rev_ord_obs, 
+              x_ord = x_ord, cores = cores, grad_indx = grad_indx)
   return(out)
 }
 
-# Update Observation in Approx ------------------------------------------------
+# add_pred_to_approx ----------------------------------------------------------
 
-update_obs_in_approx <- function(approx, x_new, col_index = NULL) {
+add_pred_to_approx <- function(approx, x_new, m, lite, grad = FALSE, ord_new = NULL) {
   
-  if (is.null(col_index)) {
-    approx$x_ord <- x_new[approx$ord, , drop = FALSE]
-  } else {
-    approx$x_ord[, col_index] <- x_new[approx$ord]
+  approx$m_new <- m
+  if (!is.matrix(x_new)) x_new <- as.matrix(x_new)
+  n_new <- nrow(x_new)
+  d <- ncol(x_new)
+  
+  if (lite) {
+    if (grad) { # do we want predictions of the gradient?
+      x_new <- bind(x_new, d)
+      grad_indx_new <- rep(0:d, each = n_new)
+      approx$grad_indx_new <- grad_indx_new
+    } else approx$grad_indx_new <- rep(0, times = n_new)
+    approx$x_new <- x_new
+    approx$NNarray_new <- FNN::get.knnx(approx$x_ord, x_new, m)$nn.index
+  } else { 
+    if (is.null(ord_new)) { # TODO: don't update for every t in T?
+      ord_new <- sample(1:n_new, n_new, replace = FALSE)
+    }
+    if (grad) {
+      x_new <- bind(x_new, d)
+      grad_indx_new <- rep(0:d, each = n_new)
+      ord_new <- rep(ord_new, times = d + 1) + n_new*grad_indx_new
+      approx$grad_indx <- c(approx$grad_indx, grad_indx_new)
+    } else approx$grad_indx <- c(approx$grad_indx, rep(0, times = n_new))
+    approx$ord_new <- ord_new
+    approx$rev_ord_new <- order(ord_new)
+    approx$observed <- c(rep(TRUE, times = length(approx$ord)), 
+                         rep(FALSE, times = length(approx$ord_new)))
+   
+    # OVERWRITE THE FOLLOWING
+    approx$x_ord <- rbind(approx$x_ord, x_new[ord_new, , drop = FALSE])
+    approx$NNarray <- GpGp::find_ordered_nn(approx$x_ord, m) # TODO: don't recalculate NN?
+    approx$na_indx <- which(is.na(t(approx$NNarray)))
+    approx$pointers <- row_col_pointers(approx$NNarray)
+
   }
   
   return(approx)
 }
 
-# Add Pred to Approx ----------------------------------------------------------
+# clean_pred_from_approx ------------------------------------------------------
 
-add_pred_to_approx <- function(approx, x_pred, m, ordering_new = NULL) {
-  
-  n <- nrow(approx$x_ord)
-  n_pred <- nrow(x_pred)
-  if (is.null(ordering_new)) 
-    ordering_new <- sample(1:n_pred, n_pred, replace = FALSE)
-  rev_ord_pred <- order(ordering_new)
-  
-  ord <- c(approx$ord, ordering_new + n) # observed data FIRST
-  x_ord <- rbind(approx$x_ord, x_pred[ordering_new, , drop = FALSE])
-  observed <- c(rep(TRUE, n), rep(FALSE, n_pred))
-  
-  NNarray <- GpGp::find_ordered_nn(x_ord, m)
-  revNN <- rev_matrix(NNarray)
-  notNA <- as.vector(t(!is.na(NNarray)))
-  pointers <- row_col_pointers(NNarray)
+clean_pred_from_approx <- function(approx) {
 
-  out <- list(m = m, ord = ord, NNarray = NNarray, revNN = revNN, 
-              notNA = notNA, pointers = pointers,
-              n_cores = approx$n_cores, rev_ord_obs = approx$rev_ord_obs,
-              rev_ord_pred = rev_ord_pred, observed = observed, x_ord = x_ord)
-  return(out)
-}
-
-# Krig Vecchia ----------------------------------------------------------------
-
-krig_vec <- function(y, theta, g, tau2 = 1, 
-                     s2 = FALSE, sigma = FALSE, v, m = NULL,
-                     x = NULL, x_new =  NULL, # inputs required for sigma = FALSE 
-                     NNarray_pred = NULL, # optional input for sigma = FALSE
-                     approx = NULL, # inputs required for sigma = TRUE
-                     sep = FALSE,
-                     f_min = FALSE,
-                     prior_mean = rep(0, length(y)), 
-                     prior_mean_new = 0) {
-  
-  out <- list()
-  
-  if (!sigma) { # lite = TRUE 
-    
-    n_new <- nrow(x_new)
-    if (is.null(NNarray_pred)) # calculate NN if not provided
-      NNarray_pred <- FNN::get.knnx(x, x_new, m)$nn.index # NN DO NOT USE SCALED LENGTHSCALES IN SEPARABLE GP
-    out$mean <- vector(length = n_new)
-    if (s2) out$s2 <- vector(length = n_new)
-    if (f_min) mean_no_noise <- vector(length = n_new)
-    for (i in 1:n_new) {
-      NN <- NNarray_pred[i, ]
-      x_combined <- rbind(x[NN, , drop = FALSE], x_new[i, , drop = FALSE])
-      if (v == 999) {
-        if (sep) {
-          K <- Exp2Sep(x_combined, x_combined, 1, theta, g)
-        } else K <- Exp2(sq_dist(x_combined), 1, theta, g)
-      } else {
-        if (sep) {
-          K <- MaternSep(x_combined, x_combined, 1, theta, g, v)
-        } else K <- Matern(sq_dist(x_combined), 1, theta, g, v)
-      }
-      L <- t(chol(K))
-      out$mean[i] <- L[m + 1, 1:m] %*% forwardsolve(L[1:m, 1:m], y[NN] - prior_mean[NN])
-      if (s2) out$s2[i] <- tau2 * (L[m + 1, m + 1] ^ 2)
-      if (f_min) { 
-        K <- K - diag(g - eps, nrow(K)) # remove nugget (tau2 = 1)
-        L <- t(chol(K))
-        mean_no_noise[i] <- L[m + 1, 1:m] %*% forwardsolve(L[1:m, 1:m], y[NN] - prior_mean[NN])
-      }
-    }
-    out$mean <- out$mean + prior_mean_new
-    if (f_min) out$f_min <- min(mean_no_noise + prior_mean_new)
-    
-  } else { # lite = FALSE
-    
-    prior_mean_ordered <- prior_mean[approx$ord[approx$observed]]
-    yo <- y[approx$ord[approx$observed]] - prior_mean_ordered
-    U_mat <- create_U(approx, g, theta, v, sep = sep)
-    Upp <- U_mat[!approx$observed, !approx$observed]
-    Uppinv <- Matrix::solve(Upp, sparse = TRUE)
-    Winv <- Matrix::crossprod(Uppinv)
-    Uop <- U_mat[approx$observed, !approx$observed]
-    UopTy <- Matrix::crossprod(Uop, yo)
-    mu_ordered <- -Matrix::crossprod(Uppinv, UopTy)
-    out$mean <- prior_mean_new + mu_ordered[approx$rev_ord_pred]
-    out$sigma <- as.matrix(tau2 * Winv[approx$rev_ord_pred, approx$rev_ord_pred])
-    if (f_min) {
-      U_mat <- create_U(approx, 0, theta, v, sep = sep)
-      Upp <- U_mat[!approx$observed, !approx$observed]
-      Uppinv <- Matrix::solve(Upp, sparse = TRUE)
-      Winv <- Matrix::crossprod(Uppinv)
-      Uop <- U_mat[approx$observed, !approx$observed]
-      UopTy <- Matrix::crossprod(Uop, yo)
-      mu_ordered <- -Matrix::crossprod(Uppinv, UopTy)
-      out$f_min <- min(prior_mean_new + mu_ordered[approx$rev_ord_pred])
-    }
-    
+  if (!is.null(approx$m_new)) approx["m_new"] <- NULL
+  lite <- is.null(approx$observed)
+  if (lite) {
+    if (!is.null(approx$x_new)) approx["x_new"] <- NULL
+    if (!is.null(approx$NNarray_new)) approx["NNarray_new"] <- NULL
+    if (!is.null(approx$grad_indx_new)) approx["grad_indx_new"] <- NULL
+  } else {
+    n <- sum(approx$observed)
+    if (!is.null(approx$ord_new)) approx["ord_new"] <- NULL
+    if (!is.null(approx$rev_ord_new)) approx["rev_ord_new"] <- NULL
+    approx$grad_indx <- approx$grad_indx[approx$observed]
+    approx$x_ord <- approx$x_ord[approx$observed, , drop = FALSE]
+    approx$NNarray <- approx$NNarray[approx$observed, 1:(approx$m+1), drop = FALSE]
+    approx$na_indx <- which(is.na(t(approx$NNarray)))
+    approx$pointers <- row_col_pointers(approx$NNarray)
   }
-  
-  return(out)
+  return(approx)
 }

@@ -18,11 +18,32 @@ continue(object, new_mcmc, verb, re_approx, ...)
 
 \method{continue}{dgp3}(object, new_mcmc = 1000, verb = TRUE, ...)
 
-\method{continue}{gpvec}(object, new_mcmc = 1000, verb = TRUE, re_approx = FALSE, ...)
+\method{continue}{gpvec}(
+  object,
+  new_mcmc = 1000,
+  verb = TRUE,
+  re_approx = FALSE,
+  ord = NULL,
+  ...
+)
 
-\method{continue}{dgp2vec}(object, new_mcmc = 1000, verb = TRUE, re_approx = FALSE, ...)
+\method{continue}{dgp2vec}(
+  object,
+  new_mcmc = 1000,
+  verb = TRUE,
+  re_approx = FALSE,
+  ord = NULL,
+  ...
+)
 
-\method{continue}{dgp3vec}(object, new_mcmc = 1000, verb = TRUE, re_approx = FALSE, ...)
+\method{continue}{dgp3vec}(
+  object,
+  new_mcmc = 1000,
+  verb = TRUE,
+  re_approx = FALSE,
+  ord = NULL,
+  ...
+)
 }
 \arguments{
 \item{object}{object from \code{fit_one_layer}, \code{fit_two_layer}, or 
@@ -37,6 +58,9 @@ and update Vecchia nearest-neighbor conditioning sets (only for fits
 with \code{vecchia = TRUE})}
 
 \item{...}{N/A}
+
+\item{ord}{optional ordering to be used in Vecchia re-approximation (only
+for fits with \code{vecchia = TRUE} when \code{re_approx = TRUE}')}
 }
 \value{
 object of the same class with the new iterations appended
