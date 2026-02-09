@@ -8,7 +8,7 @@ knitr::opts_chunk$set(
   echo = TRUE,
   eval = TRUE
 )
-set.seed(0)
+set.seed(1)
 
 ## -----------------------------------------------------------------------------
 library(deepgp)
@@ -40,24 +40,24 @@ plot(xp_booth, yp_booth, type = "l", col = 4, xlab = "X", ylab = "Y",
 points(x_booth, y_booth)
 
 ## ----fig.height = 3.5, fig.width = 6------------------------------------------
-gp_booth <- fit_one_layer(x_booth, y_booth, nmcmc = 10000, true_g = 1e-6, 
+gp_booth <- fit_one_layer(x_booth, y_booth, nmcmc = 2000, true_g = 1e-6, 
                           verb = FALSE)
 plot(gp_booth)
 
 ## -----------------------------------------------------------------------------
-gp_booth <- trim(gp_booth, 5000, 2) # remove 5000 as burn-in, thin by half
+gp_booth <- trim(gp_booth, 1000, 2) # remove 1000 as burn-in, thin by half
 
 ## ----fig.width = 6, fig.height = 4.5------------------------------------------
 gp_booth <- predict(gp_booth, xp_booth, lite = FALSE)
 plot(gp_booth)
 
 ## ----fig.height = 3-----------------------------------------------------------
-dgp_booth <- fit_two_layer(x_booth, y_booth, nmcmc = 8000, true_g = 1e-6, 
+dgp_booth <- fit_two_layer(x_booth, y_booth, nmcmc = 1000, true_g = 1e-6, 
                            verb = FALSE)
 plot(dgp_booth)
 
 ## ----fig.height = 4-----------------------------------------------------------
-dgp_booth <- continue(dgp_booth, 2000, verb = FALSE)
+dgp_booth <- continue(dgp_booth, 1000, verb = FALSE)
 
 ## -----------------------------------------------------------------------------
 dgp_booth$nmcmc
@@ -66,14 +66,14 @@ dgp_booth$nmcmc
 plot(dgp_booth, trace = FALSE, hidden = TRUE) 
 
 ## ----fig.width = 6, fig.height = 4.5------------------------------------------
-dgp_booth <- trim(dgp_booth, 5000, 2)
+dgp_booth <- trim(dgp_booth, 1000, 2)
 dgp_booth <- predict(dgp_booth, xp_booth, lite = FALSE)
 plot(dgp_booth)
 
 ## ----fig.width = 6, fig.height = 4.5------------------------------------------
-dgp3_booth <- fit_three_layer(x_booth, y_booth, nmcmc = 10000, true_g = 1e-6, 
+dgp3_booth <- fit_three_layer(x_booth, y_booth, nmcmc = 2000, true_g = 1e-6, 
                               verb = FALSE)
-dgp3_booth <- trim(dgp3_booth, 5000, 2)
+dgp3_booth <- trim(dgp3_booth, 1000, 2)
 dgp3_booth <- predict(dgp3_booth, xp_booth, lite = FALSE)
 plot(dgp3_booth)
 
@@ -91,8 +91,8 @@ rownames(metrics) <- c("One-layer GP", "Two-layer DGP", "Three-layer DGP")
 metrics
 
 ## ----fig.width = 6, fig.height = 4.5------------------------------------------
-dgp_booth_noisy <- fit_two_layer(x_booth, y_booth, nmcmc = 10000, verb = FALSE)
-dgp_booth_noisy <- trim(dgp_booth_noisy, 5000, 2)
+dgp_booth_noisy <- fit_two_layer(x_booth, y_booth, nmcmc = 2000, verb = FALSE)
+dgp_booth_noisy <- trim(dgp_booth_noisy, 1000, 2)
 dgp_booth_noisy <- predict(dgp_booth_noisy, xp_booth, lite = FALSE)
 plot(dgp_booth_noisy)
 
@@ -116,9 +116,9 @@ persp(grid, grid, matrix(yp_tray, nrow = length(grid)), xlab = "x1", ylab = "x2"
 ## -----------------------------------------------------------------------------
 x_tray <- matrix(runif(50 * 2), ncol = 2)
 y_tray <- tray(x_tray)
-dgp_tray <- fit_two_layer(x_tray, y_tray, nmcmc = 10000, monowarp = TRUE, 
+dgp_tray <- fit_two_layer(x_tray, y_tray, nmcmc = 2000, monowarp = TRUE, 
                           true_g = 1e-6, verb = FALSE)
-dgp_tray <- trim(dgp_tray, 5000, 2)
+dgp_tray <- trim(dgp_tray, 1000, 2)
 
 ## ----fig.height = 3.5---------------------------------------------------------
 plot(dgp_tray, trace = FALSE, hidden = TRUE)
@@ -151,9 +151,9 @@ plot(xp_step, yp_step$dy, type = "l", col = 4, xlab = "X", ylab = "Y",
 points(x_step, y_step$dy)
 
 ## -----------------------------------------------------------------------------
-gp_step <- fit_one_layer(x_step, y_step$y, y_step$dy, nmcmc = 10000, 
+gp_step <- fit_one_layer(x_step, y_step$y, y_step$dy, nmcmc = 2000, 
                           true_g = 1e-6, cov = "exp2", verb = FALSE)
-gp_step <- trim(gp_step, 5000, 50) # leave 100 iterations
+gp_step <- trim(gp_step, 1000, 10) # leave 100 iterations
 gp_samples <- post_sample(gp_step, xp_step, grad = TRUE)
 
 par(mfrow = c(1, 2))
@@ -163,9 +163,9 @@ matplot(xp_step, t(gp_samples$dy), type = "l", xlab = "x", ylab = "dy", main = "
 points(x_step, y_step$dy, pch = 20)
 
 ## -----------------------------------------------------------------------------
-dgp_step <- fit_two_layer(x_step, y_step$y, y_step$dy, nmcmc = 10000, 
+dgp_step <- fit_two_layer(x_step, y_step$y, y_step$dy, nmcmc = 2000, 
                           true_g = 1e-6, cov = "exp2", verb = FALSE)
-dgp_step <- trim(dgp_step, 5000, 50) # leave 100 iterations
+dgp_step <- trim(dgp_step, 1000, 10) # leave 100 iterations
 dgp_samples <- post_sample(dgp_step, xp_step, grad = TRUE)
 
 par(mfrow = c(1, 2))
@@ -195,16 +195,16 @@ points(xp_booth[which.max(dgp_booth$entropy)], max(dgp_booth$entropy), pch = 17,
        cex = 1.5, col = 3)
 
 ## ----fig.width = 5, fig.height = 4--------------------------------------------
-gp_step <- fit_one_layer(x_step, y_step$y, nmcmc = 10000, true_g = 1e-6, 
+gp_step <- fit_one_layer(x_step, y_step$y, nmcmc = 2000, true_g = 1e-6, 
                          cov = "exp2", verb = FALSE)
-gp_step <- trim(gp_step, 5000, 2)
+gp_step <- trim(gp_step, 1000, 2)
 gp_step <- predict(gp_step, xp_step, lite = TRUE)
 plot(gp_step)
 
 ## ----fig.width = 5, fig.height = 4--------------------------------------------
-dgp_step <- fit_two_layer(x_step, y_step$y, nmcmc = 10000, true_g = 1e-6, 
+dgp_step <- fit_two_layer(x_step, y_step$y, nmcmc = 2000, true_g = 1e-6, 
                          cov = "exp2", verb = FALSE)
-dgp_step <- trim(dgp_step, 5000, 2)
+dgp_step <- trim(dgp_step, 1000, 2)
 dgp_step <- predict(dgp_step, xp_step, lite = TRUE)
 plot(dgp_step)
 

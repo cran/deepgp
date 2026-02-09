@@ -1,8 +1,8 @@
 Package: deepgp
 Type: Package
 Title: Bayesian Deep Gaussian Processes using MCMC
-Version: 1.2.0
-Date: 2025-12-18
+Version: 1.2.1
+Date: 2026-02-06
 Authors@R: person(given = c("Annie", "S."),
                     family = "Booth",
                     role = c("aut", "cre"),
@@ -37,8 +37,8 @@ LinkingTo: Rcpp, RcppArmadillo,
 Suggests: interp, knitr, rmarkdown
 VignetteBuilder: knitr
 RoxygenNote: 7.3.3
-Packaged: 2026-01-08 16:27:10 UTC; anniebooth
+Packaged: 2026-02-09 14:27:12 UTC; anniebooth
 Author: Annie S. Booth [aut, cre]
 Maintainer: Annie S. Booth <annie_booth@vt.edu>
 Repository: CRAN
-Date/Publication: 2026-01-08 23:50:09 UTC
+Date/Publication: 2026-02-09 14:50:02 UTC

@@ -21,7 +21,7 @@ knitr::opts_chunk$set(
   echo = TRUE,
   eval = TRUE
 )
-set.seed(0)
+set.seed(1)
 ```
 
 ```{r}
@@ -102,10 +102,14 @@ where $k(\cdot)$ represents a stationary kernel function (`deepgp` offers both t
 
 This covariance depends on hyperparameters $\tau^2$, $\theta$, and $g$ controlling the scale, lengthscale, and noise respectively.  [Notice how $\theta$ operates on squared distances under this parameterization.]  Looking forward to our DGP implementation, we embrace an MCMC scheme utilizing Metropolis Hastings sampling of these unknown hyperparameters (except $\tau^2$ which can be marginialized analytically under an inverse gamma reference prior, see @gramacy2020surrogates, Chapter 5).
 
-Ok, let's get to some code.  MCMC sampling of `theta` and `g` for a one-layer GP is built into the `fit_one_layer` function.  Since our function is deterministic, we will fix `g` at a small value with `true_g` argument below.  The following code collects 10,000 Metropolis Hastings samples (using the Matérn kernel by default and creating an S3 object of the `gp` class), then displays trace plots of the log likelihood and corresponding samples.  
+Ok, let's get to some code.  MCMC sampling of `theta` and `g` for a one-layer GP is built into the `fit_one_layer` function.  Since our function is deterministic, we will fix `g` at a small value with `true_g` argument below.  The following code collects 2,000 Metropolis Hastings samples (using the Matérn kernel by default and creating an S3 object of the `gp` class), then displays trace plots of the log likelihood and corresponding samples.  
+
+**NOTE:** To keep run times low, we use 2,000 MCMC samples throughout this vignette.  This is NOT the general
+recommendation.  More MCMC sampling is often required to reach sufficient burn-in, particularly with more
+complicated deeper models.  The software default is 10,000.
 
 ```{r, fig.height = 3.5, fig.width = 6}
-gp_booth <- fit_one_layer(x_booth, y_booth, nmcmc = 10000, true_g = 1e-6, 
+gp_booth <- fit_one_layer(x_booth, y_booth, nmcmc = 2000, true_g = 1e-6, 
                           verb = FALSE)
 plot(gp_booth)
 ```
@@ -114,7 +118,7 @@ plot(gp_booth)
 There is randomization involved in MCMC proposals and acceptances, so these trace plots may show slight variations upon different renderings.  In this simple case they burn-in quickly.  Before we do anything else with these samples, we may want to trim off burn-in and thin the remaining samples.  This functionality is built into the `trim` function (which will work on any of our models, not just the one layer).
 
 ```{r}
-gp_booth <- trim(gp_booth, 5000, 2) # remove 5000 as burn-in, thin by half
+gp_booth <- trim(gp_booth, 1000, 2) # remove 1000 as burn-in, thin by half
 ```
 
 Now that we have a set of posterior samples of kernel hyperparameters, we can generate posterior predictions for the testing locations `xp`.  Under a GP prior, posterior predictions $Y^\star$ at $X^\star$ locations follow
@@ -158,7 +162,7 @@ where $\Sigma(\cdot)$ represents a stationary kernel function as defined in the 
 Latent Gaussian layers are sampled through elliptical slice sampling [ESS, @murray2010elliptical].  Kernel hyperparameters are sampled through Metropolis Hastings.  All of these are iterated in a Gibbs scheme.  MCMC sampling for two-layer DGPs is wrapped in the `fit_two_layer` function.
 
 ```{r, fig.height = 3}
-dgp_booth <- fit_two_layer(x_booth, y_booth, nmcmc = 8000, true_g = 1e-6, 
+dgp_booth <- fit_two_layer(x_booth, y_booth, nmcmc = 1000, true_g = 1e-6, 
                            verb = FALSE)
 plot(dgp_booth)
 ```
@@ -167,7 +171,7 @@ plot(dgp_booth)
 Notice there are now two lengthscale parameters, one for each GP layer (there will be additional `theta_w[i]` in higher dimensions, with each $\Sigma_i(X)$ having its own).  Again there is some randomization involved in this sampling.  These trace plots are helpful in diagnosing burn-in.  If you need to run further MCMC samples, you may use the `continue` function.
 
 ```{r, fig.height = 4}
-dgp_booth <- continue(dgp_booth, 2000, verb = FALSE)
+dgp_booth <- continue(dgp_booth, 1000, verb = FALSE)
 ```
 
 There are now 10,000 total samples stored in `fit2`,
@@ -188,7 +192,7 @@ Each line represents a single ESS sample of $W$.  Since 10,000 lines would be a 
 We may then trim/thin and predict using the same function calls.  Predictions follow the same structure of the one-layer GP, they just involve an additional mapping of $X^\star$ through $W$ before obtaining $\mu^\star$ and $\Sigma^\star$.  We utilize `lite = FALSE` here so that full posterior predictive covariances are returned (by default, only point-wise variances are returned).  
 
 ```{r, fig.width = 6, fig.height = 4.5}
-dgp_booth <- trim(dgp_booth, 5000, 2)
+dgp_booth <- trim(dgp_booth, 1000, 2)
 dgp_booth <- predict(dgp_booth, xp_booth, lite = FALSE)
 plot(dgp_booth)
 ```
@@ -209,9 +213,9 @@ $$
 We conduct additional Metropolis Hastings sampling of lengthscale parameters for the innermost layer and additional elliptical slice sampling for $Z$.  In prediction, we incorporate an additional mapping $X^\star \rightarrow Z \rightarrow W$ before obtaining predictions for $Y^\star$.  Training/prediction utilizes the same functionality, simply with the `fit_three_layer` function.
 
 ```{r, fig.width = 6, fig.height = 4.5}
-dgp3_booth <- fit_three_layer(x_booth, y_booth, nmcmc = 10000, true_g = 1e-6, 
+dgp3_booth <- fit_three_layer(x_booth, y_booth, nmcmc = 2000, true_g = 1e-6, 
                               verb = FALSE)
-dgp3_booth <- trim(dgp3_booth, 5000, 2)
+dgp3_booth <- trim(dgp3_booth, 1000, 2)
 dgp3_booth <- predict(dgp3_booth, xp_booth, lite = FALSE)
 plot(dgp3_booth)
 ```
@@ -243,7 +247,10 @@ rownames(metrics) <- c("One-layer GP", "Two-layer DGP", "Three-layer DGP")
 metrics
 ```
 
-Both deep models outperform the stationary one-layer GP, but the simpler two-layer DGP performs better than the three-layer DGP.
+Since we used a small number of MCMC iterations to keep computation time low, 
+results may vary depending on random initializations.  They will stabilize with 
+more MCMC.  Generally, the two-layer DGP outperforms.  The additional flexibility
+of the three-layer DGP is not necessary in this setting.
 
 -------
 
@@ -254,8 +261,8 @@ Both deep models outperform the stationary one-layer GP, but the simpler two-lay
 Previously, we fixed the `g` parameter using the `true_g` argument.  If we wanted to estimate noisy data, we could leave `true_g = NULL` (the default), and the `g` parameter would be inferred through Metropolis Hastings sampling.  For example:
 
 ```{r, fig.width = 6, fig.height = 4.5}
-dgp_booth_noisy <- fit_two_layer(x_booth, y_booth, nmcmc = 10000, verb = FALSE)
-dgp_booth_noisy <- trim(dgp_booth_noisy, 5000, 2)
+dgp_booth_noisy <- fit_two_layer(x_booth, y_booth, nmcmc = 2000, verb = FALSE)
+dgp_booth_noisy <- trim(dgp_booth_noisy, 1000, 2)
 dgp_booth_noisy <- predict(dgp_booth_noisy, xp_booth, lite = FALSE)
 plot(dgp_booth_noisy)
 ```
@@ -312,9 +319,9 @@ We then get some training data and fit a two-layer DGP as usual, but specify `mo
 ```{r}
 x_tray <- matrix(runif(50 * 2), ncol = 2)
 y_tray <- tray(x_tray)
-dgp_tray <- fit_two_layer(x_tray, y_tray, nmcmc = 10000, monowarp = TRUE, 
+dgp_tray <- fit_two_layer(x_tray, y_tray, nmcmc = 2000, monowarp = TRUE, 
                           true_g = 1e-6, verb = FALSE)
-dgp_tray <- trim(dgp_tray, 5000, 2)
+dgp_tray <- trim(dgp_tray, 1000, 2)
 ```
 
 When we visualize the samples of the latent layer, we now have `w1` as a monotonic function over `x1` and `w2` as a monotonic function over `x2`.  Each of these "nodes" is stretching the input values near the center and squishing the input values near the edges, which allows the outer GP to better model the cross shape in the center of the space.
@@ -377,9 +384,9 @@ be combined or used separately.
 For example, the following code fits a one-layer gradient-enhanced GP, then draws joint posterior samples of the response and the gradient at the testing locations.
 
 ```{r}
-gp_step <- fit_one_layer(x_step, y_step$y, y_step$dy, nmcmc = 10000, 
+gp_step <- fit_one_layer(x_step, y_step$y, y_step$dy, nmcmc = 2000, 
                           true_g = 1e-6, cov = "exp2", verb = FALSE)
-gp_step <- trim(gp_step, 5000, 50) # leave 100 iterations
+gp_step <- trim(gp_step, 1000, 10) # leave 100 iterations
 gp_samples <- post_sample(gp_step, xp_step, grad = TRUE)
 
 par(mfrow = c(1, 2))
@@ -393,9 +400,9 @@ points(x_step, y_step$dy, pch = 20)
 We may do the same with a two-layer DGP.
 
 ```{r}
-dgp_step <- fit_two_layer(x_step, y_step$y, y_step$dy, nmcmc = 10000, 
+dgp_step <- fit_two_layer(x_step, y_step$y, y_step$dy, nmcmc = 2000, 
                           true_g = 1e-6, cov = "exp2", verb = FALSE)
-dgp_step <- trim(dgp_step, 5000, 50) # leave 100 iterations
+dgp_step <- trim(dgp_step, 1000, 10) # leave 100 iterations
 dgp_samples <- post_sample(dgp_step, xp_step, grad = TRUE)
 
 par(mfrow = c(1, 2))
@@ -455,17 +462,17 @@ Notice entropy is highest where the predicted mean crosses the limit threshold. 
 If instead, we simply want to obtain the best surrogate fit we may choose to conduct sequential design targeting minimal posterior variance; the `deepgp` package offers two acquisition criteria to target minimal posterior variance.  The current implementation of these criteria requires the `"exp2"` kernel and does not support Vecchia approximation.  To demonstrate, we will revisit the step function, creating some fresh surrogates (without gradient-enhancement).
 
 ```{r, fig.width = 5, fig.height = 4}
-gp_step <- fit_one_layer(x_step, y_step$y, nmcmc = 10000, true_g = 1e-6, 
+gp_step <- fit_one_layer(x_step, y_step$y, nmcmc = 2000, true_g = 1e-6, 
                          cov = "exp2", verb = FALSE)
-gp_step <- trim(gp_step, 5000, 2)
+gp_step <- trim(gp_step, 1000, 2)
 gp_step <- predict(gp_step, xp_step, lite = TRUE)
 plot(gp_step)
 ```
 
 ```{r, fig.width = 5, fig.height = 4}
-dgp_step <- fit_two_layer(x_step, y_step$y, nmcmc = 10000, true_g = 1e-6, 
+dgp_step <- fit_two_layer(x_step, y_step$y, nmcmc = 2000, true_g = 1e-6, 
                          cov = "exp2", verb = FALSE)
-dgp_step <- trim(dgp_step, 5000, 2)
+dgp_step <- trim(dgp_step, 1000, 2)
 dgp_step <- predict(dgp_step, xp_step, lite = TRUE)
 plot(dgp_step)
 ```

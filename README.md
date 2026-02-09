@@ -53,6 +53,13 @@ Monotonic warpings for additive and deep Gaussian processes.
 
 ## Version History
 
+What's new in version 1.2.1?
+
+* Replaced `span` with `arma::span` throughout C++ code to avoid namespace conflict
+when compiled with `g++15` in `C++20` mode.
+* Reduced the computation time required to compile the vignette by lowering the
+number of MCMC samples used in each illustrative example.
+
 What's new in version 1.2.0?
 
 * Gradients!  All gradient implementations come with optional Vecchia approximation.

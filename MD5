@@ -1,4 +1,4 @@
-e971c55b101caed9ef002f020825fe28 *DESCRIPTION
+f6be01a324e2bd9eac5c9671419bfecd *DESCRIPTION
 3f2c1ed2ca84999e41676dc48dc1edf1 *NAMESPACE
 9967c20aa47d5bccf37e3cbeb3048341 *R/ALC.R
 0128e4c4f5dc5924ef11033eb75b927e *R/IMSE.R
@@ -19,11 +19,11 @@ b0d526ce1085ceba18f81f6df3337b67 *R/misc.R
 2afabc230fea07e72be7c790adfba1ab *R/sample.R
 3f93cd4cfe4b94b7b1f78a9f8b3aeddc *R/trim.R
 f3c9b19df62ba28435a4b1b49ac937d5 *R/vecchia.R
-b8b2c994b97291848c691327b9bdedb5 *README.md
+4d3cee7f68fce9aec3afc5af52c0261b *README.md
 8e25b4c559758e4c204f746351ecb96e *build/vignette.rds
-865109208c82b9061c939e5fbcf9fffc *inst/doc/deepgp.R
-51832bfa2114cda3f55548501a7b1970 *inst/doc/deepgp.Rmd
-de56db90b6d9a01ef78e88b8d1a145a7 *inst/doc/deepgp.html
+d81a13f77bf64d519b98b6df180de160 *inst/doc/deepgp.R
+237d5fb25ca1e2b82e974e31bf927b32 *inst/doc/deepgp.Rmd
+09459ce1e3df00bce60b8fc68751f52b *inst/doc/deepgp.html
 e5c19e9914c1bca3f0f29985ee30c945 *man/ALC.Rd
 913d5b983cd4bb1571aece35b96c9c6f *man/IMSE.Rd
 e5726b21a55a2d9d902057a96b97c36e *man/continue.Rd
@@ -49,6 +49,6 @@ beaaacb4fc6b09dea994616ec83a8b9b *src/imspe.c
 b7ea601c8aa0b94fa1ede9d7563ba659 *src/invdet.c
 3a3f7692c600072311c3e78eb24ca94c *src/misc.c
 9058b0c2839290b2dd96231edd967e6c *src/misc.h
-4e69be6d908339ce074bd77d1718c243 *src/vecchia.cpp
-51832bfa2114cda3f55548501a7b1970 *vignettes/deepgp.Rmd
+8b4613d1f51d85ca1b6fdd8f8ffa5bc1 *src/vecchia.cpp
+237d5fb25ca1e2b82e974e31bf927b32 *vignettes/deepgp.Rmd
 861df979754595e19df434ca019d6ce8 *vignettes/references.bib

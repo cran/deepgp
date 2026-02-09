@@ -115,7 +115,7 @@ arma::mat U_entries(const int cores, const arma::mat& x, const arma::umat& NNarr
       arma::vec onevec = zeros(n0);
       onevec[n0 - 1] = 1;
       arma::vec M = solve(chol(covmat, "upper"), onevec);
-      Lentries(i, span(0, n0 - 1)) = M.t();
+      Lentries(i, arma::span(0, n0 - 1)) = M.t();
     }
   #else
     for (int i = 0; i < n; i++) {
@@ -138,7 +138,7 @@ arma::mat U_entries(const int cores, const arma::mat& x, const arma::umat& NNarr
       arma::vec onevec = zeros(n0);
       onevec[n0 - 1] = 1;
       arma::vec M = solve(chol(covmat, "upper"), onevec);
-      Lentries(i, span(0, n0 - 1)) = M.t();
+      Lentries(i, arma::span(0, n0 - 1)) = M.t();
     }
   #endif
   
@@ -173,7 +173,7 @@ arma::mat U_entries_grad(const int cores, const arma::mat& x, const arma::umat& 
       arma::vec onevec = zeros(n0);
       onevec[n0 - 1] = 1;
       arma::vec M = solve(chol(covmat, "upper"), onevec);
-      Lentries(i, span(0, n0 - 1)) = M.t();
+      Lentries(i, arma::span(0, n0 - 1)) = M.t();
     }
   #else
     for (int i = 0; i < n; i++) {
@@ -191,7 +191,7 @@ arma::mat U_entries_grad(const int cores, const arma::mat& x, const arma::umat& 
       arma::vec onevec = zeros(n0);
       onevec[n0 - 1] = 1;
       arma::vec M = solve(chol(covmat, "upper"), onevec);
-      Lentries(i, span(0, n0 - 1)) = M.t();
+      Lentries(i, arma::span(0, n0 - 1)) = M.t();
     }
   #endif
   
@@ -229,7 +229,7 @@ arma::mat U_entries_sep(const int cores, const arma::mat& x, const arma::umat& N
       arma::vec onevec = zeros(n0);
       onevec[n0 - 1] = 1;
       arma::vec M = solve(chol(covmat, "upper"), onevec);
-      Lentries(i, span(0, n0 - 1)) = M.t();
+      Lentries(i, arma::span(0, n0 - 1)) = M.t();
     }
   #else
     for (int i = 0; i < n; i++) {
@@ -251,7 +251,7 @@ arma::mat U_entries_sep(const int cores, const arma::mat& x, const arma::umat& N
       arma::vec onevec = zeros(n0);
       onevec[n0 - 1] = 1;
       arma::vec M = solve(chol(covmat, "upper"), onevec);
-      Lentries(i, span(0, n0 - 1)) = M.t();
+      Lentries(i, arma::span(0, n0 - 1)) = M.t();
     }
   #endif
   
@@ -287,7 +287,7 @@ arma::mat U_entries_sep_grad(const int cores, const arma::mat& x, const arma::um
       arma::vec onevec = zeros(n0);
       onevec[n0 - 1] = 1;
       arma::vec M = solve(chol(covmat, "upper"), onevec);
-      Lentries(i, span(0, n0 - 1)) = M.t();
+      Lentries(i, arma::span(0, n0 - 1)) = M.t();
     }
   #else
     for (int i = 0; i < n; i++) {
@@ -305,7 +305,7 @@ arma::mat U_entries_sep_grad(const int cores, const arma::mat& x, const arma::um
       arma::vec onevec = zeros(n0);
       onevec[n0 - 1] = 1;
       arma::vec M = solve(chol(covmat, "upper"), onevec);
-      Lentries(i, span(0, n0 - 1)) = M.t();
+      Lentries(i, arma::span(0, n0 - 1)) = M.t();
     }
   #endif
   
