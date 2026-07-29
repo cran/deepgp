@@ -13,7 +13,7 @@ methodological details and \url{https://bitbucket.org/gramacylab/deepgp-ex/} for
 a variety of coding examples. Models are trained through MCMC including 
 elliptical slice sampling of latent Gaussian layers and Metropolis-Hastings 
 sampling of kernel hyperparameters.  Gradient-enhancement and gradient
-predictions are offered following Booth (2025).  Vecchia approximation for faster 
+predictions are offered following Booth (2026).  Vecchia approximation for faster 
 computation is implemented following Sauer, Cooper, and Gramacy 
 (2023).  Optional monotonic warpings are implemented following 
 Barnett et al. (2025).  Downstream tasks include sequential design 
@@ -61,7 +61,8 @@ Sauer, A. (2023). Deep Gaussian process surrogates for computer experiments.
      *Ph.D. Dissertation, Department of Statistics, Virginia Polytechnic Institute and State University.*
      \url{http://hdl.handle.net/10919/114845}
      \cr\cr
-Booth, A. S. (2025). Deep Gaussian processes with gradients. arXiv:2512.18066
+Booth, A. S. (2026). Gradient-enhancement and gradient predictions for deep 
+     Gaussian process modeling of expensive computer experiments. arXiv:2512.18066
      \cr\cr
 Sauer, A., Gramacy, R.B., & Higdon, D. (2023). Active learning for deep 
      Gaussian process surrogates. *Technometrics, 65,* 4-18.  arXiv:2012.08015

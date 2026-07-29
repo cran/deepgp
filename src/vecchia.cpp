@@ -150,7 +150,7 @@ arma::mat U_entries_grad(const int cores, const arma::mat& x, const arma::umat& 
                          const arma::vec grad, const double tau2, 
                          const double theta, const double g, const double v) {
   
-  // ONLY implemented for "Exp2" with v = 999
+  // v = 999 or v = 2.5 ONLY
   
   const int m = NNarray.n_cols - 1;
   const int n = x.n_rows;
@@ -167,7 +167,11 @@ arma::mat U_entries_grad(const int cores, const arma::mat& x, const arma::umat& 
       
       // Get covariance matrix for point i and its conditioning set
       arma::mat covmat(n0, n0);
-      covmat = Exp2Grad(x.rows(inds), x.rows(inds), grad(inds), grad(inds), tau2, theta, g);
+      if (v == 999) {
+        covmat = Exp2Grad(x.rows(inds), x.rows(inds), grad(inds), grad(inds), tau2, theta, g);
+      } else {
+        covmat = MaternGrad(x.rows(inds), x.rows(inds), grad(inds), grad(inds), tau2, theta, g);
+      }
       
       // Solve for the entries of L
       arma::vec onevec = zeros(n0);
@@ -185,7 +189,11 @@ arma::mat U_entries_grad(const int cores, const arma::mat& x, const arma::umat& 
       
       // Get covariance matrix for point i and its conditioning set
       arma::mat covmat(n0, n0);
-      covmat = Exp2Grad(x.rows(inds), x.rows(inds), grad(inds), grad(inds), tau2, theta, g);
+      if (v == 999) {
+        covmat = Exp2Grad(x.rows(inds), x.rows(inds), grad(inds), grad(inds), tau2, theta, g);
+      } else {
+        covmat = MaternGrad(x.rows(inds), x.rows(indx), grad(inds), grad(inds), tau2, theta, g);
+      }
       
       // Solve for the entries of L
       arma::vec onevec = zeros(n0);
@@ -263,7 +271,7 @@ arma::mat U_entries_sep_grad(const int cores, const arma::mat& x, const arma::um
                              const arma::vec grad, const double tau2, 
                              const arma::vec theta, const double g, const double v) {
   
-  // ONLY implemented for "Exp2" with v = 999
+  // v = 999 or v = 2.5 ONLY
   // Same as U_entries_grad function, but accepts a vector of theta instead of a scalar
   
   const int m = NNarray.n_cols - 1;
@@ -281,7 +289,11 @@ arma::mat U_entries_sep_grad(const int cores, const arma::mat& x, const arma::um
       
       // Get covariance matrix for point i and its conditioning set
       arma::mat covmat(n0, n0);
-      covmat = Exp2SepGrad(x.rows(inds), x.rows(inds), grad(inds), grad(inds), tau2, theta, g);
+      if (v == 999) {
+        covmat = Exp2SepGrad(x.rows(inds), x.rows(inds), grad(inds), grad(inds), tau2, theta, g);
+      } else {
+        covmat = MaternSepGrad(x.rows(inds), x.rows(inds), grad(inds), grad(inds), tau2, theta, g);
+      }
       
       // Solve for the entries of L
       arma::vec onevec = zeros(n0);
@@ -299,7 +311,11 @@ arma::mat U_entries_sep_grad(const int cores, const arma::mat& x, const arma::um
       
       // Get covariance matrix for point i and its conditioning set
       arma::mat covmat(n0, n0);
-      covmat = Exp2SepGrad(x.rows(inds), x.rows(inds), grad(inds), grad(inds), tau2, theta, g);
+      if (v == 999) {
+        covmat = Exp2SepGrad(x.rows(inds), x.rows(inds), grad(inds), grad(inds), tau2, theta, g);
+      } else {
+        covmat = MaternSepGrad(x.rows(inds), x.rows(inds), grad(inds), grad(inds), tau2, theta, g);
+      }
       
       // Solve for the entries of L
       arma::vec onevec = zeros(n0);

@@ -1,8 +1,8 @@
 Package: deepgp
 Type: Package
 Title: Bayesian Deep Gaussian Processes using MCMC
-Version: 1.2.1
-Date: 2026-02-06
+Version: 1.2.2
+Date: 2026-07-29
 Authors@R: person(given = c("Annie", "S."),
                     family = "Booth",
                     role = c("aut", "cre"),
@@ -15,7 +15,7 @@ Description: Performs Bayesian posterior inference for deep Gaussian
     a variety of coding examples. Models are trained through MCMC including 
     elliptical slice sampling of latent Gaussian layers and Metropolis-Hastings 
     sampling of kernel hyperparameters.  Gradient-enhancement and gradient
-    predictions are offered following Booth (2025, <doi:10.48550/arXiv.2512.18066>).
+    predictions are offered following Booth (2026, <doi:10.48550/arXiv.2512.18066>).
     Vecchia approximation for faster 
     computation is implemented following Sauer, Cooper, and Gramacy 
     (2023, <doi:10.48550/arXiv.2204.02904>).  Optional monotonic warpings are 
@@ -36,9 +36,9 @@ Imports: grDevices, graphics, stats, doParallel, foreach, parallel,
 LinkingTo: Rcpp, RcppArmadillo,
 Suggests: interp, knitr, rmarkdown
 VignetteBuilder: knitr
-RoxygenNote: 7.3.3
-Packaged: 2026-02-09 14:27:12 UTC; anniebooth
+Config/roxygen2/version: 8.0.0
+Packaged: 2026-07-29 14:45:22 UTC; annie_booth
 Author: Annie S. Booth [aut, cre]
 Maintainer: Annie S. Booth <annie_booth@vt.edu>
 Repository: CRAN
-Date/Publication: 2026-02-09 14:50:02 UTC
+Date/Publication: 2026-07-29 15:50:02 UTC

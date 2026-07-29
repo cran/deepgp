@@ -25,8 +25,16 @@ Matern <- function(distmat, tau2, theta, g, v) {
     .Call(`_deepgp_Matern`, distmat, tau2, theta, g, v)
 }
 
+MaternGrad <- function(x1, x2, grad1, grad2, tau2, theta, g) {
+    .Call(`_deepgp_MaternGrad`, x1, x2, grad1, grad2, tau2, theta, g)
+}
+
 MaternSep <- function(x1, x2, tau2, theta, g, v) {
     .Call(`_deepgp_MaternSep`, x1, x2, tau2, theta, g, v)
+}
+
+MaternSepGrad <- function(x1, x2, grad1, grad2, tau2, theta, g) {
+    .Call(`_deepgp_MaternSepGrad`, x1, x2, grad1, grad2, tau2, theta, g)
 }
 
 forward_solve_raw <- function(U, z, NNarray) {

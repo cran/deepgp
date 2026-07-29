@@ -185,7 +185,7 @@ check_vecchia <- function(n, d, m, ord, grad_enhance = FALSE) {
 
 # check_gradients -------------------------------------------------------------
 
-check_gradients <- function(n, d, dydx, cov, true_g, D = NULL, vecchia = FALSE, 
+check_gradients <- function(n, d, dydx, v, true_g, D = NULL, vecchia = FALSE, 
                             monowarp = FALSE) {
   
   if (n != nrow(dydx))
@@ -204,8 +204,8 @@ check_gradients <- function(n, d, dydx, cov, true_g, D = NULL, vecchia = FALSE,
   }
   if (!vecchia & (d+1)*n > 200)
     message("vecchia = TRUE recommended for faster computation")
-  if (cov == "matern")
-    stop("gradient-enhancement requires cov = 'exp2")
+  if (v != 999 & v != 2.5)
+    stop("gradient-enhancement requires cov = 'exp2' or cov = 'matern' with v = 2.5")
     
   return(NULL)
 }
@@ -215,13 +215,14 @@ check_gradients <- function(n, d, dydx, cov, true_g, D = NULL, vecchia = FALSE,
 check_cores <- function(cores, nmcmc = NULL) {
   
   maxcores <- parallel::detectCores(all.tests = FALSE, logical = TRUE)
+  if (is.na(maxcores)) maxcores <- 2 # bad detection
   if (is.null(cores)) {
-    cores <- min(4, maxcores - 1)
+    cores <- min(12, maxcores - 1)
   } else {
     if (cores > maxcores) {
       message("cores is greater than available nodes, overwriting with maxcores-1")
       cores <- maxcores - 1
-    }
+    } else if (cores < 1) stop("cores must be a positive integer")
   }
   if (!is.null(nmcmc)) {
     if (cores > nmcmc) {
@@ -230,6 +231,5 @@ check_cores <- function(cores, nmcmc = NULL) {
     }
   }
     
-  return(cores)
+  return(as.integer(cores))
 }
-

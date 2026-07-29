@@ -9,7 +9,7 @@ comprehensive methodological details and
 a variety of coding examples. Models are trained through MCMC including 
 elliptical slice sampling of latent Gaussian layers and Metropolis-Hastings 
 sampling of kernel hyperparameters.  Gradient-enhancement and gradient
-predictions are offered following Booth (2025).  Vecchia approximation for faster 
+predictions are offered following Booth (2026).  Vecchia approximation for faster 
 computation is implemented following Sauer, Cooper, and Gramacy 
 (2023).  Optional monotonic warpings are implemented following 
 Barnett et al. (2025).  Downstream tasks include sequential design 
@@ -30,7 +30,8 @@ Sauer, A. (2023). Deep Gaussian process surrogates for computer experiments.
 *Ph.D. Dissertation, Department of Statistics, Virginia Polytechnic Institute and State University.*
 <http://hdl.handle.net/10919/114845>
 
-Booth, A. S. (2025). Deep Gaussian processes with gradients. (arXiv link coming soon)
+Booth, A. S. (2026). Gradient-enhancement and gradient predictions for deep 
+Gaussian process modeling of expensive computer experiments. arXiv:2512.18066
 
 Sauer, A., Gramacy, R.B., & Higdon, D. (2023). Active learning for deep 
 Gaussian process surrogates. *Technometrics, 65,* 4-18.  arXiv:2012.08015
@@ -53,6 +54,12 @@ Monotonic warpings for additive and deep Gaussian processes.
 
 ## Version History
 
+What's new in version 1.2.2?
+
+* Gradient features (enhancement and predictions) now support `cov = "matern"` with `v = 2.5`
+* Bug fix for `predict` with one-layer GP when `return_all = TRUE` and `cores = 1`.
+Thanks Steven Barnett!
+
 What's new in version 1.2.1?
 
 * Replaced `span` with `arma::span` throughout C++ code to avoid namespace conflict
@@ -66,7 +73,8 @@ What's new in version 1.2.0?
   + Gradient-enhancement is enabled through the `dydx` argument in `fit_one_layer` and
   `fit_two_layer` (gradient-enhancement is not yet offered for three layer models).
   Gradient-enhancement requires the `exp2` kernel.
-  + Setting `grad = TRUE` in the `predict` functions will return posterior predictions
+  + Setting `grad = TRUE` in the `predict` or `post_sample` functions will return 
+  posterior predictions/samples
   of the gradient (one and two layer only).  Again, this requires the `exp2` kernel.
 * A new `post_sample` function offers joint posterior draws with optional Vecchia approximation 
   (compared to the `predict` functions that return summarized posterior moments).

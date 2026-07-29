@@ -38,9 +38,15 @@ logl <- function(y, xdmat = NULL, # used for sep = FALSE
       } else K <- Exp2(xdmat, tau2, theta, g)
     } 
   } else {
-    if (sep) {
-      K <- MaternSep(x, x, tau2, theta, g, v) 
-    } else K <- Matern(xdmat, tau2, theta, g, v) 
+    if (grad_enhance) {
+      if (sep) {
+        K <- MaternSepGrad(x, x, grad_indx, grad_indx, tau2, theta, g) # v = 2.5 ONLY
+      } else K <- MaternGrad(x, x, grad_indx, grad_indx, tau2, theta, g) # v = 2.5 ONLY
+    } else {
+      if (sep) {
+        K <- MaternSep(x, x, tau2, theta, g, v) 
+      } else K <- Matern(xdmat, tau2, theta, g, v) 
+    }
   }
   id <- invdet(K)
   quadterm <- drop(t(y - mu) %*% id$Mi %*% (y - mu))
@@ -215,9 +221,14 @@ sample_w_grad <- function(y, dydx, w, x, tau2_w, theta_y, theta_w, g, v,
       pm <- rep(0, n*(D+1))
     } else pm <- prior_mean[, i]
 
-    # Draw from prior distribution (v = 999 only, includes gradients)
-    sigma <- Exp2Grad(x, x, grad_indx, grad_indx, tau2 = tau2_w[i], 
-                      theta = theta_w[i], g = eps)
+    # Draw from prior distribution (v = 999 or v = 2.5 only, includes gradients)
+    if (v == 999) {
+      sigma <- Exp2Grad(x, x, grad_indx, grad_indx, tau2 = tau2_w[i], 
+                        theta = theta_w[i], g = eps)
+    } else {
+      sigma <- MaternGrad(x, x, grad_indx, grad_indx, tau2 = tau2_w[i],
+                          theta = theta_w[i], g = eps)
+    }
     w_prior <- drop(mvtnorm::rmvnorm(1, mean = pm, sigma = sigma))
     
     # Initialize a and bounds on a

@@ -138,7 +138,8 @@ predict.gp <- function(object, x_new, lite = TRUE, grad = FALSE, return_all = FA
     stop("entropy_limit must be numeric")
   cores <- check_cores(cores, object$nmcmc)
   if (grad) { 
-    if (object$v != 999) stop("grad only offered with cov = 'exp2'")
+    if (object$v != 999 & object$v != 2.5) 
+      stop("grad only offered with cov = 'exp2' or cov = 'matern' with v = 2.5")
     if (!lite) stop("grad = TRUE requires lite = TRUE")
   }
   
@@ -163,11 +164,12 @@ predict.dgp2 <- function(object, x_new, lite = TRUE, grad = FALSE,
     stop("entropy_limit must be numeric")
   cores <- check_cores(cores, object$nmcmc)
   if (grad) {
-    if (object$v != 999) stop("grad only offered with cov = 'exp2'")
+    if (object$v != 999 & object$v != 2.5)
+      stop("grad only offered with cov = 'exp2' or cov = 'matern' with v = 2.5")
     if (!lite) stop("grad = TRUE requires lite = TRUE")
     if (object$settings$monowarp) stop("grad not offered for monowarp = TRUE")
   }
-  
+
   settings <- list(lite = lite, grad = grad, store_latent = store_latent, 
                    mean_map = mean_map, return_all = return_all, EI = EI, 
                    entropy_limit = entropy_limit, cores = cores)
@@ -242,7 +244,7 @@ predict_shallow <- function(object, x_new, settings, samples_only = FALSE) {
       mu_t <- matrix(nrow = object$nmcmc, ncol = n_new)
       if (settings$lite) {
         s2_sum <- rep(0, times = n_new)
-        if (settings$return_all) s2_t <- matrix(nrow = n_new, ncol = object$nmcmc)
+        if (settings$return_all) s2_t <- matrix(nrow = object$nmcmc, ncol = n_new)
       } else sigma_sum <- matrix(0, nrow = n_new, ncol = n_new)
       if (settings$grad) { # no return_all or lite = FALSE options
         grad_mu_t <- array(dim = c(object$nmcmc, n_new, d))
@@ -565,12 +567,13 @@ predict_deep <- function(object, x_new, settings, layers, samples_only = FALSE) 
       } else if (layers == 2) {
 
         w_t <- as.matrix(object$w[t, , ]) # includes gradients if grad_enhance = TRUE
+        still_in <- (1:D)[!is.na(object$theta_w[t, ])] # in case dimensions have been dropped
         if (object$settings$monowarp) {
           w_new <- monotransform(x_new, object$x_grid, object$w_grid[t, , ])
         } else { # use kriging
           w_new <- matrix(nrow = n_new, ncol = D)
           if (settings$grad) dwdx <- array(dim = c(n_new, D, d))
-          for (i in 1:D) {
+          for (i in still_in) {
             k <- krig(w_t[, i], 
                       xdmat = xdmat, 
                       xdmat_new = xdmat_new,
@@ -596,9 +599,9 @@ predict_deep <- function(object, x_new, settings, layers, samples_only = FALSE) 
           } # end of i for loop
         } # end of monowarp else statement
         if (!grad_enhance & !settings$grad) {
-          wdmat <- sq_dist(w_t) 
-          wdmat_cross <- sq_dist(w_new, w_t)
-          if (settings$lite) wdmat_new <- NULL else wdmat_new <- sq_dist(w_new)
+          wdmat <- sq_dist(w_t[, still_in, drop = FALSE]) 
+          wdmat_cross <- sq_dist(w_new[, still_in, drop = FALSE], w_t[, still_in, drop = FALSE])
+          if (settings$lite) wdmat_new <- NULL else wdmat_new <- sq_dist(w_new[, still_in, drop = FALSE])
         }
         if (settings$store_latent) w_new_store[t, , ] <- w_new
 
@@ -614,8 +617,8 @@ predict_deep <- function(object, x_new, settings, layers, samples_only = FALSE) 
                 xdmat = wdmat, 
                 xdmat_new = wdmat_new, 
                 xdmat_cross = wdmat_cross,
-                x = w_t,
-                x_new = w_new,
+                x = w_t[, still_in, drop = FALSE],
+                x_new = w_new[, still_in, drop = FALSE],
                 tau2 = object$tau2_y[t],
                 theta = object$theta_y[t], 
                 g = g, 
@@ -747,12 +750,13 @@ predict_deep <- function(object, x_new, settings, layers, samples_only = FALSE) 
         } else if (layers == 2) {
         
           w_t <- as.matrix(object$w[t, , ]) # includes gradients if grad_enhance = TRUE
+          still_in <- (1:D)[!is.na(object$theta_w[t, ])] # in case dimensions have been dropped
           if (object$settings$monowarp) {
             w_new <- monotransform(x_new, object$x_grid, object$w_grid[t, , ])
           } else { # use kriging
             w_new <- matrix(nrow = n_new, ncol = D)
             if (settings$grad) dwdx <- array(dim = c(n_new, D, d))
-            for (i in 1:D) {
+            for (i in still_in) {
               k <- krig(w_t[, i], 
                         xdmat = xdmat, 
                         xdmat_new = xdmat_new,
@@ -778,9 +782,9 @@ predict_deep <- function(object, x_new, settings, layers, samples_only = FALSE) 
             } # end of i for loop
           } # end of monowarp else statement 
           if (!grad_enhance & !settings$grad) {
-            wdmat <- sq_dist(w_t)
-            wdmat_cross <- sq_dist(w_new, w_t)
-            if (!settings$lite) wdmat_new <- sq_dist(w_new) else wdmat_new <- NULL
+            wdmat <- sq_dist(w_t[, still_in, drop = FALSE])
+            wdmat_cross <- sq_dist(w_new[, still_in, drop = FALSE], w_t[, still_in, drop = FALSE])
+            if (settings$lite) wdmat_new <- NULL else wdmat_new <- sq_dist(w_new[, still_in, drop = FALSE])
           }
           if (settings$store_latent) out$w_new[j, , ] <- w_new
         } # end of layers == 2 else statement
@@ -795,8 +799,8 @@ predict_deep <- function(object, x_new, settings, layers, samples_only = FALSE) 
                   xdmat = wdmat, 
                   xdmat_new = wdmat_new, 
                   xdmat_cross = wdmat_cross,
-                  x = w_t,
-                  x_new = w_new,
+                  x = w_t[, still_in, drop = FALSE],
+                  x_new = w_new[, still_in, drop = FALSE],
                   tau2 = object$tau2_y[t],
                   theta = object$theta_y[t], 
                   g = g, 

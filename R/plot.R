@@ -160,7 +160,8 @@ plot.dgp2 <- function(x, trace = NULL, hidden = NULL, predict = NULL, ...) {
   
   if (trace) {
     fixed_g <- (length(x$g) == 1)
-    nplots <- D + 3 + as.numeric(!fixed_g) + ifel(x$settings$monowarp & d > 1, D, 0)
+    nplots <- D + 3 + as.numeric(!fixed_g) + ifel(x$settings$monowarp & d > 1, 
+                                                  min(D, sum(apply(x$tau2_w, 2, function(x) any(!is.na(x))))), 0)
     if (nplots > 4) {
       par(mfrow = c(2, ceiling(nplots/2)), mar = c(5, 4, 2, 2))
     } else par(mfrow = c(1, nplots), mar = c(5, 4, 2, 2))
@@ -170,13 +171,17 @@ plot.dgp2 <- function(x, trace = NULL, hidden = NULL, predict = NULL, ...) {
     plot(x$theta_y, type = "l", ylab = "theta_y", xlab = "Iteration", main = "theta_y")
     if (x$settings$monowarp & d > 1) {
       for (i in 1:D) {
-        plot(x$tau2_w[, i], type = "l", ylab = paste0("tau2_w[", i, "]"), 
-           xlab = "Iteration", main = paste0("tau2_w[", i, "]"))
+        if (any(!is.na(x$tau2_w[, i]))) {
+          plot(x$tau2_w[, i], type = "l", ylab = paste0("tau2_w[", i, "]"), 
+             xlab = "Iteration", main = paste0("tau2_w[", i, "]"))
+        }
       }
     }
     for (i in 1:D) {
-      plot(x$theta_w[, i], type = "l", ylab = paste0("theta_w[", i, "]"), 
-           xlab = "Iteration", main = paste0("theta_w[", i, "]"))
+      if (any(!is.na(x$theta_w[, i]))) {
+        plot(x$theta_w[, i], type = "l", ylab = paste0("theta_w[", i, "]"), 
+             xlab = "Iteration", main = paste0("theta_w[", i, "]"))
+      }
     }
   }
   
@@ -187,10 +192,11 @@ plot.dgp2 <- function(x, trace = NULL, hidden = NULL, predict = NULL, ...) {
       # select 100 lines to plot (don't want things to be too cluttered)
       indx <- floor(seq(from = 1, to = x$nmcmc, length = 100))
       w <- x$w[indx, , , drop = FALSE]
+      wmax <- max(w)
       par(mfrow = c(1, D), mar = c(4, 4, 2, 2))
       for (i in 1:D) {
         o <- order(x$x[, i])
-        matplot(x$x[o, i], t(w[, o, i] - apply(w[, , i], 1, mean)), 
+        matplot(x$x[o, i], t(w[, o, i]), ylim = c(0, wmax),
                 type = "l", xlab = paste0("x", i),
                 ylab = paste0("w", i), col = col, lty = 1,
                 main = "monowarped ESS samples")

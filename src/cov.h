@@ -27,6 +27,13 @@ arma::mat Exp2SepGrad(const arma::mat x1, const arma::mat x2, const arma::vec gr
 arma::mat Matern(arma::mat distmat, const double tau2, const double theta,
                     const double g, const double v);
 
+arma::mat MaternGrad(const arma::mat x1, const arma::mat x2, const arma::vec grad1, 
+                     const arma::vec grad2, const double tau2, 
+                     const double theta, const double g);
+
 arma::mat MaternSep(arma::mat x1, arma::mat x2, const double tau2, arma::vec theta,
                  const double g, const double v);
 
+arma::mat MaternSepGrad(const arma::mat x1, const arma::mat x2, const arma::vec grad1, 
+                        const arma::vec grad2, const double tau2, 
+                        const arma::vec theta, const double g);

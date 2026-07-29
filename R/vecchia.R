@@ -67,7 +67,8 @@ rand_mvn_vec <- function(approx, tau2 = 1, theta, g = eps, v, grad = FALSE,
   
   z <- rnorm(nrow(approx$x_ord))
   if (grad) {
-    if (v != 999) stop("grad requires 'exp2' kernel") # Matern might be implemented later
+    if (v != 999 & v != 2.5) 
+      stop("grad requires cov = 'exp2' or cov = 'matern' with v = 2.5")
 
     n <- sum(approx$grad_indx == 0)
     d <- ncol(approx$x_ord)
@@ -79,7 +80,17 @@ rand_mvn_vec <- function(approx, tau2 = 1, theta, g = eps, v, grad = FALSE,
       U <- U_entries_grad(approx$cores, approx$x_ord, approx$NNarray,
                           approx$grad_indx, tau2, theta, g, v)
     }
-    sample <- forward_solve_raw(U, z, approx$NNarray)
+    sample <- tryCatch(expr = {forward_solve_raw(U, z, approx$NNarray)},
+                       error = function(e) {
+                         # cat("Got an error with forward_solve_raw, doing slow solve")
+                         n <- nrow(approx$x_ord)
+                         U <- U[-approx$na_indx]
+                         U <- Matrix::sparseMatrix(i = approx$pointers[, 1], 
+                                                   j = approx$pointers[, 2], 
+                                                   x = U, dims = c(n, n))
+                         sample <- Matrix::solve(Matrix::t(U), z)
+                         return(sample)}
+                       )
     sample <- sample[approx$rev_ord_obs] + prior_mean # prior_mean is NOT ordered
     return(sample)
   } else {

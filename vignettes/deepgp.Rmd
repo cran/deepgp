@@ -39,7 +39,7 @@ This vignette serves as an introduction to the package's main features.  Full me
 * @gramacy2022triangulation: optimization through expected improvement with strategic selection of candidates
 * @booth2025contour: contour location using entropy (combined with posterior uncertainty)
 * @barnett2025monotonic: monotonic latent layer warpings
-* @booth2025deep: gradient-enhancement and gradient predictions
+* @booth2026gradient: gradient-enhancement and gradient predictions
 
 While I will showcase simple one-dimensional examples here, the simulated examples provided in these works span up to seven dimensions, with training data sizes up to tens of thousands.  Real-world applications to computer experiments include a three-dimensional simulation of the Langley Glide Back Booster [LGBB, @pamadi2004aerodynamic], the seven-dimensional Test Particle Monte Carlo Simulator (TPM) of a satellite in low earth orbit [@sun2019emulating], and a seven-dimensional simulation of an RAE-2822 transonic airfoil 
 [@economon2016su2], with training data sizes ranging from $n = 300$ to $n = 100,000$.  
@@ -350,8 +350,8 @@ Note, separable lengthscales are not an option for two- and three-layer models a
 ## Gradients
 
 Version 1.2.0 now offers gradient-enhancement and gradient predictions for one-layer GP and
-two-layer DGP models, following @booth2025deep.  Gradients require the `"exp2"` kernel. 
-To demonstrate, we will use a simple step function.
+two-layer DGP models, following @booth2026gradient.  Gradients require either the `"exp2"` kernel or
+the `"matern"` kernel with `v = 2.5`. To demonstrate, we will use a simple step function.
 
 ```{r}
 step <- function(x) {

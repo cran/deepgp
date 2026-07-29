@@ -23,7 +23,8 @@ krig <- function(y,
   
   # Check settings
   if (s2 & sigma) stop("only s2 or sigma should be true, not both")
-  if ((grad_enhance | grad) & v != 999) stop("grad options require 'exp2' kernel")
+  if ((grad_enhance | grad) & v != 999 & v != 2.5) 
+    stop("grad only offered with cov = 'exp2' or cov = 'matern' with v = 2.5")
   if (sep | grad_enhance | grad)
     if (is.null(x) | is.null(x_new))
       stop("x and x_new arguments are required")
@@ -67,13 +68,23 @@ krig <- function(y,
         C_cross <- Exp2(xdmat_cross, 1, theta, 0) # no g in rectangular matrix
       }
     }
-  } else { # no grad or grad_enhance options
+  } else {
     if (sep) {
-      C <- MaternSep(x, x, 1, theta, g, v) 
-      C_cross <- MaternSep(x_new, x, 1, theta, 0, v)
+      if (grad_enhance | grad) {
+        C <- MaternSepGrad(x, x, grad_indx, grad_indx, 1, theta, g)
+        C_cross <- MaternSepGrad(x_new, x, grad_indx_new, grad_indx, 1, theta, 0) # no g in rectangular matrix
+      } else {
+        C <- MaternSep(x, x, 1, theta, g, v) 
+        C_cross <- MaternSep(x_new, x, 1, theta, 0, v)
+      }
     } else {
-      C <- Matern(xdmat, 1, theta, g, v) 
-      C_cross <- Matern(xdmat_cross, 1, theta, 0, v)
+      if (grad_enhance | grad) {
+        C <- MaternGrad(x, x, grad_indx, grad_indx, 1, theta, g)
+        C_cross <- MaternGrad(x_new, x, grad_indx_new, grad_indx, 1, theta, 0)
+      } else {
+        C <- Matern(xdmat, 1, theta, g, v) 
+        C_cross <- Matern(xdmat_cross, 1, theta, 0, v)
+      }
     }
   }
 
@@ -115,11 +126,19 @@ krig <- function(y,
           C_new <- Exp2(xdmat_new, 1, theta, g)
         }
       }
-    } else { # no grad options
+    } else { 
       if (sep) {
-        C_new <- MaternSep(x_new, x_new, 1, theta, g, v) 
+        if (grad_enhance | grad) {
+          C_new <- MaternSepGrad(x_new, x_new, grad_indx_new, grad_indx_new, 1, theta, g)
+        } else {
+          C_new <- MaternSep(x_new, x_new, 1, theta, g, v) 
+        }
       } else {
-        C_new <- Matern(xdmat_new, 1, theta, g, v) 
+        if (grad_enhance | grad) {
+          C_new <- MaternGrad(x_new, x_new, grad_indx_new, grad_indx_new, 1, theta, g)
+        } else {
+          C_new <- Matern(xdmat_new, 1, theta, g, v) 
+        }
       }
     }
     quad_term <- C_cross %*% C_inv %*% t(C_cross)
@@ -163,7 +182,8 @@ krig_vec <- function(y, approx,
     if (lite & sigma) stop("mismatch: approx is lite, but sigma is FALSE")
     if (!lite & s2) stop("mismatch: approx is not lite, but s2 is TRUE")
     if (s2 & sigma) stop("only s2 or sigma should be true, not both")
-    if ((grad_enhance | grad) & v != 999) stop("grad options require 'exp2' kernel")
+    if ((grad_enhance | grad) & v != 999 & v != 2.5) 
+      stop("grad only offered with cov = 'exp2' or cov = 'matern' with v = 2.5")
     if (grad & !lite) stop("no grad option for lite = FALSE")
   }
 
@@ -183,14 +203,24 @@ krig_vec <- function(y, approx,
       NN <- NN[!is.na(NN)]
       ncond <- length(NN) - 1
       x_combined <- approx$x_ord[NN, , drop = FALSE] # last entry is index of predictive location
-      if (grad_enhance | grad) { # only offered for v = 999
+      if (grad_enhance | grad) {
         grad_indx_combined <- approx$grad_indx[NN]
-        if (sep) {
-          K <- Exp2SepGrad(x_combined, x_combined, grad_indx_combined, grad_indx_combined, 
-                           1, theta, g)
-        } else {
-          K <- Exp2Grad(x_combined, x_combined, grad_indx_combined, grad_indx_combined, 
+        if (v == 999) {
+          if (sep) {
+            K <- Exp2SepGrad(x_combined, x_combined, grad_indx_combined, grad_indx_combined, 
                              1, theta, g)
+          } else {
+            K <- Exp2Grad(x_combined, x_combined, grad_indx_combined, grad_indx_combined, 
+                          1, theta, g)
+          }
+        } else {
+          if (sep) {
+            K <- MaternSepGrad(x_combined, x_combined, grad_indx_combined, grad_indx_combined, 
+                               1, theta, g)
+          } else {
+            K <- MaternGrad(x_combined, x_combined, grad_indx_combined, grad_indx_combined, 
+                            1, theta, g)
+          }
         }
       } else {
         if (v == 999) {
@@ -236,14 +266,24 @@ krig_vec <- function(y, approx,
       for (i in 1:n_new) {
         NN <- approx$NNarray_new[i, ]
         x_combined <- rbind(approx$x_ord[NN, , drop = FALSE], approx$x_new[i, , drop = FALSE])
-        if (grad_enhance | grad) { # only offered for v = 999
+        if (grad_enhance | grad) {
           grad_indx_combined <- c(approx$grad_indx[NN], approx$grad_indx_new[i])
-          if (sep) {
-            K <- Exp2SepGrad(x_combined, x_combined, grad_indx_combined, grad_indx_combined, 
-                             1, theta, g)
-          } else {
-            K <- Exp2Grad(x_combined, x_combined, grad_indx_combined, grad_indx_combined, 
+          if (v == 999) {
+            if (sep) {
+              K <- Exp2SepGrad(x_combined, x_combined, grad_indx_combined, grad_indx_combined, 
                                1, theta, g)
+            } else {
+              K <- Exp2Grad(x_combined, x_combined, grad_indx_combined, grad_indx_combined, 
+                                 1, theta, g)
+            }
+          } else {
+            if (sep) {
+              K <- MaternSepGrad(x_combined, x_combined, grad_indx_combined, grad_indx_combined, 
+                                 1, theta, g)
+            } else {
+              K <- MaternGrad(x_combined, x_combined, grad_indx_combined, grad_indx_combined, 
+                              1, theta, g)
+            }
           }
         } else {
           if (v == 999) {

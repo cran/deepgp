@@ -415,11 +415,9 @@ gibbs_two_layer_mono <- function(x, y, x_grid, nmcmc, verb, initial, true_g,
       if (d > 1) {
         if (is.null(samp$tau2)) { # we got a rejection but still need to calculate tau2
           tau2_w[j, i] <- logl(w_grid[j-1, , i], xdmat = xdmat_grid, tau2 = 1, 
-                               theta = theta_w[j, i], g = g, v = v, 
+                               theta = theta_w[j, i], g = eps, v = v, 
                                mu = ifel(settings$pmx, x_grid, 0), outer = TRUE)$tau2
         } else tau2_w[j, i] <- samp$tau2
-        if (tau2_w[j, i] < 0.01) tau2_w[j, i] <- 0.01
-        if (tau2_w[j, i] > 10) tau2_w[j, i] <- 10
       }
     }
 

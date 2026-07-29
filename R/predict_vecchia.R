@@ -23,7 +23,8 @@ predict.gpvec <- function(object, x_new, m = NULL,
     stop("entropy_limit must be numeric")
   cores <- check_cores(cores, object$nmcmc)
   if (grad) { 
-    if (object$v != 999) stop("grad only offered with cov = 'exp2'")
+    if (object$v != 999 & object$v != 2.5)
+      stop("grad only offered with cov = 'exp2' or cov = 'matern' with v = 2.5")
     if (!lite) stop("grad = TRUE requires lite = TRUE")
   }
   
@@ -49,7 +50,8 @@ predict.dgp2vec <- function(object, x_new, m = NULL,
     stop("entropy_limit must be numeric")
   cores <- check_cores(cores, object$nmcmc)
   if (grad) { 
-    if (object$v != 999) stop("grad only offered with cov = 'exp2'")
+    if (object$v != 999 & object$v != 2.5)
+      stop("grad only offered with cov = 'exp2' or cov = 'matern' with v = 2.5")
     if (!lite) stop("grad = TRUE requires lite = TRUE")
     if (object$settings$monowarp) stop("grad not offered for monowarp = TRUE")
   }
@@ -331,6 +333,7 @@ predict_deep_vec <- function(object, x_new, m, settings, layers, samples_only = 
 
   tic <- proc.time()[[3]]
   if (is.vector(x_new)) x_new <- as.matrix(x_new)
+  if (ncol(x_new) != ncol(object$x)) stop("dimension of x_new does not match dimension of x")
   object$x_new <- x_new
   n_new <- nrow(object$x_new)
   n <- length(object$y)
@@ -349,7 +352,7 @@ predict_deep_vec <- function(object, x_new, m, settings, layers, samples_only = 
     } else m <- min(nrow(object$w_approx$x_ord) + n_new - 1, 2*object$w_approx$m)
   }
 
-  # Prespecify prior mean (if not zero)
+  # Pre-specify prior mean (if not zero)
   if (object$settings$pmx) {
     if (grad_enhance) {
       w_prior_mean <- object$settings$w_prior_mean
@@ -456,12 +459,13 @@ predict_deep_vec <- function(object, x_new, m, settings, layers, samples_only = 
       } else if (layers == 2) {
 
         w_t <- as.matrix(object$w[t, , ]) # includes gradients if grad_enhance = TRUE
+        still_in <- (1:D)[!is.na(object$theta_w[t, ])] # in case dimensions have been dropped
         if (object$settings$monowarp) { 
           w_new <- monotransform(x_new, object$x_grid, object$w_grid[t, , ])
         } else { # use kriging
           w_new <- matrix(nrow = n_new, ncol = D)
           if (settings$grad) dwdx <- array(dim = c(n_new, D, d))
-          for (i in 1:D) { # no grad_enhance option here
+          for (i in still_in) { # no grad_enhance option here
             k <- krig_vec(w_t[, i], 
                           approx = object$x_approx,
                           tau2 = object$settings$tau2_w,
@@ -482,8 +486,8 @@ predict_deep_vec <- function(object, x_new, m, settings, layers, samples_only = 
           } # end of i for loop
         } # end of else statement
         object$w_approx <- clean_pred_from_approx(object$w_approx)
-        object$w_approx$x_ord <- w_t[object$w_approx$ord, , drop = FALSE]
-        object$w_approx <- add_pred_to_approx(object$w_approx, w_new, m, 
+        object$w_approx$x_ord <- w_t[object$w_approx$ord, still_in, drop = FALSE]
+        object$w_approx <- add_pred_to_approx(object$w_approx, w_new[, still_in, drop = FALSE], m, 
                                               lite = settings$lite, grad = settings$grad,
                                               ord_new = settings$ord_new)
         if (settings$store_latent) w_new_store[t, , ] <- w_new
@@ -629,12 +633,13 @@ predict_deep_vec <- function(object, x_new, m, settings, layers, samples_only = 
         } else if (layers == 2) {
 
           w_t <- as.matrix(object$w[t, , ]) # includes gradients if grad_enhance = TRUE
+          still_in <- (1:D)[!is.na(object$theta_w[t, ])] # in case dimensions have been dropped
           if (object$settings$monowarp) { 
             w_new <- monotransform(x_new, object$x_grid, object$w_grid[t, , ])
           } else { # use kriging
             w_new <- matrix(nrow = n_new, ncol = D)
             if (settings$grad) dwdx <- array(dim = c(n_new, D, d))
-            for (i in 1:D) { # no grad_enhance option here
+            for (i in still_in) { # no grad_enhance option here
               k <- krig_vec(w_t[, i], 
                             approx = object$x_approx,
                             tau2 = object$settings$tau2_w,
@@ -655,8 +660,8 @@ predict_deep_vec <- function(object, x_new, m, settings, layers, samples_only = 
             } # end of i for loop
           } # end of else statement
           object$w_approx <- clean_pred_from_approx(object$w_approx)
-          object$w_approx$x_ord <- w_t[object$w_approx$ord, , drop = FALSE]
-          object$w_approx <- add_pred_to_approx(object$w_approx, w_new, m, 
+          object$w_approx$x_ord <- w_t[object$w_approx$ord, still_in, drop = FALSE]
+          object$w_approx <- add_pred_to_approx(object$w_approx, w_new[, still_in, drop = FALSE], m, 
                                                 lite = settings$lite, grad = settings$grad,
                                                 ord_new = settings$ord_new)
           if (settings$store_latent) out$w_new[j, , ] <- w_new

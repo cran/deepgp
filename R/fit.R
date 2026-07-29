@@ -171,13 +171,6 @@ fit_one_layer <- function(x, y, dydx = NULL, nmcmc = 10000, sep = FALSE, verb = 
   settings <- check_settings(settings, layers = 1, noisy = is.null(true_g))
   settings$sep <- sep
   
-  # Check gradients
-  if (!is.null(dydx)) {
-    grad_enhance <- TRUE
-    if (is.vector(dydx)) dydx <- as.matrix(dydx) # one dimension only
-    test <- check_gradients(n, d, dydx, cov, true_g, vecchia = vecchia) # returns NULL
-  } else grad_enhance <- FALSE
-  
   # Check covariance
   if (cov == "matern") {
     if(!(v %in% c(0.5, 1.5, 2.5))) 
@@ -185,6 +178,13 @@ fit_one_layer <- function(x, y, dydx = NULL, nmcmc = 10000, sep = FALSE, verb = 
   } else if (cov == "exp2") {
     v <- 999 # indicator for "exp2" kernel
   } else stop("cov must be 'matern' or 'exp2'")
+
+  # Check gradients
+  if (!is.null(dydx)) {
+    grad_enhance <- TRUE
+    if (is.vector(dydx)) dydx <- as.matrix(dydx) # one dimension only
+    test <- check_gradients(n, d, dydx, v, true_g, vecchia = vecchia) # returns NULL
+  } else grad_enhance <- FALSE
   
   # Check vecchia 
   if (vecchia) {
@@ -444,13 +444,6 @@ fit_two_layer <- function(x, y, dydx = NULL, nmcmc = 10000,
   if (is.vector(x)) x <- as.matrix(x)
   n <- nrow(x)
   d <- ncol(x)
-
-  # Check gradients
-  if (!is.null(dydx)) {
-    grad_enhance <- TRUE
-    if (is.vector(dydx)) dydx <- as.matrix(dydx) # one dimension only
-    test <- check_gradients(n, d, dydx, cov, true_g, D, vecchia, monowarp) # returns NULL
-  } else grad_enhance <- FALSE
   
   # Check inputs and settings
   test <- check_inputs(x, y, true_g, nmcmc) # returns NULL
@@ -464,6 +457,13 @@ fit_two_layer <- function(x, y, dydx = NULL, nmcmc = 10000,
   } else if (cov == "exp2") {
     v <- 999 # indicator for "exp2" kernel
   } else stop("cov must be 'matern' or 'exp2'")
+
+  # Check gradients
+  if (!is.null(dydx)) {
+    grad_enhance <- TRUE
+    if (is.vector(dydx)) dydx <- as.matrix(dydx) # one dimension only
+    test <- check_gradients(n, d, dydx, v, true_g, D, vecchia, monowarp) # returns NULL
+  } else grad_enhance <- FALSE
   
   # Check vecchia
   if (vecchia) {

@@ -83,7 +83,7 @@ trim.dgp2 <- function(object, burn, thin = 1) {
   tic <- proc.time()[3]
   
   if (burn >= object$nmcmc) stop('burn must be less than nmcmc')
-  
+
   nmcmc <- object$nmcmc
   indx <- (burn + 1):nmcmc
   indx <- indx[which(indx %% thin == 0)]
@@ -92,10 +92,10 @@ trim.dgp2 <- function(object, burn, thin = 1) {
   if (length(object$g) > 1) object$g <- object$g[indx, drop = FALSE]
   object$tau2_y <- object$tau2_y[indx, drop = FALSE]
   object$theta_y <- object$theta_y[indx, drop = FALSE]
-  if (object$settings$monowarp) {
-    if (!is.null(object$tau2_w)) {
-      object$tau2_w <- object$tau2_w[indx, , drop = FALSE]
-    }
+  if (!is.null(object$tau2_w)) {
+    object$tau2_w <- object$tau2_w[indx, , drop = FALSE]
+  }
+  if (!is.null(object$w_grid)) {
     object$w_grid <- object$w_grid[indx, , , drop = FALSE]
   }
   object$theta_w <- object$theta_w[indx, , drop = FALSE]

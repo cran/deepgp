@@ -94,7 +94,8 @@ post_sample.gp <- function(object, x_new, nper = 1, grad = FALSE, cores = 1, ...
   
   cores <- check_cores(cores, object$nmcmc)
   if (grad) {
-    if (object$v != 999) stop("grad only offered with cov = 'exp2'")
+    if (object$v != 999 & object$v != 2.5) 
+      stop("grad only offered with cov = 'exp2' or cov = 'matern' with v = 2.5")
     if (min(object$g) < 1e-6) message("Warning: small g may cause numerical issues")
     if (cores > 1 & !requireNamespace("abind", quietly = TRUE))
       stop("Package \"abind\" needed for cores > 1 with grad = TRUE. Please install it.",
@@ -116,7 +117,8 @@ post_sample.gpvec <- function(object, x_new, nper = 1, m = NULL,
   
   cores <- check_cores(cores, object$nmcmc)
   if (grad) {
-    if (object$v != 999) stop("grad only offered with cov = 'exp2'")
+    if (object$v != 999 & object$v != 2.5) 
+      stop("grad only offered with cov = 'exp2' or cov = 'matern' with v = 2.5")
     if (min(object$g) < 1e-6) message("Warning: small g may cause numerical issues")
     if (cores > 1 & !requireNamespace("abind", quietly = TRUE))
       stop("Package \"abind\" needed for cores > 1 with grad = TRUE. Please install it.",
@@ -139,7 +141,8 @@ post_sample.dgp2 <- function(object, x_new, nper = 1, grad = FALSE,
   
   cores <- check_cores(cores, object$nmcmc)
   if (grad) {
-    if (object$v != 999) stop("grad only offered with cov = 'exp2'")
+    if (object$v != 999 & object$v != 2.5) 
+      stop("grad only offered with cov = 'exp2' or cov = 'matern' with v = 2.5")
     if (min(object$g) < 1e-6) message("Warning: small g may cause numerical issues")
     if (object$settings$monowarp) stop("grad not offered for monowarp = TRUE")
     if (cores > 1 & !requireNamespace("abind", quietly = TRUE))
@@ -164,7 +167,8 @@ post_sample.dgp2vec <- function(object, x_new, nper = 1, m = NULL,
   
   cores <- check_cores(cores, object$nmcmc)
   if (grad) {
-    if (object$v != 999) stop("grad only offered with cov = 'exp2'")
+    if (object$v != 999 & object$v != 2.5) 
+      stop("grad only offered with cov = 'exp2' or cov = 'matern' with v = 2.5")
     if (min(object$g) < 1e-6) message("Warning: small g may cause numerical issues")
     if (object$settings$monowarp) stop("grad not offered for monowarp = TRUE")
     if (cores > 1 & !requireNamespace("abind", quietly = TRUE))

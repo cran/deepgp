@@ -123,7 +123,6 @@ continue.dgp2 <- function(object, new_mcmc = 1000, verb = TRUE, ...) {
   }
   if (grad_enhance) initial$dwdx <- object$dwdx
 
-
   if (object$settings$monowarp) {
     samples <- gibbs_two_layer_mono(x = object$x,
                                     y = object$y,
@@ -160,13 +159,13 @@ continue.dgp2 <- function(object, new_mcmc = 1000, verb = TRUE, ...) {
   object$nmcmc <- object$nmcmc + new_mcmc
   object$tau2_y <- c(object$tau2_y, samples$tau2_y[-1])
   object$theta_y <- c(object$theta_y, samples$theta_y[-1])
+  object$theta_w <- rbind(object$theta_w, samples$theta_w[-1, , drop = FALSE])
   if (object$settings$monowarp) {
     if (!is.null(samples$tau2_w)) {
       object$tau2_w <- rbind(object$tau2_w, samples$tau2_w[-1, , drop = FALSE])
     }
     object$w_grid <- abind::abind(object$w_grid, samples$w_grid[-1, , , drop = FALSE], along = 1)
   }
-  object$theta_w <- rbind(object$theta_w, samples$theta_w[-1, , drop = FALSE])
   object$w <- abind::abind(object$w, samples$w[-1, , , drop = FALSE], along = 1)
   if (is.null(true_g)) object$g <- c(object$g, samples$g[-1])
   object$ll <- c(object$ll, samples$ll[-1])
@@ -341,7 +340,7 @@ continue.dgp2vec <- function(object, new_mcmc = 1000, verb = TRUE,
   
   # Append new information to original fit
   object$nmcmc <- object$nmcmc + new_mcmc
-  object$tau2_y <- c(object$tau2_y, samples$tau2[-1])
+  object$tau2_y <- c(object$tau2_y, samples$tau2_y[-1])
   object$theta_y <- c(object$theta_y, samples$theta_y[-1])
   object$theta_w <- rbind(object$theta_w, samples$theta_w[-1, , drop = FALSE])
   if (object$settings$monowarp) {
