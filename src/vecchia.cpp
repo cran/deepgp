@@ -192,7 +192,7 @@ arma::mat U_entries_grad(const int cores, const arma::mat& x, const arma::umat& 
       if (v == 999) {
         covmat = Exp2Grad(x.rows(inds), x.rows(inds), grad(inds), grad(inds), tau2, theta, g);
       } else {
-        covmat = MaternGrad(x.rows(inds), x.rows(indx), grad(inds), grad(inds), tau2, theta, g);
+        covmat = MaternGrad(x.rows(inds), x.rows(inds), grad(inds), grad(inds), tau2, theta, g);
       }
       
       // Solve for the entries of L

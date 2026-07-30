@@ -54,6 +54,10 @@ Monotonic warpings for additive and deep Gaussian processes.
 
 ## Version History
 
+What's new in version 1.2.3?
+
+* Minor bug fix when the package is installed without OpenMP
+
 What's new in version 1.2.2?
 
 * Gradient features (enhancement and predictions) now support `cov = "matern"` with `v = 2.5`
